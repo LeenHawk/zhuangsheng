@@ -1,35 +1,79 @@
-# LLM 渠道、模型引用与计数
+# LLM Channel、模型引用与 Token Count
 
-## Channel 配置
+## Channel Revision
 
-Channel 负责保存上游连接信息、支持的操作类型和可选模型列表。
-
-Node model reference 负责声明某个节点具体使用哪个 channel、哪个 model，以及哪个标准 operation shape。
-
-不要为模型单独设计复杂配置表。模型在第一版里就是 `modelId`，最多加一个展示名 `modelName`。
+Channel 是外部标准 API endpoint 的版本化配置，不代表真实模型供应商：
 
 ```ts
 type LlmChannel = {
   id: string
   name: string
-  baseUrl: string
-  apiKeyRef: string
-  operationKeys: OperationKey[]
-  generationModels?: ChannelModel[]
-  embeddingModels?: ChannelModel[]
-  imageModels?: ChannelModel[]
-  compactModels?: ChannelModel[]
+  headRevisionId: string | null
 }
-```
 
-```ts
+type LlmChannelRevision = {
+  id: string
+  channelId: string
+  revisionNo: number
+  operationTaxonomyVersion: number
+  adapterDecoderVersion: number
+  baseUrl: string
+  credential:
+    | { type: "secret"; apiKeyRef: SecretRef }
+    | { type: "none" }
+  operationKeys: OperationKey[]
+  modelCatalogs?: ChannelModelCatalog[]
+  capabilities?: ChannelCapability[]
+  createdAt: string
+}
+
+type ModelCapabilityName =
+  | "streaming"
+  | "tool_calling"
+  | "structured_output"
+  | "vision_input"
+
+type ModelCapabilityOverride = {
+  feature: ModelCapabilityName
+  assumption: "supported"
+  reason: string
+  acknowledgementRef: string
+  policyVersion: number
+}
+
 type ChannelModel = {
   id: string
   name?: string
+  contextWindow?: number
+  maxOutputTokens?: number
+  capabilities?: {
+    streaming?: boolean
+    toolCalling?: boolean
+    structuredOutput?: boolean
+    visionInput?: boolean
+  }
 }
+
+type ChannelModelCatalog = {
+  operationKey: OperationKey
+  policy: "open" | "allowlist"
+  models: ChannelModel[]
+}
+
+type ChannelCapability =
+  | { type: "hosted_tool"; operationKey: OperationKey; hostedKind: string }
+  | { type: "tool_based_compact"; operationKey: OperationKey; hostedKind: string }
 ```
 
-## 节点模型引用
+新建 Channel 是 `headRevisionId=null` 的不可运行容器，必须发布并推进首个 revision 后才能被 Graph Apply/NodeInstance 解析。Revision 不可变。更新 base URL、operation taxonomy/adapter decoder、operation、模型清单或 provider-specific capability 创建新 revision；credential rotation 可以更新 SecretRef 指向的加密值，不把 secret 写入 revision。`credential.type=none` 只允许 channel/origin policy 明确允许的无认证 endpoint，adapter 不得为它注入空或伪造 Authorization header。是否需要 Secret Store 来加密 opaque continuation 与 credential 选择无关。
+
+`baseUrl` 默认必须为 HTTPS，不允许 userinfo 或敏感 query。阶段一本地开发可显式允许 loopback HTTP，不能对任意远程 host 关闭校验。
+
+Model capability boolean 缺失表示 `unknown`，不是 false。Graph Apply 对明确 false 的必需能力报错，即使存在 override 也不可放行；unknown 必须由用户通过 node 的 `ModelCapabilityOverride` 显式确认。Apply 根据 node streaming/tool/output/context 推导 required features，要求 override feature 唯一、reason/acknowledgement 非空、policy version 当前有效，再把规范化列表写入 graph revision/content hash。NodeInstance pin 新 channel revision 时重做同样校验：已变为 false 则拒绝，仍为 unknown 才可使用固定 override。Runtime 仍处理 provider typed error，不能靠模型名猜测。
+
+## Node Model Ref
+
+Applied graph 保存逻辑引用：
 
 ```ts
 type LlmNodeModelRef = {
@@ -40,221 +84,142 @@ type LlmNodeModelRef = {
 }
 ```
 
+第一次执行 NodeInstance 前解析 channel head，并把实际 `channelRevisionId` 写入 execution snapshot。Waiting、resume 和 retry 复用该 revision；不能在 tool loop 中途切换 endpoint/shape。新的 NodeInstance 默认解析当时最新 revision，显式 reproducible run 可以在 start manifest 中 pin 允许的 revision。
+
 字段含义：
 
 ```text
-channelId
-走哪个上游渠道。
-
-modelId
-实际请求里的 model 字符串。
-
-modelName
-展示名，可选，不参与协议语义。
-
-operationKey
-本次调用使用哪个标准 API shape / operation。
+channelId       使用哪个上游 endpoint 配置
+modelId         wire request 中的 model 字符串
+modelName       可选展示名，不参与协议
+operationKey    当前标准 wire shape/operation
 ```
 
-Channel 不保存真实 provider。
-
-Claude、Gemini 或其他模型完全可以通过 OpenAI-compatible endpoint 暴露。应用层不关心背后真实 provider，只关心当前 channel 支持的标准 `OperationKey`。
-
-Channel 也不保存 auth kind。认证方式由 `operationKey` / API shape 的 adapter 决定。Channel 只保存 `apiKeyRef`。
+一个名为 Claude/Gemini 的实际模型可以由 OpenAI-compatible endpoint 暴露。应用只理解该 channel 的 `OperationKey`，不猜测背后真实 provider。
 
 ## 调用校验
 
-调用时校验流程：
+发起调用前：
 
-```text
-1. 用 channelId 找到 channel
-2. 确认 channel.operationKeys 包含 node.operationKey
-3. 如果 channel 配置了对应模型列表，确认 modelId 存在
-4. 用 operationKey 选择 shape adapter
-5. 用 baseUrl + apiKeyRef + modelId 发起标准请求
-```
+1. 读取/pin channel revision；
+2. 确认 revision 声明 node `operationKey`；
+3. 找到该 operation 的 catalog；`allowlist` 要求 `modelId` 存在，`open` 允许手工 model ID；
+4. 校验 node/provider extension 与 operation shape 匹配；
+5. 根据 operationKey 选择 ShapeAdapter；
+6. provider client 在发送边界按 `credential` 解析 `apiKeyRef` 并注入认证，或对 `none` 明确不注入；
+7. 记录 channel revision/model/operation，永不记录 credential。
 
-示例 channel：
+用户手工添加的模型可以在 open-list channel 使用；provider `/models` 返回值只是 UI discovery，不足以推断 tool、structured output、context window 等全部能力。
 
-```json
-{
-  "id": "gproxy-main",
-  "name": "GProxy Main",
-  "baseUrl": "https://gproxy.example",
-  "apiKeyRef": "secret:gproxy-main",
-  "operationKeys": [
-    {
-      "operation": "generate_content",
-      "kind": {
-        "content_generation": "openai_responses"
-      }
-    }
-  ],
-  "generationModels": [
-    {
-      "id": "claude-sonnet-4",
-      "name": "Claude Sonnet 4"
-    }
-  ]
-}
-```
+## OperationKey
 
-节点引用：
-
-```json
-{
-  "channelId": "gproxy-main",
-  "modelId": "claude-sonnet-4",
-  "modelName": "Claude Sonnet 4",
-  "operationKey": {
-    "operation": "generate_content",
-    "kind": {
-      "content_generation": "openai_responses"
-    }
-  }
-}
-```
-
-这里表达的是：
-
-```text
-使用 gproxy-main 这个 channel。
-请求里的 model 是 claude-sonnet-4。
-本次调用使用 OpenAI Responses 标准 shape。
-应用层不关心背后真实 provider。
-```
-
-## 模型列表
-
-模型列表支持：
-
-```text
-OpenAI models
-Claude models
-Gemini models
-```
-
-模型列表主要用于填充 UI 中的 `generationModels`、`embeddingModels`、`imageModels`、`compactModels`。
-
-应用层不应该只靠 provider 返回的裸模型列表推断所有能力。用户可以手动维护模型列表。
-
-## 计数
-
-计数支持：
-
-```text
-OpenAI count
-Claude count
-Gemini count
-```
-
-计数用于：
-
-- prompt 预算检查
-- context window 防溢出
-- cost 估算
-- router decision
-- memory/context 裁剪
-
-第一版计数结果保持最小形状：
-
-```ts
-type TokenCount = number
-```
-
-语义：
-
-```text
-TokenCount 表示 input token 数。
-```
-
-计数策略：
-
-```text
-provider count API
-  -> success: 使用 provider 返回的 token 数
-  -> fail / unsupported: 使用 gproxy-tokenize::count
-```
-
-`gproxy-tokenize::count` 已经内部兜底：
-
-```text
-tiktoken / tokenizer
-  -> bundled fallback vocab
-  -> chars/2 estimate
-```
-
-因此本项目的核心计数返回类型不需要带 `source` 或 `exactness`。
-
-如果未来需要 debug，可以在 trace event 中记录计数来源，但不要污染核心 `TokenCount` 类型。
-
-Output token、cache token、reasoning token 等运行后统计应该进入 usage 结构，不应该塞进简单计数结果。
-
-不同 API shape 的计数规则可能不同。`TokenCount` 只作为当前请求 shape 下的预算参考，不作为跨 provider 严格等价值。
-
-## 压缩
-
-压缩是逻辑能力，可以由不同 shape 用不同方式表达。
-
-OpenAI channel 如果支持压缩，可以在 `operationKeys` 中包含：
+`OperationKey`、`Operation`、`Provider`、`ContentGenerationKind` 来自 `gproxy-protocol`：
 
 ```rust
+OperationKey::content_generation(
+    Operation::GenerateContent,
+    ContentGenerationKind::OpenAiResponses,
+)
+
+OperationKey::provider(Operation::CountTokens, Provider::Claude)
+OperationKey::provider(Operation::CreateEmbedding, Provider::Gemini)
+OperationKey::provider(Operation::CreateImage, Provider::OpenAi)
 OperationKey::provider(Operation::CompactContent, Provider::OpenAi)
 ```
 
-Claude channel 如果通过标准 tool 形态支持 compact，可以不要求存在同名 compact operation，而是由 Claude shape adapter 把逻辑 compact 请求映射为 compact tool。
+这里的 `Provider` 表示 wire protocol family。Channel 不另存真实 provider 或 auth kind；认证 shape 由 provider client adapter 定义。
 
-这类 tool-based compact 应在 channel 或节点配置中显式启用，避免把普通内容生成误当成压缩能力。
+版本是 operation 语义的一部分：
 
-如果 channel 配置了 `compactModels`，调用压缩时可以校验 `modelId` 是否在列表中。
-
-压缩模型列表是可选的。没有配置时，只校验 `operationKeys`。
-
-对于 tool-based compact，没有独立 operation key 时，应校验该 channel 支持对应 generation operation，并且 compact tool 已配置。
-
-## 维护方式
-
-`gproxy-protocol` 应该由 gproxy 和本项目共同依赖，避免复制代码导致漂移。
-
-本地开发阶段可以使用 path dependency：
-
-```toml
-gproxy-protocol = { path = "samples/gproxy/crates/gproxy-protocol" }
-gproxy-tokenize = { path = "samples/gproxy/crates/gproxy-tokenize", optional = true }
+```ts
+type LlmOperationExecutionPin = {
+  channelRevisionId: string
+  modelId: string
+  operationKey: OperationKey
+  operationTaxonomyVersion: number
+  adapterDecoderVersion: number
+}
 ```
 
-跨仓库或发布后可以使用 git/tag dependency。
+`operationTaxonomyVersion` 固定 `OperationKey` 的 discriminant、canonical serialization 和 endpoint metadata 语义；`adapterDecoderVersion` 固定该 shape 的 request encoder、stream ordering/dedup 和 terminal decoder contract。它们是正整数 compatibility ID，不等于 gproxy crate semver、API `/v1` 或数据库 migration version。
 
-维护规则：
+Graph/channel/snapshot reader 必须两阶段解码：先用有界、version-agnostic envelope parser 只读取两个整数 version，再从 support matrix 选择 version-specific `OperationKey` decoder；未知/缺失 version 时不得先把 JSON 反序列化成当前 enum。Wire response/stream 同理，先从 trusted execution pin 选择 exact adapter decoder，再解析 provider bytes。
 
-- 协议类型变更先进入 `gproxy-protocol`
-- 本地计数逻辑复用 `gproxy-tokenize`
-- gproxy 和本项目都只消费共享 crate
-- 不在本项目内复制 protocol 或 tokenize 目录
-- 不在本项目内实现 gproxy transform/channel/pipeline
+Channel revision 发布和 Graph Apply 都只能使用进程显式 support matrix 中的版本对。NodeInstance 首次执行要求 graph revision 与选中 channel revision 的两个版本完全一致，并要求 adapter registry 存在 exact `(operationTaxonomyVersion, adapterDecoderVersion, operationKey)`，然后把完整 `LlmOperationExecutionPin` 写入 execution snapshot。缺失、未知或不匹配在创建 provider Effect 之前 fail closed 为 `unsupported_operation_taxonomy`、`unsupported_adapter_decoder` 或 `operation_version_mismatch`；禁止猜当前版本、按 enum 名字符串兜底或静默 transform。
 
-## gproxy-transform
+Waiting、retry、stream recovery、model-bound count 和 opaque continuation 解码都复用完整 pin；不绑定 model 的 discovery/list operation 仍必须使用选中 channel revision 的 exact version pair 与 OperationKey，不能猜 current。部署升级必须保留被活跃 snapshot/retention 数据引用的 compatibility reader/decoder，或先运行显式迁移并创建新的 immutable graph/channel revision；不能让旧 run 自动采用新 decoder。
 
-可以把 `gproxy-transform` 作为独立 crate 存在，但它属于反代能力集合。
+## 模型列表
 
-本项目默认不使用跨 provider transform。
-
-如果未来使用 `gproxy-transform`，只允许使用 provider-native stream parsing、usage extraction、token/text aggregation 等辅助能力。
-
-不得在应用层启用 provider-to-provider request/response transform，除非未来明确改变设计目标。
-
-## 依赖边界
-
-共享 crate 应保持轻量。
-
-理想依赖：
+阶段一可以从 OpenAI/Claude/Gemini 标准 model-list shape 获取候选并让用户确认后保存到新 channel revision。
 
 ```text
-serde
-serde_json
-http，可选
+discovered model      临时 UI 结果
+configured model      revision 中的可选 allow/metadata
+node modelId          实际执行选择
 ```
 
-如果 endpoint metadata 需要 `http::Method`，可以考虑后续把 HTTP 相关能力放到 optional feature，避免 core runtime 被 HTTP 类型污染。
+不要因为 model list 暂时不可用而破坏已有 pinned revision。模型 capability metadata 是保守提示；最终请求仍需处理 provider 的 typed error。
 
-本项目 core runtime 可以依赖 protocol taxonomy 和 wire model，但不应该依赖 Axum、Tauri 或 gproxy 主 crate。
+## Token Count
+
+核心结果保持简单：
+
+```ts
+type TokenCount = number // 当前完整 input request 的 token 数
+```
+
+计数顺序：
+
+```text
+当前 operation/model 的 provider count API
+  -> unsupported/temporary failure: gproxy-tokenize::count
+  -> tokenizer fallback/estimate
+```
+
+预算对象必须尽量 wire-equivalent，包括 instructions/messages、tool schemas、response schema、multimodal metadata 和 shape 固有开销。Provider count 如果需要 credential，仍由 provider client 注入。
+
+Fallback estimate 不假装精确。Context Assembly 在 fallback 时使用配置的安全余量（阶段一默认可用 input budget 的 5%，至少 256 tokens），并在 trace/preview 中记录 count source；`TokenCount` 类型本身不携带 source。
+
+Output/cache/reasoning token 是调用后的 usage，不混入 input count。不同 shape 的数字不是跨 provider 的严格等价计费单位。
+
+## Count 错误
+
+以下错误不应全部 fallback：
+
+```text
+unsupported / endpoint_not_found / transient provider failure
+  -> 可以本地 fallback。
+
+invalid assembled request / invalid tool schema / forbidden content
+  -> 修正请求，不能用本地计数掩盖。
+
+secret locked / permission denied
+  -> 返回 typed error 或显式 wait，不绕过认证。
+```
+
+最终 provider 仍可能因自己的 tokenizer/隐藏开销返回 context overflow；LLMNode 按 output/runtime retry policy处理，但不能重复已完成的 side-effect tool。
+
+## Compact
+
+Compact 是显式逻辑能力：
+
+- OpenAI 标准 compact operation 使用对应 OperationKey；
+- Claude 若通过标准 hosted/custom tool 表达，必须有显式 `HostedToolBinding/ToolGrant`；
+- 配置需要 model/channel、预算、deadline、费用/递归上限和失败 fallback；
+- compact result 是新 content/ref，不隐式修改 WorkingContext 或 LongTermMemory。
+
+Context Assembly 阶段一不会在 overflow 时偷偷发起 model compact。调用方应预先提供 summary binding，或通过明确 node/tool 产生 compact result。
+
+## gproxy 依赖边界
+
+```text
+zhuangsheng -> gproxy-protocol
+zhuangsheng -> gproxy-tokenize（本地 fallback，可选 feature）
+
+zhuangsheng -X-> gproxy proxy/channel/pipeline/transform
+```
+
+本项目复用 taxonomy、wire types 和 endpoint metadata，不复制 protocol 目录，不启用 provider-to-provider transform。若未来复用 `gproxy-transform` 的 stream parser/usage aggregation，只能作为当前 native shape 的辅助，不能把应用层变成反代层。
+
+共享 crate 变更先进入独立版本/tag；taxonomy 或 decoder 语义变化提升对应 compatibility ID，升级时通过显式 support matrix、兼容 reader 和 conformance validation，不静默改变历史 run。

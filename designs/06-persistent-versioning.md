@@ -1,325 +1,211 @@
-# 持久化节点版本化
+# 版本化聚合与 Object Store
 
-## 问题
+## 定位
 
-持久化节点需要支持版本化、回滚、审计、分支和恢复。
+持久化版本属于 WorkingContext、LongTermMemory 或 artifact metadata aggregate，不属于某个 graph `nodeId`。Graph node 可以产生变更，但 node definition 不是持久化数据的聚合根。
 
-但版本化不能简单实现为每个版本复制一份完整数据。否则如果有 10 个版本，体积可能膨胀 10 倍。
-
-目标是实现逻辑版本化，而不是全量复制版本化。
-
-## 核心模型
-
-推荐模型：
+统一模型：
 
 ```text
-当前物化视图 + 增量 patch log + 周期性 checkpoint
+immutable object store
++ append-only commit graph
++ branch-aware materialized projection
++ periodic VersionSnapshot
 ```
 
-也就是：
+Runtime journal 和 RuntimeCheckpoint 另见 `05-streaming-events.md`；二者不能与 version commit/snapshot 混用。
 
-```text
-base snapshot
-  + delta#1
-  + delta#2
-  + delta#3
-  = version N
-```
+## Content Object
 
-而不是：
-
-```text
-version1 full copy
-version2 full copy
-version3 full copy
-```
-
-持久化节点可以拆成三层：
-
-```text
-Object Store
-保存实际内容，按 content hash 去重。
-
-Version Log
-保存版本提交记录，只保存 patch、引用和元信息。
-
-Materialized View
-保存当前版本的快速读取视图。
-```
-
-## Object Store
-
-大内容不直接嵌入版本记录，而是进入 object store。
+大 JSON、patch、文本、tool result、provider response 和文件先写入 content-addressed object store：
 
 ```ts
-type PersistentObject = {
+type ContentObject = {
   id: string
-  contentHash: string
-  contentRef: string
-  size: number
+  contentHash: string  // sha256:<lowercase hex>
+  byteSize: number
+  storageKind: "inline" | "filesystem"
+  storageKey?: string
   createdAt: string
 }
 ```
 
-如果两个版本引用同一段内容，它们应该指向相同 `contentHash`，而不是存两份。
+Hash 针对实际保存的 bytes。结构化 JSON 使用项目固定的 `canonical_json_v1`，不是 RFC 8785/JCS：对象 key 按 Unicode scalar sequence 排序，字符串以 UTF-8 和最小必要 JSON escape 编码并拒绝 unpaired surrogate，数组保序；number 解析为有界 exact base-10 `(sign, coefficient, exponent)`，零写成 `0`，非零写成 `[-]d[.digits]eN`，coefficient 去前导零、去尾随零时等量增加 exponent，且 exponent 无 `+`/前导零。它拒绝 NaN/Infinity，并与 `16-domain-consistency.md` 的 digit/exponent limits 共用 conformance vectors，因此 `1`、`1.0`、`10e-1` 产生相同 bytes且不会降精度到 binary64。结构化 owner/ref 把 `formatVersion` 与 object ID/hash 一起持久化；未知 format fail closed。读取时重新校验 size/hash；hash 不匹配视为存储损坏。
 
-示例：
+ContentObject 只声明 bytes/hash/size；media type、展示名与 classification 属于引用它的 Artifact/owner metadata。同一 bytes 可被不同 artifact 以各自经 policy 验证的 media type 引用，object dedup 不让首次写入者决定后续解释。
+
+阶段一小对象可内联 SQLite，大对象放本地文件系统。文件流程：
 
 ```text
-version 1:
-  refs: [hash_a, hash_b, hash_c]
-
-version 2:
-  refs: [hash_a, hash_b, hash_d]
+写随机 temp 文件 -> 限制大小并计算 hash -> fsync
+-> 以 hash 原子 rename/deduplicate
+-> 数据库事务创建 metadata/ref
 ```
 
-只有 `hash_d` 是新增存储。
+Crash 产生的无引用对象由宽限期 GC 清理。路径只由 storage adapter 根据 hash 生成，不能使用上传文件名。Secret 永远不进入 object store。
 
-## Version Commit
+## Commit Graph
 
-版本记录应该保存提交关系、patch 引用和 snapshot 引用。
+Canonical commit：
 
 ```ts
 type VersionCommit = {
   id: string
-  nodeId: string
-  parentCommitId?: string
-  version: number
+  aggregateKind: "working_context" | "long_term_memory" | "artifact_metadata"
+  aggregateId: string
+  lineageKey: string
+  sequenceNo: number
+  operationId: string
+  parentCommitIds: string[]
   patchRef?: string
   snapshotRef?: string
-  createdBy: "llm" | "user" | "system"
+  mergeResolutionRef?: string
+  schemaVersion: number
+  policyVersion: number
+  author: ActorRef
+  originRunId?: string
+  originNodeInstanceId?: string
   createdAt: string
 }
 ```
 
-当前状态记录只需要指向 head commit 和当前物化视图。
+`lineageKey` 对 WorkingContext 是 context branch ID，对阶段一 LongTermMemory 是 `global`。Root 无 parent，普通 commit 一个 parent，merge commit 两个 parent。
+
+Commit、parent 和 patch 都 append-only。`operationId` 在 lineage 内唯一并用于提交重试去重。对外并发令牌使用 `commitId`；`sequenceNo` 只在相同 aggregate/lineage 内单调递增，不能作为全局 version ID。
+
+Merge commit 必须保存已验证的最终 patch/ref，不能只保存“以后重新调用 reducer/LLM”的指令。历史 replay 使用记录时的 schema/policy/reducer version。
+
+## Patch 策略
+
+不同 aggregate 使用不同物理 delta，但共享 commit/CAS：
+
+```text
+WorkingContext JSON
+  受限 RFC 6902 StatePatch；append 使用 operation ID。
+
+LongTermMemory record
+  版本化 content object/ref 或 status tombstone + reason/evidence proposal history；不修改 evidence object。
+
+Artifact metadata
+  小型结构化 patch；artifact bytes 创建新 ContentObject。
+
+Append-only audit/event
+  直接追加记录，不包装成 VersionCommit。
+```
+
+阶段一不实现 text diff、binary chunk delta 或 vector embedding 的多版本复制。长文本作为不可变 content object；变化版本可引用新 object，hash 自动去重完全相同内容。真实存储压力出现后再引入 chunk manifest。
+
+## Branch-aware Projection
+
+当前读取不应每次 replay patch：
 
 ```ts
-type PersistentNodeState = {
-  nodeId: string
+type MaterializedProjection = {
+  aggregateKind: string
+  aggregateId: string
+  lineageKey: string
   headCommitId: string
-  currentSnapshotRef: string
+  projection: JsonValue | { objectRef: string }
+  schemaVersion: number
   updatedAt: string
 }
 ```
 
-## Patch，而不是 Full Copy
+Key 必须包含 lineage/branch；不能为一个 aggregate 只保存单一 current view。Projection 是可更新缓存，不是每次提交产生的不可变 full snapshot。
 
-不同数据类型应该使用不同 patch 策略。
+读取当前值直接读 projection并验证 head。历史值使用最近 `VersionSnapshot + subsequent patches`。发现 projection head 与 branch head 不一致时停止写入该 aggregate，重建并记录 integrity error。
 
-结构化数据可以用 JSON Patch 或 JSON Merge Patch：
+## VersionSnapshot
 
-```json
-[
-  { "op": "replace", "path": "/title", "value": "new title" },
-  { "op": "add", "path": "/facts/3", "value": "..." }
-]
-```
-
-文本可以用 text diff：
-
-```text
-base text + text diff = new text
-```
-
-大文件或 artifact 可以用 content-addressed chunks：
-
-```text
-chunk A
-chunk B
-chunk C
-```
-
-新版本只引用变化的 chunk。
-
-## Checkpoint
-
-如果一直只存 patch，读取历史版本时可能需要 replay 很长的 patch 链。
-
-因此需要周期性 checkpoint。
-
-```text
-snapshot@0
-  delta 1
-  delta 2
-  ...
-snapshot@50
-  delta 51
-  ...
-snapshot@100
-```
-
-checkpoint 策略可以是：
-
-```text
-每 N 个版本做一次 snapshot
-或者 delta 总大小超过 snapshot 大小的某个比例后做 snapshot
-或者重要状态节点完成后做 snapshot
-```
-
-示例配置：
+VersionSnapshot 是独立加速记录：
 
 ```ts
-type CompactionPolicy = {
-  snapshotEveryVersions?: number
-  snapshotWhenDeltaRatioExceeds?: number
-  keepRecentFullSnapshots?: number
+type VersionSnapshot = {
+  commitId: string
+  snapshotRef: string
+  schemaVersion: number
+  checksum: string
+  createdAt: string
 }
 ```
 
-## 当前版本读取
+创建 snapshot 不修改历史 commit。策略可以按 patch 数、replay bytes 或重要业务 commit 触发；阶段一可先固定每 N 个 commit，并允许手动触发。
 
-读取当前版本不应该每次 replay patch。
+Snapshot 只回答“某个 commit 的聚合内容是什么”，不包含 NodeInstance、edge queue、wait、lease、effect 或 run cursor。GraphRun recovery 使用 RuntimeCheckpoint。
 
-runtime 应该维护当前物化视图：
+## 写入事务
 
-```text
-current view = 最新可读状态
-commit log = 可追溯历史
-```
-
-读取当前状态直接读 `currentSnapshotRef` 或数据库当前行。
-
-只有读取历史版本时，才使用：
+预写 object 后，一次逻辑变更在一个数据库事务中：
 
 ```text
-nearest checkpoint + subsequent patches
+读取并 CAS expected head
+-> 校验 patch schema/policy/read set
+-> 插入 immutable commit + parents + object refs
+-> 更新 branch/global head
+-> 更新 materialized projection
+-> 更新 origin node/proposal/merge 状态
+-> 追加 durable audit/runtime event
+-> commit
+-> publish notifier
 ```
 
-## 写入流程
+任一步失败不暴露 commit/head/projection 的部分结果。SQLite 使用短 `BEGIN IMMEDIATE` + conditional update；事务内禁止等待网络、LLM、tool 或大文件写入。
 
-一次持久化节点写入可以按以下流程执行：
+Node finalized 时，这个版本事务与 attempt completion、edge emission、run output 和 events 是同一外层数据库事务，详见 `16-domain-consistency.md`。
+
+## 历史读取与 Schema 演进
+
+- 每个 patch/snapshot/commit 携带 schema version。
+- Reader 至少能解码所有仍受 retention 保护的历史版本。
+- Migration 不重写 immutable commit；通过新 reader/upcaster 或显式 migration commit 演进。
+- Upcaster 必须确定、无 I/O、版本化且可测试。
+- Policy 变化不改变历史合法性；新写入使用新 policy，merge 时按目标当前 policy 重新校验。
+
+## Memory 与 Evidence
+
+LongTermMemory 拆为：
 
 ```text
-1. 读取当前 headCommitId
-2. 基于当前状态生成 patch
-3. 校验 patch base 是否等于当前 head
-4. 写入 patch object
-5. 写入 VersionCommit
-6. 更新 materialized current view
-7. 更新 headCommitId
+immutable evidence objects/refs
+memory record current projection
+MemoryChangeProposal + status audit
+version commits
 ```
 
-如果发生并发冲突：
+Proposal apply 后才创建 memory commit并推进 global head。Commit 保存 `sourceProposalId`，proposal 保存 `appliedCommitId`，并在同一事务设置；`reason/evidenceRefs` 通过这条关系进入 audit/GC 链。删除或 obsolete 只改变 record 状态，不物理销毁仍被 evidence/audit 引用的内容。
 
-```text
-baseCommit != currentHead
-  -> reject
-  -> merge
-  -> rebase patch
-  -> fork branch
-```
-
-具体策略由节点类型和 state path policy 决定。
-
-## 按数据类型选择策略
-
-不要所有 persistent node 都使用同一种版本化机制。
-
-```text
-Append-only log
-只追加，不需要 diff。适合 conversation log、trace、event log。
-
-Structured state
-使用 JSON Patch。适合 user profile、project state、配置。
-
-Text document
-使用 text diff、piece table 或 snapshot + diff。适合 summary、draft、文档。
-
-Large artifact
-使用 content-addressed chunks。适合文件、长输出、二进制 artifact。
-
-Vector memory
-embedding 通常可以重算，版本记录 metadata、source ref 和 content hash，不一定存多份 embedding。
-```
-
-## Memory 场景
-
-Memory 可以拆成三部分：
-
-```text
-原始 evidence
-append-only，按 hash 去重，不改。
-
-memory view
-当前可检索视图，允许物化更新。
-
-memory edit history
-保存 patch、reason、evidenceRefs。
-```
-
-示例：
-
-```ts
-type MemoryRecord = {
-  id: string
-  currentVersion: number
-  currentContentRef: string
-  evidenceRefs: string[]
-  status: "active" | "obsolete" | "merged"
-}
-```
-
-```ts
-type MemoryVersion = {
-  memoryId: string
-  version: number
-  parentVersion: number
-  patchRef: string
-  reason: string
-  evidenceRefs: string[]
-}
-```
-
-大内容放在 `contentRef`，版本表只保存 patch 和引用。
+Embedding 是派生 projection，key 至少包含 source content hash、embedding model ID 和 operation key。它可以重算，不必进入每个 semantic commit。
 
 ## Compaction
 
-长期运行后，patch log 和历史对象需要压缩。
+阶段一 compaction 只做安全的物理优化：
 
-Compaction 可以做：
+- 为旧 commit 增加 VersionSnapshot；
+- 压缩 object bytes但保持解码后 bytes/hash 契约；
+- 去重相同 content hash；
+- 清理过期 staging/orphan object；
+- 按 event policy 丢弃非关键 debug/token payload。
 
-```text
-合并旧 patch 为 checkpoint snapshot
-删除不可达 branch 的临时对象
-对重复 content 做 hash 去重
-压缩旧 token/debug event
-保留关键 audit event
-```
+不得改写 commit ID、parent、author、origin、reason/evidence 或 merge 结果。阶段一不删除受保留保护的 patch/critical event。若未来截断 patch 链，必须先定义审计保留、snapshot attestation 和可验证 replay 边界。
 
-Compaction 不能破坏审计要求。对于需要完整审计的 memory 或用户数据，可以只压缩物理存储，不删除关键元信息。
+## Reachability 与 GC
 
-## Branch 与版本化
+GC roots 至少包括：
 
-Branch 不复制全量状态，只从某个 commit fork。
+- active、merged-retained 和 pinned branch heads及其 ancestors；
+- live/retained lineage 的 current projections，以及仍在 retention 或被 pin 的 VersionSnapshots；
+- RuntimeCheckpoints、durable event payload refs；
+- Conversation messages/turn candidates/selections；
+- pending/reviewed proposal、applied commit 关联的 proposal/evidence，以及仍在 audit retention 的 rejected proposal；
+- effect request/result 和 outcome_unknown；
+- artifact metadata、用户 pin 和 legal/audit hold。
 
-```text
-main:    commit0 -> commit1 -> commit2
-                          \
-branchA:                   -> commit3a -> commit4a
-```
+使用 mark -> grace period -> fenced sweep。宽限到期后，GC 必须在数据库事务中锁定 object row、再次校验 roots/owner refs/lease，并 CAS `live -> deleting` 同时分配 delete fence；任何 owner transaction 只能引用 `live` object，遇到 deleting 必须失败/重试，不得在 GC 复核后插入新 ref。物理删除成功后再用同 fence CAS `deleting -> deleted`；失败保留 deleting 供 repair/retry，只有 storage 明确验证 bytes 完整时才可受控恢复 live。Abandoned branch 不等于不可达；只有 retention 到期且无任何 root 引用才能进入 deleting。
 
-每个 branch 只是新的 commit 链。
+Inline bytes 可在 fenced 数据库事务中清除，外部文件在事务外按 fence 删除。Deleted tombstone 在有界 repair retention 内保留；若后续重新上传相同 hash，必须校验全部 bytes 并以新 lifecycle generation 原子 rehydrate 后才能创建 owner ref。Staging 和 internal-sensitive object 使用各自的等价 lifecycle/fence，不绕过该规则。
 
-大内容仍然通过 object store 去重。
+## 阶段一边界
 
-这样 branch 很便宜，不会因为创建多个分支导致状态成倍膨胀。
+实现：SHA-256 整对象寻址、SQLite inline/filesystem store、commit parents、branch-aware projection、JSON StatePatch、VersionSnapshot、保守 mark-and-sweep。
 
-## 总结
-
-持久化节点应该像 Git、MVCC 和 materialized view 的混合。
-
-```text
-1. 当前状态物化，保证读快
-2. 历史版本记录 patch，不复制全量
-3. 大对象用 content hash 去重
-4. 周期性 checkpoint，避免 replay 过长
-5. 不同数据类型使用不同 delta 策略
-6. branch 和 merge 基于 commit graph，而不是拷贝状态
-```
-
-一句话：
-
-```text
-版本化的是提交关系和增量变化，不是每个版本的一整份完整数据。
-```
+延后：content-defined chunking、text diff、远程 S3、多租户加密/去重、跨 context merge、任意 reducer 和历史链物理截断。

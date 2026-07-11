@@ -1,302 +1,220 @@
-# 流式事件
+# Runtime Journal 与流式事件
 
-## 基本定位
+## 定位
 
-流式事件应该是 runtime 的一等输出接口，而不是 LLMNode 的附属能力。
-
-整个框架对外暴露的是 run event stream：
+Runtime event 是执行事实、恢复游标和 UI 观察接口，不是 LLM token 的别名。
 
 ```text
-GraphRun Event Stream
-  包含 run、node、LLM、tool、memory、state、branch 和 output events
+state transition + durable event（同一事务）
+  -> commit
+  -> publish wake hint（不携带可转发的 durable payload）
+  -> subscriber 按自己的数据库 cursor drain
+  -> SSE / Tauri / WebSocket client
 ```
 
-Token streaming 只是其中一种事件。
+阶段一的 `RunEvent` 只属于一个 GraphRun。Run 外的 context commit、memory proposal 审批和 artifact lifecycle 使用各自的 audit log；如果 UI 需要统一时间线，由查询层合并，不能强迫所有领域事件伪造 `runId`。
 
-## 事件分层
+下文列出的 branch/proposal/artifact event 只有在操作具有 `originRunId` 时才同时写 RunEvent；纯 run 外操作只写 version log + domain audit/outbox event。
 
-可以分为四层：
+## Durable 与 Live Envelope
 
-```text
-Run-level events
-整个 run 的生命周期。
-
-Node-level events
-节点调度、开始、完成、失败和等待。
-
-Step-level events
-LLMNode 内部的 model call、tool call、memory call。
-
-Data-level events
-token、partial JSON、artifact、memory patch。
-```
-
-## Event Envelope
-
-所有事件使用统一 envelope。
+可恢复事件：
 
 ```ts
-type StreamEvent<T = unknown> = {
+type DurableRunEvent<T = JsonValue> = {
   id: string
   runId: string
-  branchId: string
-  nodeInstanceId?: string
-  parentEventId?: string
+  durableSeq: number
   type: string
-  seq: number
+  schemaVersion: number
   timestamp: string
+  contextBranchId?: string
+  nodeInstanceId?: string
+  attemptId?: string
+  correlationId?: string
+  causationEventId?: string
+  importance: "debug" | "info" | "critical"
+  payload: T | { payloadRef: string }
+}
+```
+
+只在当前连接可见的高频事件：
+
+```ts
+type EphemeralRunEvent<T = JsonValue> = {
+  id: string
+  runId: string
+  type: string
+  schemaVersion: number
+  timestamp: string
+  nodeInstanceId?: string
+  attemptId?: string
+  callId?: string
+  liveOrdinal?: number
   payload: T
 }
 ```
 
-关键字段：
+Ephemeral event 没有 `durableSeq`，不能作为 `Last-Event-ID`。`liveOrdinal` 只在一个 call/item 内检测重复或乱序，不承诺跨进程连续。
+
+`correlationId` 关联同一 wait/tool/model/command；`causationEventId` 指向直接触发当前事实的 durable event。层级展示不能只依赖 timestamp。
+
+## Durable Sequence
+
+`durableSeq` 的规则：
+
+1. 在数据库事务内按 run 分配，唯一且严格递增。
+2. 允许空洞，不允许复用；排序不依赖 timestamp 或事件 ID。
+3. 并发事务以成功提交的序列化顺序为准。
+4. `afterDurableSeq` 只读取更大的 durable event。
+5. 事件删除或物理压缩后仍不复用旧 sequence。
+
+SQLite 可以在更新 `graph_runs.next_event_seq` 的同一写事务中分配；PostgreSQL 可以锁 run counter row。业务代码和 worker 内存都不能自行维护权威 counter。
+
+## 权威关系
+
+三种记录职责不同：
 
 ```text
-id
-全局事件 ID，用于去重和重连。
+durable runtime journal
+执行状态转换的历史权威和订阅来源。
 
-seq
-run 内单调递增序号，用于排序。
+normalized runtime rows
+run、instance、attempt、wait、queue、effect 的当前物化投影，用于调度。
 
-branchId
-事件所属分支。
-
-nodeInstanceId
-事件所属节点执行实例。
-
-parentEventId
-表达层级关系，例如 tool call 属于某次 LLM call。
+RuntimeCheckpoint
+一致切点的恢复优化，不替代 journal。
 ```
 
-## Seq 分配规则
+每个关键状态转换必须同时更新 normalized rows 并追加足以解释该转换的 durable event。二者不允许分事务提交。发现投影与 journal 不一致时停止该 run 并进入 recovery/error，而不是猜测或再次执行外部副作用。
 
-`seq` 是 replay 和断线重连的地基，分配规则必须定死：
+重放有两个含义：
+
+- delivery replay：按 cursor 重新发送已持久化事件；
+- projection replay：从 checkpoint 后的事件重建/校验运行投影。
+
+重放绝不重新调用 LLM、tool 或其他外部 effect。Effect 结果使用已持久化 result ref；未知结果进入协调状态。
+
+## 初始事件集合
+
+阶段一 critical journal 至少包括：
 
 ```text
-1. seq 由持久化层分配，不由业务代码或并发任务自行计数。
-   SQLite 用单表 autoincrement 或 per-run counter 事务内递增。
-2. 单个 run 内 seq 严格单调递增，无空洞要求，但不允许重复。
-3. 不要求跨 run 全局有序。
-4. 并发节点的事件由写入顺序决定 seq，先落盘者先编号。
-5. replay 和 afterSeq 重连都只依赖 run 内 seq，不依赖 timestamp。
-```
+run.created / run.started
+run.interrupt.requested / run.interrupted / run.resumed
+run.cancel.requested / run.cancelled
+run.completed / run.failed
 
-timestamp 只用于展示和诊断，不参与排序。
+node.scheduled / node.started
+node.waiting / node.resumed
+node.retry.scheduled
+node.completed / node.failed / node.cancelled
+node.lease.expired
 
-## 事件持久化
+edge.value.enqueued / edge.value.consumed / edge.value.stranded
+run.output.committed
 
-事件应该通过统一路径发出：
-
-```text
-emit(event)
-  -> persist if durable
-  -> publish to subscribers
-```
-
-这样可以支持：
-
-- UI 实时流式展示
-- 从 `lastEventId` 或 `afterSeq` 断线重连
-- debug
-- replay
-- audit
-- run 完成后的 trace 查看
-
-示例 API：
-
-```ts
-subscribeRun(runId, { afterSeq?: number })
-```
-
-HTTP 形式：
-
-```text
-GET /runs/:runId/events?after=123
-```
-
-## 初始事件类型
-
-第一版可以支持：
-
-```text
-run.started
-run.completed
-run.failed
-run.interrupt.requested
-run.interrupted
-run.resumed
-
-node.scheduled
-node.started
-node.output.delta
-node.completed
-node.failed
-node.waiting
-node.resumed
-node.cancelled
-
-edge.value.enqueued
-edge.value.consumed
-
-llm.started
-llm.token
-llm.completed
-llm.failed
-
-tool.started
-tool.completed
-tool.failed
-
-memory.read
-memory.patch.proposed
-memory.patch.applied
-memory.patch.rejected
-
+state.patch.committed
+memory.proposal.created / memory.proposal.status_changed
 router.decision
-branch.created
-branch.merged
-branch.abandoned
+
+wait.created / wait.satisfied / wait.expired
+effect.prepared / effect.succeeded / effect.failed / effect.outcome_unknown
+branch.forked / branch.merge.committed / branch.merge.conflicted
+checkpoint.created
 ```
 
-## Token Events
-
-LLM token event 应该归属到具体 LLM call 和 node instance。
-
-```ts
-type LLMTokenPayload = {
-  callId: string
-  text: string
-  index: number
-}
-```
-
-典型顺序：
+LLM/tool 语义事件：
 
 ```text
-llm.started(callId)
-llm.token(callId, "...")
-llm.token(callId, "...")
-llm.completed(callId, finalMessage)
+llm.call.started / llm.call.completed / llm.call.failed
+tool.call.requested / tool.call.awaiting_approval
+tool.call.started / tool.call.completed / tool.call.failed
+artifact.committed
 ```
 
-Token event 不应该直接修改 working memory。它是观察事件。
+每个 attempt、model call 和 tool call 恰有一个 durable terminal event。数据库唯一约束和状态 CAS 负责阻止重复 terminal。
 
-持久化上下文只应该通过语义化 memory patch 改变，例如节点完成后的 `memory.patch.applied`。
+## Streaming Delta
 
-## Partial Object
-
-如果 LLM 输出结构化 JSON，流式过程中不应该假设每个 token 都可解析。
-
-可以提供 best-effort 的 partial object 事件：
+默认 live-only：
 
 ```text
-llm.token
-原始 token。
-
+llm.text.delta
+llm.reasoning.delta
+llm.tool_arguments.delta
+node.output.delta
 llm.partial_object
-runtime 尽力解析出的局部结构。
 ```
 
-示例：
+Delta 只服务实时 UI/trace，不进入 graph edge、StatePatch 或 WorkingContext。工具参数必须等待完整 item 和 schema validation 后才能执行；partial object 不作为节点结果。
 
-```ts
-{
-  type: "llm.partial_object",
-  payload: {
-    callId: "call_1",
-    path: "/steps/0/title",
-    value: "Search docs"
-  }
-}
-```
+每个 stream finalizer 必须产生恰好一个 durable `llm.call.completed` 或 `llm.call.failed`。断线客户端可能看不到中间 delta，但可从 terminal event/ref 取得最终文本、tool transcript 和 usage。
 
-`partial_object` 只用于 UI 和观察，不参与最终状态提交。最终以 `node.completed` 的结构化输出为准。
+可选 `compact` policy 可以把若干 delta 合成 chunk 后持久化；chunk 获得正常 `durableSeq`。阶段一默认不持久化 token chunk，只保存最终 message。不能为了给每个 token 分配 sequence 而每 token 写数据库。
 
-## Event Durability
+## 原子发出与发布
 
-不同事件需要不同持久化级别。
-
-```ts
-type EventDurability = "ephemeral" | "compact" | "persistent"
-type EventImportance = "debug" | "info" | "critical"
-```
-
-推荐默认值：
+关键事务示例：
 
 ```text
-llm.token
-ephemeral 或 compact
-
-llm.completed
-persistent
-
-node.completed
-persistent + critical
-
-edge.value.enqueued / edge.value.consumed
-persistent + critical
-
-memory.patch.applied
-persistent + critical
+complete NodeInstance
+-> CAS run epoch 与 attempt fencing token
+-> commit StatePatch/context head
+-> 写 run output 和 edge queue values
+-> 写 node.completed 等 durable events并分配 sequence
+-> commit transaction
+-> notifier 唤醒 scheduler/subscriber
 ```
 
-默认 token 处理建议为 `compact`：实时推送 token，但持久化最终 message，而不是保存每个 token。
+Notifier 是 best-effort 加速层，只能表示“某个 run 可能已有新 durable row”；hint 可以重复、合并、丢失或乱序，subscriber 不得直接转发其中的 event/payload/sequence。进程在 commit 后、publish 前崩溃时，scheduler 扫描和 subscriber 的定期补读仍能发现事件。禁止先 publish 再 persist。
+
+每个 durable subscriber 独占一个数据库 cursor。建立连接时先注册 wake-hint channel，再反复执行 `WHERE run_id = ? AND durable_seq > cursor ORDER BY durable_seq LIMIT ?`，只按查询结果发出并单调推进 cursor；drain 为空后等待下一 hint 或有界 poll deadline，再从数据库继续 drain。Sequence 允许空洞，因此只要求严格升序，不等待 `cursor + 1`。这个单-reader loop 是该连接唯一的 durable 发送入口，多个 notifier callback 只能唤醒它，不能并行写连接或绕过 cursor。Ephemeral live channel 独立，可直接 coalesce/drop，但没有 durable cursor，也不能推进、阻塞或重排 durable drain。完整 adapter 规则见 `21-adapters-api.md`。
 
 ## 背压
 
-流式事件可能非常密集，需要背压策略。
+每个订阅者使用有界队列：
 
-可用策略：
+- ephemeral delta 可以 coalesce 或 drop；
+- durable event 不能静默 drop；队列将满时断开慢消费者；
+- 消费者凭最后 durable cursor 重连；
+- durable queue 只接收上述单一数据库 drain loop 的有序结果，不接收 notifier payload；
+- subscriber 永远不能阻塞 node completion transaction；
+- UI 对高频 delta 做批量渲染或虚拟化。
 
-```text
-coalesce
-把多个 token 合并成较大 chunk。
+Runtime 内部 scheduler 不通过面向 UI 的 subscriber 驱动；它读取 durable work rows，event notification 只是提示。
 
-sample
-对高频 debug event 采样。
+## Payload、版本与安全
 
-drop_noncritical
-消费者太慢时丢弃 token/debug event，但不能丢 critical event。
+- `type + schemaVersion` 决定 payload decoder；旧版本在保留期内必须仍可读。
+- 大 payload、raw provider response 和 artifact 使用 content ref；event 只保存有界 preview/ref。
+- 未知 `JsonValue` 在持久化前执行大小、深度和敏感字段过滤。
+- Secret、Authorization header、主密码和 tool credential 永不进入 event。
+- Prompt、tool 参数、memory 内容和 provider error 按权限读取，默认只记录 hash/ref 或脱敏摘要。
+- `timestamp` 使用 UTC，展示时再转换时区。
 
-persist_critical_only
-只持久化语义事件和最终 compacted output。
-```
+## Retention 与 Compaction
 
-runtime 绝不能丢弃 critical event，例如 node completion、memory patch、run completion 和 failure。
+阶段一不删除 critical journal。Ephemeral event 从未落盘；debug/info event 可以配置保留期。
 
-## Streaming API
+后续 compaction 必须：
 
-runtime 可以同时暴露事件流和最终结果等待。
+1. 先创建覆盖到 `throughSeq` 的有效 RuntimeCheckpoint；
+2. 保留 terminal、effect、state/context commit、wait、control、branch 和 audit 事件；
+3. 只压缩允许丢弃的 delta/debug payload；
+4. 保留 sequence 空洞和 payload hash，不能重写历史含义；
+5. 把 checkpoint、branch、proposal、evidence 引用纳入 object GC roots。
+
+Event compaction 与 context version snapshot 是两种操作，不能共用一个模糊的 `Checkpoint` 类型。
+
+## 对外接口
+
+Core 提供：
 
 ```ts
-const run = await graph.start(input)
-
-for await (const event of graph.events(run.id)) {
-  // render or inspect events
-}
-
-const result = await graph.wait(run.id)
+subscribeRun(runId, { afterDurableSeq?: number })
+waitRun(runId)
+getRunEvents(runId, { afterDurableSeq?: number, limit?: number })
 ```
 
-便捷 API：
-
-```ts
-for await (const event of graph.stream(input)) {
-  if (event.type === "node.output.delta") {
-    render(event.payload.text)
-  }
-}
-```
-
-传输方式：
-
-```text
-SSE
-适合浏览器只读事件流。
-
-WebSocket
-适合双向控制，比如 interrupt、resume 和 user input。
-
-Polling event log
-适合恢复、后台任务和 server-to-server 消费。
-```
+SSE 适合只读流；HTTP command 或 WebSocket 负责 interrupt、resume、cancel 和 wait response；Tauri event channel 使用同一 durable cursor 语义。

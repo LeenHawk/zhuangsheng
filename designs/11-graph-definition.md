@@ -1,382 +1,266 @@
-# Graph Definition 与 RouterNode 设计
+# Graph Definition 与 Applied Revision
 
 ## 定位
 
-Graph Definition 是 runtime 的静态输入，描述节点和节点之间的 output/input 连接。
+Graph Definition 是 runtime 的静态输入，只描述可执行拓扑、节点配置、端口契约和运行限制。`GraphRun`、edge queue、wait、event、context commit 和 branch head 都不是 Graph Definition 的一部分。
 
-Runtime 负责把 graph definition 转成 `GraphRun`、`NodeInstance`、event log、memory patch 和 branch commit。
+Core graph 类型不依赖 Tauri、Axum、数据库模型或 UI。状态与分支术语遵循 `16-domain-consistency.md`：branch 属于 `WorkingContext`，不属于 run；runtime 的调度事实属于 `ExecutionState`。
 
-Graph definition 不应该绑定 Tauri、Axum、数据库模型或 UI 类型。
+## Draft 与 Applied Revision
 
-## Graph
+编辑中的 draft 可以暂时不完整，不能执行。Apply 会完成规范化和静态校验，并创建不可变 revision：
 
 ```ts
-type GraphDefinition = {
-  id: string
+type GraphDraft = {
+  graphId: GraphId
   name?: string
-  version?: string
+  nodes: DraftGraphNode[]
+  edges: DraftGraphEdge[]
+  runInputSchema?: JsonSchemaSpec
+  outputContract: GraphOutputContractEntry[]
+  limits?: Partial<RunLimits>
+}
+
+type GraphRevision = {
+  id: GraphRevisionId
+  graphId: GraphId
+  revisionNo: number
+  schemaVersion: number
+  operationTaxonomyVersion: number
+  adapterDecoderVersion: number
+  contentHash: ContentHash
   nodes: GraphNode[]
   edges: GraphEdge[]
+  runInputSchema?: JsonSchemaSpec
+  outputContract: GraphOutputContractEntry[]
+  schemaCompilations: JsonSchemaCompilation[]
+  limits: RunLimits
+  createdAt: string
 }
 ```
 
-Graph definition 不保存 run input，不保存初始 state，也不保存 run-level override。
+`GraphRevisionId` 是不可复用的 opaque id。`revisionNo` 只用于同一 graph 内展示，runtime 和 API 一律引用 `GraphRevisionId`。
 
-入口是节点属性，不是 graph 顶层字段。
+Apply 必须先补齐默认端口、edge id、默认 selector 和有效的全局 limits，使用 `16-domain-consistency.md` 的唯一 `JsonSchemaSpec` 流水线编译 revision 内全部 schema，再对规范化后的可执行内容做 canonical serialization。`contentHash` 覆盖所有会影响执行的字段，包括 schema version、operation taxonomy/adapter decoder version、schema compilation semantic tuple、node/port/config、edge id、output contract 和 limits；它不覆盖 storage object ID、name、createdAt 等定位/展示 metadata。runtime 加载时同时校验 revision id、hash 和所有 compilation digest，不能按 graphId 读取“最新版”替代固定 revision。
 
-## Draft And Revision
+修改 topology、port、selector、node config、model/channel/preset 引用或 limits 都创建新 revision。Preset 内容自身独立版本化；运行时 pin 规则见 `17-runtime-control.md`。
 
-图编辑分为 draft 和 applied revision：
+`operationTaxonomyVersion` 固定 revision 中所有 `OperationKey` 的序列化与语义，`adapterDecoderVersion` 固定 Apply 已验证的 request/stream/terminal decoder contract；两者不是 crate semver 或数据库 schema version。Apply 只能从显式 support matrix 选择正整数版本，未知版本或 operation 不存在时拒绝。即使 graph 暂时没有 LLMNode 也记录当前版本对，避免未来 node/config reader 猜默认值；具体 channel 与 NodeInstance pin 规则见 `07-llm-channels-counting.md`。
 
-```text
-draft
-用户正在编辑，可以暂时不完整，不能被 runtime 执行。
+## Node 与显式端口
 
-applied revision
-通过静态校验的不可变图版本，可以被 runtime 使用。
-```
-
-保存并应用 draft 会创建新的 graph revision，不原地覆盖旧 revision。修改节点引用的 preset、模型、channel、port、edge 或节点结构都属于 graph revision。
-
-Preset 本身独立版本化。只修改 preset 内容不会产生 graph revision。
-
-## Run Revision
-
-每个 GraphRun 在创建时固定一个 graph revision，运行中不能切换拓扑版本。
-
-```text
-1. Run 中所有 NodeInstance 使用同一个 graph revision。
-2. Pending edge queue、node 和 port 都按该 revision 解释。
-3. 编辑中的 draft 和新 applied revision 不影响已有 run。
-4. 用户要使用新图时，创建新的 GraphRun。
-```
-
-RP 中通常从下一次用户输入或 regenerate run 开始使用新 revision。需要立即切换时，取消当前 run，并从同一个 base memory version 创建新 run。
-
-每个 NodeInstance 仍记录 graph revision、node id 和实际使用的 preset version，便于 trace。Preset 独立版本化，默认在 NodeInstance 开始执行时读取最新版本。
-
-## Node
+阶段一的 applied node 是闭合集合：
 
 ```ts
 type GraphNode =
   | InputNode
   | LLMNode
   | RouterNode
-  | MemoryNode
   | OutputNode
-```
+  | MergeNode
+  | JoinByKeyNode
+  | AggregatorNode
+  | ExpandNode
 
-基础字段：
-
-```ts
 type BaseNode = {
   id: NodeId
   name?: string
   kind: string
-  isEntry?: boolean
-  inputSchema?: JsonSchema
-  outputSchema?: JsonSchema
+  isEntry: boolean
+  inputs: InputPortDefinition[]
+  outputs: OutputPortDefinition[]
   timeoutMs?: number
+  retryPolicy?: RetryPolicy
 }
 ```
 
-节点定义是静态配置。运行时执行记录使用 `NodeInstance`。
+`LLMNode` 的模型、tool loop 和 context assembly 配置见 `10-llm-node.md`。Router 见 `14-router-node.md`。四种协调节点见 `18-coordination-nodes.md`。
 
-同一个 `nodeId` 可能在循环、重试或分支中产生多个 `NodeInstance`。
+阶段一不提供未定义语义的 `MemoryNode`。需要持久上下文的具体 node kind 显式声明自己的 memory 字段：LLMNode 使用 `MemoryBinding`，Router 使用只读 `RouterMemoryBinding`；Input/Output/协调节点不带 memory capability。确定性 WorkingContext 写入最终编译为 `StatePatch`，长期记忆变更经 `MemoryManager` proposal。所有类型遵循 `02-memory.md` 与 `16-domain-consistency.md`，节点不能直接操作底层 store。
 
-`isEntry` 表示 run 启动时应调度的入口节点。
+## Port Definition 与 Consumer Binding
 
-阶段一必须支持多个 `isEntry` 节点。多个入口会在同一个 run 中并发调度。
+Applied revision 中每个端口都显式存在，runtime 不猜测端口：
 
-`resume` 不使用 `isEntry`。恢复运行时，runtime 从 checkpoint、event log、pending node instances 和 waiting node instances 恢复调度。
+```ts
+type InputPortDefinition = {
+  name: PortName
+  schema?: JsonSchemaSpec
+  binding: ConsumerInputBinding
+}
 
-不同启动路径应该由 `InputNode(isEntry)` 后的 `RouterNode` 表达，而不是由 run request 动态指定入口。
+type OutputPortDefinition = {
+  name: PortName
+  schema?: JsonSchemaSpec
+}
 
-## InputNode And OutputNode
+type ConsumerInputBinding = {
+  selector: InputSelector
+}
 
-阶段一必须支持多输入和多输出。
+type InputSelector =
+  | { type: "whole_value" }
+  | { type: "json_pointer"; pointer: string }
+  | { type: "json_path"; path: string; result: "one" | "many" }
+```
+
+Draft 中普通节点可以省略 ports；Apply 将其规范化成一个名为 `default` 的 input 和 output，并填入 `whole_value`。特殊节点使用各自固定的端口约束，不能套用普通默认值。
+
+消费顺序固定为：
+
+```text
+raw edge ValueRef
+  -> consumer selector
+  -> cardinality normalization
+  -> input port schema validation
+  -> selected ValueRef
+  -> NodeInstance.inputs[port]
+```
+
+JSON Pointer 使用 RFC 6901。路径 missing 是 `input_contract_violation`，显式 `null` 交给 schema 判断。
+
+JSONPath 使用 RFC 9535。`one` 必须恰好匹配一个值；`many` 返回按标准结果顺序组成的一个数组，零匹配为 `[]`。它不会隐式产生多次 firing；逐项发射必须使用 `ExpandNode`。Apply 校验语法，runtime 还限制匹配数、递归深度、结果大小和执行 fuel。
+
+selector 或 schema 失败时，activation 仍以 failed NodeInstance 的形式持久化，记录 raw queue item ref、selector id 和结构化错误；上游 finalized value 不会被重新计算。
+
+`NodeMemoryBinding/StaticMemoryRead` 的 canonical 类型见 `02-memory.md`。逻辑 scope 由 run binding 解析；一次 attempt 的全部 reads 从同一存储快照解析，并记录完整 `ReadSetEntry[]`，不能用裸整数 memory version 代替。
+
+## InputNode 与 Run Input
+
+阶段一只有 InputNode 可以是 entry，并且每个 InputNode 都是 entry source：
 
 ```ts
 type InputNode = BaseNode & {
   kind: "input"
-  inputKey?: string
+  isEntry: true
+  inputs: []
+  outputs: [OutputPortDefinition]
+  runInputSelector: InputSelector
 }
 ```
 
-`inputKey` 用于从 run input 中读取对应输入片段。
+每个 GraphRun 持久化不可变 `runInputRef`，见 `03-async-runtime.md`。启动事务从该引用解析每个 InputNode 的 selector，验证 output schema，并各创建一次 source activation。进程恢复读取同一引用，不重新向 adapter 请求输入。
 
-例如：
+InputNode 必须恰好一个 output port且没有入边。普通用户输入不会被注入既有 run；Conversation/Turn 与 wait response 的边界见 `13-conversation-turn-run.md` 和 `17-runtime-control.md`。
 
-```text
-run input = {
-  user: {...},
-  project: {...},
-  files: [...]
-}
-```
+## OutputNode 与 Run Output Contract
 
-不同 InputNode 可以读取不同 key。
+OutputNode 是 terminal sink：
 
 ```ts
 type OutputNode = BaseNode & {
   kind: "output"
-  outputKey?: string
+  isEntry: false
+  inputs: [InputPortDefinition]
+  outputs: []
+  outputKey: string
+}
+
+type GraphOutputContractEntry = {
+  key: string
+  schema?: JsonSchemaSpec
+  collection: "single" | "append"
+  required: boolean
 }
 ```
 
-`outputKey` 用于把多个输出节点的结果写入 run outputs。
+每个 contract key 恰好绑定一个 OutputNode，outputKey 全 revision 唯一。OutputNode 消费一个 input value并在 completion 事务中写 durable run output：
 
-例如：
+- `single`：最多提交一个值；第二次 activation 失败为 `output_cardinality_exceeded`。
+- `append`：每次 activation 追加一个值，顺序使用存储层分配的 run-local `outputSeq`。
+- `required`：run 静默后仍没有值时，run 失败为 `required_output_missing`。
+- 非 required output 未被 Router 选中是合法的，不会生成占位值。
 
-```text
-outputs.answer
-outputs.memoryProposal
-outputs.artifacts
-```
+OutputNode 没有出边。Run output 保存 `ValueRef`，大对象不复制到 GraphRun 行或 event。
 
-如果没有 `outputKey`，默认使用 node id。
+## Edge 与稳定身份
 
-## Edge
-
-边只负责静态拓扑连接：把一个节点的 output 端口连到另一个节点的 input 端口。
-
-边不负责：
-
-- 条件判断
-- 输入映射
-- join 策略
-- memory patch
-
-这些能力分别属于 RouterNode、普通节点输出、JoinNode 或 runtime/memory 模块。
+Draft edge 可以暂时没有 id；Apply 必须生成在该 revision 内唯一且稳定的 id：
 
 ```ts
-type GraphEdge = {
-  id?: string
+type DraftGraphEdge = {
+  id?: EdgeId
   from: GraphOutputRef
   to: GraphInputRef
 }
 
-type GraphOutputRef = {
-  nodeId: NodeId
-  output?: string
-}
-
-type GraphInputRef = {
-  nodeId: NodeId
-  input?: string
+type GraphEdge = {
+  id: EdgeId
+  from: { nodeId: NodeId; output: PortName }
+  to: { nodeId: NodeId; input: PortName }
 }
 ```
 
-`output` 和 `input` 不写时表示默认端口。
+Edge 只连接 output 到 input，不承载 condition、mapper、join 或 patch。每个 input port 恰好零或一条入边；普通非 source required input 必须恰好一条。协调节点也通过多个显式 input ports 接收多路数据，不允许多条 edge 竞争同一 port。
 
-## Default Ports
+一个 output port 可以连接多条 edge，语义是广播。completion 按 output emission 顺序、再按稳定 edge id 顺序写 queue，并给每个 queue item 分配唯一 run-local `enqueueSeq`。Applied edge id 是持久化 queue、trace 和 recovery 的身份，不能在恢复时重算。
 
-默认端口规则必须统一，因为它同时影响 edge 校验、readiness 判断和 executor 接口：
+## 普通 FIFO All/Zip
 
-```text
-1. 节点不声明 ports 时，只有一个 input port "default" 和一个 output port "default"。
-2. edge 的 output/input 省略时，等价于写 "default"。
-3. executor 收到的 inputs 永远是 Record<string, JsonValue>，
-   单输入节点收到 { default: value }，不做特殊化。
-4. 阶段一所有普通 input port 都是 required，"default" 也是普通 port。
-5. 静态校验时，edge 引用的 port 必须存在于节点声明或默认规则中。
-```
+普通节点的所有 input port 都是 required。readiness 是所有 input queue 均非空，每次 activation 从每个 port 原子消费一个队首值。这是普通多输入的 FIFO `all/zip`，同一节点可以反复 activation。
 
-三处实现（校验、调度、执行）都引用这一份规则，不允许各自猜测。
+它不按业务 key 关联数据。Router、非对称循环或并发上游可能造成位置错配；需要任意一路、按 key、窗口或逐项展开时，必须分别使用 Merge、JoinByKey、Aggregator 或 Expand，不能加入隐式 optional input。
 
-## Input Contract
+同一 run 内同一 node 最多一个非终态 NodeInstance，因而默认串行；不同 node 可以并发。完整 activation 原子语义见 `03-async-runtime.md`。
 
-输入分成稳定 contract 和图节点 binding：
+## Router 与 Fan-out
 
-```ts
-type InputPortContract = {
-  name: string
-  schema?: JsonSchema
-}
+Router 只选择 output ports，所有被选择的 ports 在同一个 GraphRun execution path 内发射。fan-out 创建并行数据流，不创建 branch。
 
-type InputPortBinding = {
-  port: string
-  selector?: InputSelector
-}
-```
+Branch 只指 `16-domain-consistency.md` 定义的 ContextBranch。一个 GraphRun 固定绑定一个 `contextId + branchId + inputCommitId`；GraphRun 内不创建 scheduler-owned branch。
 
-`InputPortContract` 描述可复用 executor 最终需要什么。`InputPortBinding` 属于图节点配置，描述如何从该 port 收到的上游完整值中选出 executor input。
+## Applied Revision 静态校验
 
-默认 selector 是 `whole_value`：
+Apply 至少执行以下错误级校验：
 
-```ts
-type InputSelector =
-  | { type: "whole_value" }
-  | { type: "json_pointer"; pointer: string }
-  | {
-      type: "json_path"
-      path: string
-      result: "one" | "many"
-    }
-```
+### 身份与结构
 
-执行顺序：
+- node、port、edge、output key 唯一，引用全部存在；
+- 至少一个 InputNode，且只有 InputNode 的 `isEntry` 为 true；
+- InputNode 零入边、单输出；OutputNode 单输入、零出边；
+- 普通 required input 恰好一条入边，每个 input port 至多一条；
+- edge 两端 schema 明显不兼容时拒绝；动态 selector 结果留给 runtime；
+- required output 从至少一个 entry 静态可达；不可达 node 和永不消费的 output port 至少产生 warning；
+- Router、coordination node 及 LLMNode 的专属配置通过各自校验。
 
-```text
-raw edge queue value
-  -> input selector
-  -> cardinality normalization
-  -> input port schema validation
-  -> NodeInstance.inputs[port]
-```
+### Output 与资源
 
-字段投影属于消费者输入侧，不属于生产者 output contract，也不属于 edge。生产者只输出完整值，edge 只传递引用。
+- 每个 output contract key 恰好对应一个 OutputNode；
+- `single/append/required` 组合合法，schema 与 sink input 兼容；
+- read binding 的 scope、path、别名和权限声明合法；
+- `RunLimits` 每个 hard limit 都存在、为正且不超过 workspace policy 上限。
 
-### JSON Pointer
+### SCC 与循环保护
 
-JSON Pointer 使用 RFC 6901，适合确定性单值读取：
+对 entry 可达子图计算 strongly connected components：
 
-```text
-/decision/route
-/items/0/name
-```
+1. 自环或多节点 cyclic SCC 必须包含至少一个配置了有限 `maxVisitsPerRun` 或 `timeoutMsPerRun` 的 Router。
+2. 从子图中移除这些 guarded Router 后不得仍存在 cycle；这保证每条静态 cycle 至少经过一个业务 guard。
+3. Router 的 `onLimitOutputs` 必须离开原 cyclic SCC，避免 limit route 自身成为同一业务循环。
+4. 即使通过上述校验，revision 仍必须携带不可关闭的全局 activation、attempt、queue 和 run deadline limits；Router guard 不能替代 hard limits。
 
-路径不存在是 `input_contract_violation`。字段存在且值为 `null` 不等于 missing，是否允许由 input schema 判断。
+动态 selector、Router fan-out、Expand 和循环组合可能放大队列。Apply 应估算明显的无界生产路径并 warning；runtime 始终以 `17-runtime-control.md` 的 hard limits 为最终边界。
 
-### JSONPath
+## GraphRun Revision Pinning
 
-JSONPath 使用 RFC 9535，提供数组通配、过滤、切片和多结果读取。
+GraphRun 创建时固定 `graphRevisionId + contentHash`，所有 NodeInstance、edge queue 和 checkpoint 都使用该 revision。Draft 或新 revision 不影响既有 run。恢复也不得切换 revision或 remap queue。
 
-```text
-$.characters[?(@.active == true)]
-$.characters[*].name
-```
+若用户必须立即使用新图，应取消当前 run，并从相同 WorkingContext commit 创建新 GraphRun。Run manifest 记录配置解析策略和可选显式 pins；默认在 NodeInstance 首次执行时把 preset/channel/registry 的实际 revision 写入 instance execution snapshot。恢复已有 activation 不重新解析“最新版”。
 
-必须显式声明结果 cardinality：
+## 阶段一边界
 
-```text
-one
-匹配一个值时返回该值；零匹配或多匹配都是 input contract failure。
+阶段一实现：
 
-many
-把匹配值按 JSONPath 结果顺序组成数组；零匹配返回 []。
-```
+- immutable applied GraphRevision 与 content hash；
+- 显式 ports、consumer selector、schema validation；
+- durable run input、InputNode sources、OutputNode contract；
+- stable edge id、FIFO queue 与普通 all/zip；
+- LLMNode、RouterNode、Merge、JoinByKey、Aggregator、Expand；
+- deterministic read binding、ReadSet 和 StatePatch commit 边界；
+- SCC guard validation 与不可绕过的 global limits。
 
-`many` 仍然只产生一个 input value，不让节点 firing 多次。需要逐项执行时使用显式 `ExpandNode`。
-
-阶段一禁止任意 JavaScript、eval、自定义脚本函数和非标准宿主语言扩展。实现应限制最大匹配数、递归深度、结果大小和执行时间。
-
-静态校验可以验证 JSON Pointer 与 schema 的明显兼容性，以及 JSONPath 语法。动态过滤的实际结果类型和 cardinality 在 runtime 校验。
-
-Selector 或 schema 校验失败时，runtime 创建 failed NodeInstance，记录 raw queue value ref、selector 和错误，并按默认失败策略使 run failed。重新执行消费者不会改变 finalized 上游值，因此不做消费者重试。
-
-示例：
-
-```ts
-{
-  from: { nodeId: "draft_answer", output: "answer" },
-  to: { nodeId: "final_output", input: "value" }
-}
-```
-
-含义：`draft_answer.outputs.answer -> final_output.inputs.value`。
-
-如果下游需要特定输入结构，应该由上游节点直接输出，或由中间普通节点整理。
-
-不要在 edge 上加入 mapper 或 condition。这样会让数据变换和控制流散落在边上，难以调试、版本化和复用。
-
-一个 input port 只允许一条入边。多条边指向同一个 input port 是静态校验错误。需要合并多个上游时，显式建 JoinNode / AggregatorNode，不做隐式竞争或隐式合并。
-
-一个 output port 可以有多条出边，语义是广播：每条 edge queue 收到一份独立值。
-
-Port 的运行时语义是持久化 FIFO firing，见 `03-async-runtime.md`。
-
-## Multi Input
-
-多上游汇聚不放在 edge 上。
-
-普通节点的默认 readiness：所有 input edge queue 都有可消费的队首值时 firing。每次 firing 从每个输入原子消费一个值，同一个节点可以反复 firing。
-
-普通多输入按 FIFO 位置配对。需要按业务 key 配对时使用 `JoinByKeyNode`；需要任意一路、窗口或批量语义时使用 `MergeNode` / `AggregatorNode`。
-
-阶段一不支持普通节点的 optional input，因为 scheduler 无法在没有显式窗口策略时判断应该立即执行还是继续等待。
-
-如果需要 `any`、`quorum`、`latest`、窗口聚合或 reducer，使用显式节点表达，例如：
-
-```text
-MergeNode / JoinNode / JoinByKeyNode / AggregatorNode
-```
-
-这样 join 行为有自己的 node instance、event、trace 和恢复边界，不隐藏在边上。
-
-## RouterNode
-
-RouterNode 集中负责确定性规则 DSL、路径选择、fan-out、default route、payload 转发和 loop guard。条件不放在 edge 上，也不拆成独立 LoopNode。
-
-完整设计见 `14-router-node.md`。
-
-## State Policy
-
-State policy 不属于 GraphDefinition 的顶层结构。
-
-它是 runtime/memory 模块的策略，用于处理 memory patch、并发写入和 branch merge。
-
-Graph definition 只需要声明节点可读写的 memory scope/path。具体冲突如何处理，由 memory runtime 的默认策略或 workspace/run policy 决定。
-
-## Validation
-
-加载 graph definition 时需要做静态校验：
-
-- node id 唯一
-- edge from/to 存在
-- 至少一个 `isEntry` 节点存在
-- edge 引用的 input/output port 存在，或符合默认端口规则
-- 每个 input port 至多一条入边
-- 普通 input port 都是 required
-- Router outputPorts 不为空
-- LLMNode 的 operationKey 在 channel 中可用
-- 文件大小和 schema 合理
-
-静态分析发现多输入节点的上游路径包含 Router、过滤或不对称循环时，应提示 FIFO 位置配对可能产生残留或错位，建议改用显式 JoinByKeyNode / MergeNode / AggregatorNode。
-
-运行时还需要动态校验：
-
-- input/output schema
-- FIFO firing 与原子队首消费
-- loop 限制
-- memory patch 冲突
-
-## 阶段一实现
-
-阶段一不是 minimal demo，必须覆盖真实图运行需要的基础能力：
-
-- `GraphDefinition`
-- `GraphNode`
-- `GraphEdge`
-- `InputNode`
-- `LLMNode`
-- `RouterNode`
-- `OutputNode`
-- 多个 `isEntry` 节点
-- 多个 `InputNode`
-- 多个 `OutputNode`
-- edge 只表达 `output -> input`
-- input selector 支持 whole value、RFC 6901 JSON Pointer
-- input selector 支持 RFC 9535 JSONPath one/many
-- selector 结果执行 input schema validation
-- 普通节点按 all-input FIFO firing，可反复激活
-- 同一 node + branch 默认串行执行
-- RouterNode 通过 output ports 表达分支出口
-- Router expression DSL 和 per-run loop guard
-
-延后：
-
-- 任意表达式语言
-- LLM judge router
-- quorum/latest/window join
-- dynamic graph mutation
-- graph-level plugin system
-- arbitrary reducer
+阶段一延后：optional 普通 input、动态改图、arbitrary reducer、quorum/latest/sliding window、LLM judge router、graph plugin system 和动态 execution-path cloning。
 
 ## Summary
 
-Graph definition 应保持静态、可序列化、可校验。
-
-RouterNode 负责图级控制流。LLMNode 负责模型语义执行和内部 tool loop。
-
-边只负责 output/input 连接。控制流由 RouterNode 和显式控制节点表达，不藏在 edge 上。
+Draft 可以宽松，Applied GraphRevision 必须闭合、不可变、带 hash 且可完全静态解释。端口和 binding 属于消费者节点，edge 只负责稳定连接。InputNode 从 durable run input 启动，OutputNode按明确 contract 收集结果。普通多输入是 FIFO all/zip，其余协调语义由一等节点承担。GraphRun 只有一个 execution namespace；可分支的是 WorkingContext，而不是 scheduler。

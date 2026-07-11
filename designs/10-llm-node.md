@@ -2,379 +2,228 @@
 
 ## 定位
 
-`LLMNode` 表示一次 LLM 驱动的语义执行阶段。
+`LLMNode` 表示一次 LLM 驱动的语义阶段。一个 NodeInstance 可以包含 Context Assembly、多次 logical model call、custom/hosted tool、approval/wait、流式聚合和最终输出校验。
 
-它不是单次 provider HTTP request。一次 `LLMNodeRun` 可以包含多次 model call、多次 custom tool call、流式输出、工具结果回填和最终输出聚合。
+图只接收 finalized `NodeResult.outputs`。内部 transcript、usage、reasoning、tool/effect 和 delta 进入 checkpoint/event/trace，不自动成为 graph output。
 
-图调度层只看到一个节点执行。
+## 正式配置
 
-trace 层可以看到节点内部的 model calls、tool calls、stream deltas、usage 和错误。
-
-## 基础结构
+公共 port、timeout/retry 等 BaseNode 字段见 `11-graph-definition.md`：
 
 ```ts
-type LLMNode = {
-  id: string
-  name?: string
+type LLMNode = BaseNode & {
   kind: "llm"
   model: LlmNodeModelRef
-  context: ContextAssemblyRef | ContextAssemblySpec
-  tools?: ToolBinding[]
+  capabilityOverrides?: ModelCapabilityOverride[]
+  context: ContextAssemblyConfig
   memory?: MemoryBinding
+  tools?: ToolGrant[]
+  hostedTools?: HostedToolBinding[]
+  request?: LlmRequestOptions
   output?: LlmOutputSpec
   streaming?: LlmNodeStreaming
-  limits?: LlmNodeLimits
-  retry?: RetryPolicy
+  limits?: Partial<LlmNodeLimits>
 }
 ```
 
-`LLMNode` 不直接保存固定的 `system prompt + user message`。
-
-它通过 Context Assembly 组合 input 和 memory scopes，最终编译成 `LlmRequestIr`。
+Graph revision 保存逻辑配置；第一次执行 NodeInstance 时解析并 pin 实际 preset/channel/registry/semantic-policy revision。`capabilityOverrides` 只能确认 catalog 中 unknown 的必需能力，不能把 explicit false 变为 true；canonical 类型和 Apply/pin 规则见 `07-llm-channels-counting.md`。每次 dispatch/approval/commit 还叠加只能收窄的 live revocation overlay，不能用它向旧 snapshot 新增 capability。
 
 ## Model Ref
 
+`LlmNodeModelRef` 的 canonical 类型见 `07-llm-channels-counting.md`。其中 `OperationKey` 来自 `gproxy-protocol`，表达当前标准 wire shape，不表达真实 provider。
+
+阶段一 generation 支持：OpenAI Responses、OpenAI Chat Completions、Claude Messages、Gemini GenerateContent。Apply graph 时验证 operation 是 content generation 且与 node features 可兼容；实际 adapter 在调用前再次验证。
+
+## Request Options
+
 ```ts
-type LlmNodeModelRef = {
-  channelId: string
-  modelId: string
-  modelName?: string
-  operationKey: OperationKey
+type LlmRequestOptions = {
+  generation?: GenerationOptionsIr
+  extensions?: ProviderExtensionsIr
+  toolChoice?: ToolChoiceIr
 }
 ```
 
-含义：
+`model`、tools、response format 和 metadata 由 Request Builder 根据 node/config/snapshot生成，不能由 preset template 覆盖。Provider extension 只对当前 wire family生效，敏感 headers/fields 被拒绝。
+
+`generation.maxOutputTokens` 是偏好，`limits.maxOutputTokens` 是硬上限，实际取较小值。
+
+## Context 与 Read Snapshot
 
 ```text
-channelId
-走哪个上游渠道。
-
-modelId
-实际请求里的 model 字符串。
-
-modelName
-展示名，可选。
-
-operationKey
-本次调用使用哪个标准 API shape / operation。
+激活 NodeInstance
+-> 固定 WorkingContext/LongTermMemory read set
+-> 解析授权 MemoryBinding/Artifact binding
+-> pin ContextConfigSnapshot
+-> ContextAssemblyOutput
+-> Request Builder
+-> LlmRequestIr
 ```
 
-`OperationKey` 来自 `gproxy-protocol`。
+Context Assembly 只产 instructions、initial messages、provenance、budget report 和 snapshot，不查数据库/secret，不添加 tool/model。详细 trust、role、预算和 preview 规则见 `08-context-assembly.md`。
 
-它表达 wire shape，不表达真实 provider。
-
-## Context Assembly
-
-`LLMNode.context` 引用上下文装配规则。
-
-执行流程：
-
-```text
-node input / memory reads
-  -> ContextAssemblyEngine
-  -> LlmRequestIr.instructions + messages
-  -> ShapeAdapter
-  -> provider request
-```
-
-Context Assembly 负责：
-
-- 多来源上下文组合
-- 排序和插入
-- token 预算
-- 超限剪裁
-- SillyTavern 类预设兼容
-- prompt preview
-
-`LLMNode` 只声明自己使用哪套 context assembly，不在节点内手写所有 prompt 拼接逻辑。
-
-## Memory
-
-```ts
-type MemoryBinding = {
-  reads?: StaticMemoryRead[]
-  writes?: StaticMemoryWrite[]
-  tools?: MemoryToolGrant[]
-}
-```
-
-职责边界：
-
-```text
-MemoryBinding
-负责读写哪些 memory scope。
-
-ContextAssemblySpec
-负责把读到的 memory 放到上下文哪个位置。
-
-MemoryToolGrant
-负责哪些 memory 操作可以暴露给模型作为工具。
-```
-
-LLM 不直接修改底层 memory store。复杂 memory edit 应通过 proposal / patch / validation。
+同一 activation 的全部 model/tool 调用使用固定 static/context read snapshot。工具返回的 StatePatch 暂存到 finalized transition，后续 tool 不从未提交的新 head读取。模型之后发起的内建 `search_memory` 是显式 call-level read；每个 logical call 持久 query/scope token/ordered result 并在恢复时复用，不会反向改写 NodeInstance 的 static snapshot。
 
 ## Tools
 
-工具是 `LLMNode` 的 capability，不默认提升为图节点。
+`ToolGrant` 引用 registry 中固定 `toolId + version`；`HostedToolBinding` 显式声明 provider 托管能力。修改 tool 版本、scope、risk 或 exposed name 产生 graph revision。
 
-```ts
-type ToolBinding = {
-  name: string
-  description?: string
-  inputSchema: JsonSchema
-  materialPolicy?: ToolMaterialPolicy
-  outputPolicy?: ToolOutputPolicy
-  timeoutMs?: number
-}
-```
+节点执行时 pin `ToolRegistrySnapshot`，只向模型暴露有效权限交集内的 descriptor。模型请求未授予 name 时不能从全局 registry 动态命中。
 
-工具输入可以包含结构化参数和材料：
-
-```ts
-type ToolCallInput = {
-  args: unknown
-  materials?: ToolMaterialRef[]
-}
-```
-
-工具输出可以包含多份 typed parts。
-
-只有 `llm_result` 回填给模型，其他部分交给 runtime 分发。
-
-```text
-artifact -> artifact memory
-memory_patch -> memory manager
-memory_proposal -> memory manager
-user_message -> UI event
-debug -> trace
-```
+Custom tool executor 不拥有数据库、SecretResolver 或全局 Memory store。唯一 output parts、approval、副作用、并发、Artifact 和 GC 见 `19-tools-artifacts.md`。
 
 ## Tool Loop
 
-`LLMNodeRun` 内部是多轮状态机。
-
 ```text
-Start
-  -> BuildRequestIr
-  -> ModelCallStreaming
-  -> AccumulateResponse
-  -> HasToolCalls?
-      -> DispatchTools
-      -> AppendToolResults
-      -> BuildNextRequestIr
-      -> ModelCallStreaming
-  -> FinalizeOutput
-  -> NodeCompleted
+ModelCall #1 -> ordered assistant/tool items
+-> validate/grant/approval
+-> execute tool batch + persist effects/results
+-> append tool results by callIndex
+-> ModelCall #2
+-> final assistant items
 ```
 
-custom tool 执行后的继续生成通常需要下一次 provider request。
+每个 model terminal、tool state、wait 和 batch 边界更新 `LlmLoopCheckpoint`。Waiting/crash 恢复复用 transcript、opaque continuation 和已完成 effect result，不从头重跑工具。
 
-hosted / built-in tools 由 provider 或上游平台执行，不进入本地 tool dispatcher。
+完整状态机、JSON repair 和 model/tool retry 边界见 `07-llm-tool-loop.md`。
 
-一次 model call 可能返回多个 tool call。第一版可以支持多个 tool call，并顺序执行或小并发执行。
+## Output Contract
 
-从 Codex 的实现可以借鉴几条规则：
+```ts
+type LlmOutputSpec =
+  | {
+      mode: "text"
+      finalText?: "last_assistant_turn" | "all_assistant_text"
+      allowEmpty?: boolean
+    }
+  | {
+      mode: "json"
+      schema: JsonSchemaSpec
+      strict?: boolean
+    }
+```
 
-- tool delta 只做聚合、展示或 trace，不立即执行工具
-- 完整 tool call 出现后才 dispatch tool
-- tool result 写回下一轮模型输入
-- tool failure 可以转换成模型可见 tool result，而不是总是让节点失败
-- 工具并发最好是 per-tool capability，而不是单一全局开关
+`JsonSchemaSpec` 的唯一 dialect、keyword、format、number、resource limits 和 compiled payload 契约见 `16-domain-consistency.md`；LLM provider 的 structured-output subset 只能进一步收窄，最终本地校验不能换成 provider 自称的成功。
+
+默认：
+
+```text
+mode = text
+finalText = last_assistant_turn
+allowEmpty = false
+```
+
+Text output 是 `outputs.default` 的裸字符串，不包装为 `{text}`。`last_assistant_turn` 只选最后收敛 logical ModelCall 的 assistant message items，`all_assistant_text` 选当前 durable transcript 内全部 logical ModelCall 的 assistant message items；两者均按 modelCall/item/content 顺序把 text part 的 UTF-8 字符串原样直接连接，不插入分隔符/换行/修剪空白。Tool call/result、reasoning、hosted item 和 image/file part 不贡献 text；没有 text 时按 `allowEmpty` 处理。
+
+JSON output 只从最后收敛 logical ModelCall 的 assistant message items 提取：按 item/content 顺序原样连接全部 text part（无分隔符），要求至少一个 text part，且所选 message 不得含 image/file 等非 text semantic part。然后使用 `canonical_json_v1` 的 exact parser 要求恰好一个完整 JSON value：只允许值前后 JSON whitespace，拒绝 BOM、trailing non-whitespace、duplicate object key、非法 Unicode 和超出 number/resource limit 的值，再用 compiled `JsonSchemaSpec` 验证。产物是完整 JsonValue，LLMNode 不为 JSON 字段派生 output port；下游使用自己的 consumer selector。
+
+JSON 流式 delta 不作为 graph output。最后收敛轮完成后按上述唯一 extraction/parser/schema 流水线处理；失败时 repair 记录该 extracted bytes digest 和结构化错误，并在同一 durable transcript 上做有限 repair ModelCall，不能重跑已完成工具。耗尽后 node failed。
+
+空字符串需 `allowEmpty=true`；`null/false/0/[]/{}` 是存在的 JSON value，是否合法由 schema 决定，runtime 不能用 truthiness 判断 emission。
+
+阶段一 LLMNode 只有 `default` finalized output port。Usage、finish reason、model/tool call 数和 raw response ref 属于 execution metadata。
 
 ## Streaming
 
 ```ts
 type LlmNodeStreaming = {
   enabled: boolean
-  target: "user" | "trace" | "both" | "none"
+  audience: "user" | "trace" | "both" | "internal"
+  persistChunks?: boolean
 }
 ```
 
-语义：
+Streaming 只影响观察层和 finalizer，edge/Router 等待 finalized output。默认 token/reasoning/tool-argument delta ephemeral；`persistChunks` 显式启用时按有界 chunk 持久化，不逐 token 写数据库。
 
-```text
-enabled
-是否请求 provider streaming。
+每个 model call 恰有一个 durable terminal。Client 断线可能丢 delta，但可通过 terminal/result ref 恢复最终输出。
 
-target
-流式事件给用户、trace、二者，或只内部聚合。
-```
-
-streaming 只影响观察层，不改变图调度层。
-
-下游节点、Router 和 memory patch 默认等待 finalized node output。
-
-## Stream Finalizer
-
-需要把流式事件聚合成最终非流式结果。
-
-```text
-provider stream
-  -> LlmStreamEventIr
-  -> runtime stream events for UI
-  -> StreamFinalizer
-  -> final LlmResponseIr
-  -> LlmNodeOutput
-  -> NodeResult.completed
-```
-
-`StreamFinalizer` 负责：
-
-- 拼接 text delta
-- 聚合 tool call delta
-- 拼接 tool arguments
-- 收集 usage
-- 记录 finish reason
-- 生成最终 `LlmResponseIr`
-
-工具参数未完整前不能执行工具。
-
-流式中间事件和最终节点结果必须分离。UI 可以实时看到 token、reasoning delta、tool argument delta，但 Router、下游节点和 memory patch 仍然等待 finalized `LlmNodeOutput`。
-
-## Output Contract
-
-```ts
-type LlmOutputSpec =
-  | { mode: "text" }
-  | { mode: "json"; schema?: JsonSchema }
-```
-
-默认 mode 是 `text`。
-
-```text
-text
-outputs.default 是裸字符串，不包装成 { text }。
-
-json
-outputs.default 是完整 JsonValue。
-```
-
-LLMNode 不为 JSON 字段派生 output port。下游节点通过自己的 input selector 使用 JSON Pointer 或 JSONPath 读取需要的字段，见 `11-graph-definition.md`。
-
-`output.mode = json` 时：
-
-```text
-stream / response text
-  -> final text
-  -> parse JSON
-  -> validate schema
-  -> structured output
-```
-
-JSON parse/schema validation 失败时可以在 LLMNode 内按 output retry policy 重试，耗尽后 NodeInstance failed。Text 模式不做结构化校验。
-
-空字符串、`null`、`false`、`0`、空数组和空对象都是明确存在的 finalized value，不能按 truthiness 判断是否产生 output。是否允许由对应 schema 或节点策略决定。
-
-阶段一每个 NodeInstance 对每个 output port 最多产生一个 finalized value。Streaming delta 不是 graph emission。
-
-Usage、finish reason、model call 数量等属于执行 metadata/event/trace，不进入 graph output：
-
-```ts
-type LlmExecutionMetadata = {
-  usage?: LlmUsageIr
-  finishReason?: string
-  modelCalls: number
-}
-```
-
-Router 和下游节点只基于 finalized output。
-
-工具调用 trace 不应该默认塞进 output，应进入 event/trace。
+`audience=user` 仍受 content/policy filter；reasoning 默认不面向用户，provider private reasoning 只保存必要 opaque continuation。
 
 ## Limits
 
 ```ts
 type LlmNodeLimits = {
-  maxModelCalls?: number
-  maxToolCalls?: number
-  timeoutMs?: number
-  maxInputTokens?: number
-  maxOutputTokens?: number
+  maxModelCalls: number
+  maxCountCalls: number
+  maxToolCalls: number
+  maxOutputRepairs: number
+  maxConcurrentTools: number
+  maxInputTokens: number
+  maxOutputTokens: number
 }
 ```
 
-runtime 不能依赖模型自觉停止。
-
-达到限制后，节点应该失败、等待人工介入，或按配置返回 partial result。
-
-## Count And Budget
-
-`LLMNode` 在发起 model call 前应执行 token 预算检查。
-
-计数策略：
+阶段一默认建议（workspace policy 可收紧，不能超过服务硬上限）：
 
 ```text
-provider count API
-  -> fail / unsupported: gproxy-tokenize::count
+maxModelCalls       8
+maxCountCalls       2
+maxToolCalls        32
+maxOutputRepairs    1
+maxConcurrentTools  4
 ```
 
-核心计数类型保持：
+Input/output token 默认值来自 model/channel spec；缺失时 graph apply 要求用户显式配置或采用服务安全上限。
 
-```ts
-type TokenCount = number
+Logical model/count call 分别进入 prepared 时计入各自上限，transport retry 不重复；count 不占 model 额度。完整 tool call 出现即计数，包括 invalid/denied。达到 limit 默认 fail，或由明确 policy 创建人工 wait，不能依赖模型自行停止。
+
+继承的 `BaseNode.timeoutMs` 限制一次 NodeAttempt 的活跃执行；waiting 会结束当前 attempt，resume attempt 有新的 execution deadline，而 run wall-clock deadline 始终包含 waiting。Tool/provider 自身 timeout 可以更短；完整规则见 `17-runtime-control.md`。
+
+## Retry 分层
+
+```text
+provider transport retry
+同一个 logical ModelCall/effect attempt policy；不重建 NodeInstance。
+
+tool retry
+由 ToolEffect classification/idempotency 决定。
+
+JSON output repair
+同一 transcript 上的新 logical ModelCall。
+
+NodeAttempt retry
+通用 runtime RetryPolicy；只有整个 executor 声明可安全恢复/重执行时使用。
 ```
 
-Context Assembly 负责预算和剪裁，LLMNode 负责在执行前应用结果和限制。
+LLMNode 已开始 non-idempotent effect 后，不能通过 node retry 从 Context Assembly 开头执行。`outcome_unknown` 必须等待人工/协调器。
 
 ## Waiting
 
-如果工具、memory edit 或外部操作需要人工确认，LLMNode 可以返回 waiting。
+可能等待：
 
-```ts
-type NodeResult<O> =
-  | { status: "completed"; output: O; memoryPatch?: MemoryPatch }
-  | { status: "waiting"; waitFor: WaitCondition; memoryPatch?: MemoryPatch }
-  | { status: "failed"; error: NodeError; retryable?: boolean }
-```
+- Secret Store 解锁（model request 尚未发送）；
+- tool/hosted capability approval；
+- MemoryChangeProposal confirmation/review；
+- non-idempotent effect outcome reconciliation；
+- executor 明确声明的外部 callback。
 
-恢复后继续同一个 `NodeInstance`。
+返回 waiting 前必须持久化 `LlmLoopCheckpoint`、WaitRecord、response schema、effect watermark、deadline 和 current counters。Resume 继续同一 logical activation；普通用户输入没有 wait ID 时创建新 run。
+
+## Finalized Transition
+
+LLM executor 返回 `03-async-runtime.md` 的 canonical `NodeResult`：completed 带 `outputs/transition`，waiting 带 `wait/continuation/transition`，failed 带结构化 `NodeError`。Storage 会先把 continuation 和 transition values 预写为 ValueRef。
+
+`NodeTransition` 可以包含待重新校验的 StatePatch、MemoryChangeProposal refs 和 ArtifactRefs。Storage 在检查 run epoch、attempt fencing、context head/read set 后，与 attempt completion、edge emission、run output和 durable events 同事务提交。
+
+如果 CAS/conflict 失败，不能把已经 streaming 给 UI 的内容当作 committed output。UI 必须等待 node/run terminal 判断最终状态。
 
 ## Execution Flow
 
 ```text
-1. 接收 node input
-2. 执行 deterministic memory reads
-3. Context Assembly 编译 LlmRequestIr
-4. token count / budget 检查
-5. 根据 operationKey 选择 shape adapter
-6. 发起 model call，可 streaming
-7. stream event 进入 UI/trace，同时进入 StreamFinalizer
-8. 如果 response 包含 tool calls，dispatch tools
-9. tool results 追加到下一轮 request
-10. 继续 model call，直到 final answer 或达到 limits
-11. 生成 LlmNodeOutput
-12. 解析和校验 output schema
-13. 生成 memory patch
-14. 执行 deterministic memory writes
-15. 返回 NodeResult.completed / waiting / failed
+1. claim NodeAttempt + fencing token
+2. load/pin execution snapshot
+3. resolve deterministic bindings/read set
+4. assemble context + full request budget
+5. prepare/send/finalize model call
+6. execute/recover tool batches until converged
+7. derive text/JSON output
+8. validate/repair within limits
+9. stage transition parts
+10. atomic commit or return durable waiting/failed
 ```
 
-## 第一版范围
+## 阶段一与延后
 
-第一版 LLMNode 建议支持：
+阶段一实现上述四种 generation shape、text/JSON output、custom/hosted grants、有限并发 tool loop、checkpoint、streaming、approval 和 artifact refs。
 
-- `model`
-- `context`
-- `tools`
-- `memory.reads`
-- `memory.writes`
-- `streaming`
-- `output.mode`
-- `output.schema`
-- `limits.maxModelCalls`
-- `limits.maxToolCalls`
-- `limits.timeoutMs`
-
-可以延后：
-
-- 复杂 prompt post process
-- 完整 SillyTavern 行为兼容
-- LLM 自动修复 JSON
-- 复杂 provider extensions UI
-- 高级 tool 并发策略
-
-## Summary
-
-`LLMNode` 是一次可流式观察、内部可 tool loop、最终产出非流式 `NodeResult` 的语义执行节点。
-
-流式事件服务 UI/trace，图调度和下游数据流仍然基于最终聚合输出。
+延后：跨 provider transcript 转换、动态 tool registry、arbitrary multimodal output port、完整 provider private reasoning 展示、隐藏式 Context summarize、任意 JSON auto-repair agent 和 node-level 多 activation 并发。
