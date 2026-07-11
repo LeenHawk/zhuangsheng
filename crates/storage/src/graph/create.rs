@@ -4,13 +4,16 @@ use zhuangsheng_core::{canonical, graph::GraphDraft};
 
 use crate::{SqliteStore, StorageError, StorageResult};
 
-use super::{CreateGraphCommand, GraphView, helpers::*};
+use super::{CreateGraphCommand, CreateGraphResult, GraphView, helpers::*};
 
 impl SqliteStore {
-    pub async fn create_graph(&self, command: CreateGraphCommand) -> StorageResult<GraphView> {
+    pub async fn create_graph(
+        &self,
+        command: CreateGraphCommand,
+    ) -> StorageResult<CreateGraphResult> {
         let name = command.name.trim();
         if name.is_empty() || name.len() > 200 || command.idempotency_key.is_empty() {
-            return Err(StorageError::Integrity(
+            return Err(StorageError::InvalidArgument(
                 "invalid graph create command".into(),
             ));
         }
@@ -21,12 +24,12 @@ impl SqliteStore {
             if receipt.digest != digest {
                 return Err(StorageError::IdempotencyConflict);
             }
-            let id = receipt
-                .resource_id
-                .ok_or_else(|| StorageError::Integrity("receipt has no graph id".into()))?;
-            let graph = load_graph(&transaction, &id).await?;
+            let object = receipt.result_object_id.ok_or_else(|| {
+                StorageError::Integrity("create receipt has no result object".into())
+            })?;
+            let result = load_object_json(&transaction, &object).await?;
             transaction.commit().await?;
-            return Ok(graph);
+            return Ok(result);
         }
         let id = new_id("graph");
         let revision_token = new_id("draftrev");
@@ -53,13 +56,24 @@ impl SqliteStore {
         let document = canonical::to_string(&draft)?;
         transaction.execute(sql(
             "INSERT INTO graph_drafts (graph_id, document_json, revision_token, updated_at) VALUES (?, ?, ?, ?)",
-            vec![id.clone().into(), document.into(), revision_token.into(), now.into()],
+            vec![id.clone().into(), document.into(), revision_token.clone().into(), now.into()],
         )).await?;
+        let result = CreateGraphResult {
+            graph: GraphView {
+                id: id.clone(),
+                name: name.into(),
+                created_at: now,
+                updated_at: now,
+            },
+            draft_revision_token: revision_token,
+        };
+        let result_object =
+            put_inline_object(&transaction, &canonical::to_vec(&result)?, now).await?;
         transaction.execute(sql(
-            "UPDATE application_command_receipts SET status = 'completed', completed_at = ? WHERE scope = ? AND idempotency_key = ?",
-            vec![now.into(), scope.into(), command.idempotency_key.into()],
+            "UPDATE application_command_receipts SET status = 'completed', result_object_id = ?, completed_at = ? WHERE scope = ? AND idempotency_key = ?",
+            vec![result_object.into(), now.into(), scope.into(), command.idempotency_key.into()],
         )).await?;
         transaction.commit().await?;
-        load_graph(&self.db, &id).await
+        Ok(result)
     }
 }

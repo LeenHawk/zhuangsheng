@@ -12,6 +12,7 @@ fn valid() -> GraphDraft {
                 inputs: vec![],
                 outputs: vec![],
                 timeout_ms: None,
+                retry_policy: None,
                 kind: DraftNodeKind::Input {
                     run_input_selector: Default::default(),
                 },
@@ -23,6 +24,7 @@ fn valid() -> GraphDraft {
                 inputs: vec![],
                 outputs: vec![],
                 timeout_ms: None,
+                retry_policy: None,
                 kind: DraftNodeKind::Output {
                     output_key: "reply".into(),
                 },

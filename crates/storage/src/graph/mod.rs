@@ -1,8 +1,10 @@
-mod apply;
+pub(crate) mod apply;
 mod create;
 mod draft;
-mod helpers;
+pub(crate) mod helpers;
 mod query;
+mod schema_bundle;
+mod service;
 mod types;
 
 pub use types::*;

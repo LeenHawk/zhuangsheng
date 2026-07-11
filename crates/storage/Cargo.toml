@@ -15,4 +15,5 @@ ulid.workspace = true
 zhuangsheng-core = { path = "../core" }
 
 [dev-dependencies]
+tempfile.workspace = true
 tokio.workspace = true

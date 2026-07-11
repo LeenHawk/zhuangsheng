@@ -1,0 +1,244 @@
+use std::sync::Arc;
+
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use http_body_util::BodyExt;
+use serde_json::{Value, json};
+use tower::ServiceExt;
+use zhuangsheng_core::scheduler::Scheduler;
+use zhuangsheng_storage::SqliteStore;
+
+use crate::app;
+
+#[tokio::test]
+async fn graph_http_vertical_slice_uses_public_contract() {
+    let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
+    let store = Arc::new(store);
+    let app = app(store.clone(), store.clone());
+    let created = call(
+        &app,
+        request(
+            "POST",
+            "/v1/graphs",
+            json!({"name":"HTTP Graph"}),
+            &[("idempotency-key", "create-http".into())],
+        ),
+        StatusCode::CREATED,
+    )
+    .await;
+    let graph_id = created["graph"]["id"].as_str().unwrap();
+    let token = created["draftRevisionToken"].as_str().unwrap();
+
+    let draft = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/graphs/{graph_id}/draft"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(draft["revisionToken"], token);
+
+    let document = json!({
+        "graphId": graph_id,
+        "name": "HTTP Graph",
+        "nodes": [
+            {"id":"input","kind":"input","runInputSelector":{"type":"whole_value"}},
+            {"id":"output","kind":"output","outputKey":"reply"}
+        ],
+        "edges": [{
+            "from":{"nodeId":"input","output":"default"},
+            "to":{"nodeId":"output","input":"default"}
+        }],
+        "runInputSchema": null,
+        "outputContract": [{"key":"reply","schema":null,"collection":"single","required":true}],
+        "limits": null
+    });
+    let updated = call(
+        &app,
+        request(
+            "PUT",
+            &format!("/v1/graphs/{graph_id}/draft"),
+            document,
+            &[
+                ("idempotency-key", "draft-http".into()),
+                ("if-match", format!("\"{token}\"")),
+            ],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    let next_token = updated["revisionToken"].as_str().unwrap();
+
+    let revision = call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/graphs/{graph_id}/apply"),
+            json!({"operationTaxonomyVersion":1,"adapterDecoderVersion":1}),
+            &[
+                ("idempotency-key", "apply-http".into()),
+                ("if-match", next_token.into()),
+            ],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    let revision_id = revision["id"].as_str().unwrap();
+    let loaded = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/graph-revisions/{revision_id}"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(loaded["contentHash"], revision["contentHash"]);
+
+    let run = call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/graphs/{revision_id}/runs"),
+            json!({"input":{"message":"hello"},"context":{"mode":"temporary"}}),
+            &[("idempotency-key", "run-http".into())],
+        ),
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    let run_id = run["id"].as_str().unwrap();
+    let interrupted = call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/runs/{run_id}/interrupt"),
+            json!({"expectedEpoch":0}),
+            &[("idempotency-key", "interrupt-http".into())],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(interrupted["status"], "interrupted");
+    let resumed = call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/runs/{run_id}/resume"),
+            json!({"expectedEpoch":1}),
+            &[("idempotency-key", "resume-http".into())],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(resumed["status"], "running");
+    Scheduler::new(store, "http-test-worker")
+        .run_until_idle(now_ms(), 64)
+        .await
+        .unwrap();
+    let loaded_run = call(
+        &app,
+        request("GET", &format!("/v1/runs/{run_id}"), json!(null), &[]),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(loaded_run["id"], run["id"]);
+    assert_eq!(loaded_run["status"], "completed");
+    let outputs = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/runs/{run_id}/outputs"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        outputs["reply"]["values"][0]["value"],
+        json!({"message":"hello"})
+    );
+
+    let last_seq = loaded_run["lastDurableSeq"].as_u64().unwrap();
+    let response = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            &format!("/v1/runs/{run_id}/events"),
+            json!(null),
+            &[("last-event-id", (last_seq - 1).to_string())],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut body = response.into_body();
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(1), body.frame())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let data = String::from_utf8(frame.into_data().unwrap().to_vec()).unwrap();
+    assert!(data.contains(&format!("id: {last_seq}")));
+    assert!(data.contains("event: run.completed"));
+}
+
+#[tokio::test]
+async fn graph_http_errors_use_typed_envelope() {
+    let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
+    let store = Arc::new(store);
+    let app = app(store.clone(), store);
+    let response = app
+        .oneshot(request(
+            "POST",
+            "/v1/graphs",
+            json!({"name":"Missing Key"}),
+            &[],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let value: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(value["error"]["code"], "missing_header");
+    assert!(
+        value["error"]["traceId"]
+            .as_str()
+            .unwrap()
+            .starts_with("trace_")
+    );
+}
+
+fn request(method: &str, uri: &str, body: Value, headers: &[(&str, String)]) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json")
+        .header("accept", "application/json");
+    for (name, value) in headers {
+        builder = builder.header(*name, value);
+    }
+    builder
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap()
+}
+
+async fn call(app: &axum::Router, request: Request<Body>, expected: StatusCode) -> Value {
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), expected);
+    serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap()
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}

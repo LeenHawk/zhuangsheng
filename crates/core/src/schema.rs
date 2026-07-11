@@ -5,6 +5,10 @@ use serde_json::{Value, json};
 
 use crate::{DomainError, DomainResult, ValidationIssue, canonical};
 
+mod validate;
+
+pub use validate::validate;
+
 pub const DIALECT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +105,11 @@ pub fn compile(spec: &JsonSchemaSpec) -> DomainResult<SchemaCompilationDraft> {
         &mut nodes,
         &mut issues,
     );
+    if issues.is_empty()
+        && let Err(error) = validate::build_validator(&spec.document)
+    {
+        issues.push(issue("schema_compile_failed", error));
+    }
     let source = canonical::to_string(spec)?;
     if source.len() as u64 > spec.limits.max_schema_bytes {
         issues.push(issue("schema_bytes_exceeded", "/document"));
@@ -162,6 +171,9 @@ fn walk(
             continue;
         }
         match key.as_str() {
+            "$schema" if child.as_str() != Some(spec.dialect.as_str()) => {
+                issues.push(issue("schema_dialect_mismatch", &child_path));
+            }
             "$ref" => check_ref(child, &child_path, spec, refs, issues),
             "$defs" | "properties" | "patternProperties" | "dependentSchemas" => {
                 if let Some(map) = child.as_object() {
@@ -202,6 +214,13 @@ fn walk(
                     .is_some_and(|value| value.len() as u64 > spec.limits.max_regex_bytes) =>
             {
                 issues.push(issue("schema_regex_bytes_exceeded", &child_path));
+            }
+            "format"
+                if !child
+                    .as_str()
+                    .is_some_and(|value| SUPPORTED_FORMATS.contains(&value)) =>
+            {
+                issues.push(issue("unsupported_schema_format", &child_path));
             }
             _ => {}
         }
@@ -284,6 +303,21 @@ const ALLOWED: &[&str] = &[
     "readOnly",
     "writeOnly",
     "$comment",
+];
+
+const SUPPORTED_FORMATS: &[&str] = &[
+    "date-time",
+    "date",
+    "time",
+    "duration",
+    "email",
+    "hostname",
+    "ipv4",
+    "ipv6",
+    "uuid",
+    "uri",
+    "uri-reference",
+    "json-pointer",
 ];
 
 #[cfg(test)]

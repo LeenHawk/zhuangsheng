@@ -1,6 +1,4 @@
 use sea_orm::{ConnectionTrait, TransactionTrait};
-use serde::Serialize;
-use serde_json::json;
 use zhuangsheng_core::{
     canonical,
     graph::{AppliedGraph, AppliedGraphDefinition, apply_graph},
@@ -8,20 +6,12 @@ use zhuangsheng_core::{
 
 use crate::{SqliteStore, StorageError, StorageResult};
 
-use super::{ApplyGraphCommand, GraphRevisionView, draft::load_draft, helpers::*};
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredSchemaCompilation {
-    canonical_document_hash: String,
-    schema_hash: String,
-    compiler_id: String,
-    compiler_version: String,
-    payload_format_version: u32,
-    canonical_schema_object_id: String,
-    compiled_payload_object_id: String,
-    compiled_payload_hash: String,
-}
+use super::{
+    ApplyGraphCommand, GraphRevisionView,
+    draft::load_draft,
+    helpers::*,
+    schema_bundle::{StoredSchemaBundle, StoredSchemaCompilation, verify_schema_bundle},
+};
 
 impl SqliteStore {
     pub async fn apply_graph(
@@ -29,10 +19,12 @@ impl SqliteStore {
         command: ApplyGraphCommand,
     ) -> StorageResult<GraphRevisionView> {
         if command.idempotency_key.is_empty() {
-            return Err(StorageError::Integrity("missing idempotency key".into()));
+            return Err(StorageError::InvalidArgument(
+                "missing idempotency key".into(),
+            ));
         }
         let scope = format!("workspace:local:graphs:{}:apply", command.graph_id);
-        let digest = canonical::hash(&json!({
+        let digest = canonical::hash(&serde_json::json!({
             "command": "apply_graph",
             "graphId": command.graph_id,
             "expectedRevisionToken": command.expected_revision_token,
@@ -65,24 +57,17 @@ impl SqliteStore {
             "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, status, created_at) VALUES (?, ?, ?, 'apply_graph', 'graph_revision', 'pending', ?)",
             vec![scope.clone().into(), command.idempotency_key.clone().into(), digest.into(), now.into()],
         )).await?;
-        let (revision_id, revision_no) = if let Some(existing) =
+        let revision_id = if let Some((id, _)) =
             find_by_hash(&transaction, &command.graph_id, &applied.content_hash).await?
         {
-            existing
+            id
         } else {
-            persist_revision(&transaction, &command.graph_id, &applied, now).await?
+            persist_revision(&transaction, &command.graph_id, &applied, now)
+                .await?
+                .0
         };
-        let result = GraphRevisionView {
-            id: revision_id.clone(),
-            graph_id: command.graph_id,
-            revision_no,
-            operation_taxonomy_version: command.operation_taxonomy_version,
-            adapter_decoder_version: command.adapter_decoder_version,
-            definition: applied.definition,
-            content_hash: applied.content_hash,
-            created_at: now,
-            warnings: applied.warnings,
-        };
+        let mut result = load_revision(&transaction, &revision_id).await?;
+        result.warnings = applied.warnings;
         let object_id = put_inline_object(&transaction, &canonical::to_vec(&result)?, now).await?;
         transaction.execute(sql(
             "UPDATE application_command_receipts SET resource_id = ?, status = 'completed', result_object_id = ?, completed_at = ? WHERE scope = ? AND idempotency_key = ?",
@@ -94,6 +79,21 @@ impl SqliteStore {
 
     pub async fn get_graph_revision(&self, id: &str) -> StorageResult<GraphRevisionView> {
         load_revision(&self.db, id).await
+    }
+
+    pub async fn get_graph_revision_for_graph(
+        &self,
+        graph_id: &str,
+        id: &str,
+    ) -> StorageResult<GraphRevisionView> {
+        let revision = load_revision(&self.db, id).await?;
+        if revision.graph_id != graph_id {
+            return Err(StorageError::NotFound {
+                kind: "graph_revision",
+                id: id.into(),
+            });
+        }
+        Ok(revision)
     }
 }
 
@@ -124,7 +124,10 @@ async fn persist_revision<C: ConnectionTrait>(
             compiled_payload_hash: schema.compiled_payload_hash.clone(),
         });
     }
-    let bundle = canonical::to_vec(&json!({"schemaVersion":1,"compilations":stored}))?;
+    let bundle = canonical::to_vec(&StoredSchemaBundle {
+        schema_version: 1,
+        compilations: stored,
+    })?;
     let bundle_id = put_inline_object(connection, &bundle, now).await?;
     referenced.push((bundle_id.clone(), "schema_bundle"));
     connection.execute(sql(
@@ -167,12 +170,12 @@ async fn find_by_hash<C: ConnectionTrait>(
         .transpose()
 }
 
-async fn load_revision<C: ConnectionTrait>(
+pub(crate) async fn load_revision<C: ConnectionTrait>(
     connection: &C,
     id: &str,
 ) -> StorageResult<GraphRevisionView> {
     let row = connection.query_one(sql(
-        "SELECT id, graph_id, revision_no, operation_taxonomy_version, adapter_decoder_version, definition_json, content_hash, created_at FROM graph_revisions WHERE id = ?",
+        "SELECT id, graph_id, revision_no, operation_taxonomy_version, adapter_decoder_version, definition_json, schema_bundle_object_id, content_hash, created_at FROM graph_revisions WHERE id = ?",
         vec![id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound { kind: "graph_revision", id: id.into() })?;
     let definition_json: String = row.try_get("", "definition_json")?;
@@ -183,6 +186,8 @@ async fn load_revision<C: ConnectionTrait>(
             "graph revision hash mismatch".into(),
         ));
     }
+    let schema_bundle_id: String = row.try_get("", "schema_bundle_object_id")?;
+    verify_schema_bundle(connection, &schema_bundle_id, &definition).await?;
     let revision_no: i64 = row.try_get("", "revision_no")?;
     let taxonomy: i64 = row.try_get("", "operation_taxonomy_version")?;
     let decoder: i64 = row.try_get("", "adapter_decoder_version")?;

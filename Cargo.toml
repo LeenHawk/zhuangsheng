@@ -9,16 +9,25 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
+async-stream = "0.3"
 async-trait = "0.1"
 axum = "0.8"
+futures-core = "0.3"
 hex = "0.4"
+http-body-util = "0.1"
+jsonschema = { version = "0.47", default-features = false, features = ["arbitrary-precision"] }
+num-bigint = "0.4"
+num-traits = "0.2"
 sea-orm = { version = "1.1", default-features = false, features = ["macros", "runtime-tokio-rustls", "sqlx-sqlite", "with-json"] }
 sea-orm-migration = { version = "1.1", default-features = false, features = ["runtime-tokio-rustls", "sqlx-sqlite"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
+serde_json_path = "0.7"
 sha2 = "0.10"
 thiserror = "2.0"
+tempfile = "3.0"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "signal"] }
+tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
@@ -26,4 +35,3 @@ ulid = "1.2"
 
 [profile.dev]
 debug = 1
-

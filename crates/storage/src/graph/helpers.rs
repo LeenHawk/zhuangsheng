@@ -9,7 +9,6 @@ use crate::{StorageError, StorageResult, graph::GraphView};
 
 pub struct Receipt {
     pub digest: String,
-    pub resource_id: Option<String>,
     pub result_object_id: Option<String>,
 }
 
@@ -35,14 +34,13 @@ pub async fn find_receipt<C: ConnectionTrait>(
 ) -> StorageResult<Option<Receipt>> {
     let row = connection
         .query_one(sql(
-            "SELECT request_digest, resource_id, result_object_id FROM application_command_receipts WHERE scope = ? AND idempotency_key = ?",
+            "SELECT request_digest, result_object_id FROM application_command_receipts WHERE scope = ? AND idempotency_key = ?",
             vec![scope.into(), key.into()],
         ))
         .await?;
     row.map(|row| {
         Ok(Receipt {
             digest: row.try_get("", "request_digest")?,
-            resource_id: row.try_get("", "resource_id")?,
             result_object_id: row.try_get("", "result_object_id")?,
         })
     })
@@ -53,15 +51,30 @@ pub async fn load_object_json<C: ConnectionTrait, T: DeserializeOwned>(
     connection: &C,
     id: &str,
 ) -> StorageResult<T> {
+    let bytes = load_object_bytes(connection, id).await?;
+    serde_json::from_slice(&bytes).map_err(|error| StorageError::Integrity(error.to_string()))
+}
+
+pub async fn load_object_bytes<C: ConnectionTrait>(
+    connection: &C,
+    id: &str,
+) -> StorageResult<Vec<u8>> {
     let row = connection
         .query_one(sql(
-            "SELECT inline_bytes FROM content_objects WHERE id = ? AND lifecycle = 'live'",
+            "SELECT inline_bytes, content_hash, byte_size FROM content_objects WHERE id = ? AND lifecycle = 'live'",
             vec![id.into()],
         ))
         .await?
         .ok_or_else(|| StorageError::Integrity(format!("content object unavailable: {id}")))?;
     let bytes: Vec<u8> = row.try_get("", "inline_bytes")?;
-    serde_json::from_slice(&bytes).map_err(|error| StorageError::Integrity(error.to_string()))
+    let expected_hash: String = row.try_get("", "content_hash")?;
+    let expected_size: i64 = row.try_get("", "byte_size")?;
+    if canonical::hash_bytes(&bytes) != expected_hash || bytes.len() as i64 != expected_size {
+        return Err(StorageError::Integrity(format!(
+            "content object failed hash/size validation: {id}"
+        )));
+    }
+    Ok(bytes)
 }
 
 pub async fn load_graph<C: ConnectionTrait>(connection: &C, id: &str) -> StorageResult<GraphView> {

@@ -28,12 +28,17 @@ pub struct DraftGraphNode {
     #[serde(default)]
     pub outputs: Vec<OutputPortDefinition>,
     pub timeout_ms: Option<u64>,
+    pub retry_policy: Option<RetryPolicy>,
     #[serde(flatten)]
     pub kind: DraftNodeKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum DraftNodeKind {
     Input {
         #[serde(default)]
@@ -64,6 +69,7 @@ pub struct GraphNode {
     pub inputs: Vec<InputPortDefinition>,
     pub outputs: Vec<OutputPortDefinition>,
     pub timeout_ms: Option<u64>,
+    pub retry_policy: Option<RetryPolicy>,
     #[serde(flatten)]
     pub kind: DraftNodeKind,
 }
@@ -182,6 +188,25 @@ pub struct RouterLimits {
     pub max_read_reconciles: Option<u64>,
     #[serde(default)]
     pub on_limit_outputs: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryPolicy {
+    pub max_retries: u64,
+    #[serde(default)]
+    pub retry_on: Vec<String>,
+    pub initial_backoff_ms: u64,
+    pub multiplier_micros: u64,
+    pub max_backoff_ms: u64,
+    pub jitter_ratio_micros: u64,
+    pub refresh_read_set: RefreshReadSet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefreshReadSet {
+    Never,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

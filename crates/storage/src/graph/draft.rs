@@ -16,7 +16,7 @@ impl SqliteStore {
         command: UpdateGraphDraftCommand,
     ) -> StorageResult<GraphDraftView> {
         if command.graph_id != command.document.graph_id || command.idempotency_key.is_empty() {
-            return Err(StorageError::Integrity(
+            return Err(StorageError::InvalidArgument(
                 "draft graph identity mismatch".into(),
             ));
         }
