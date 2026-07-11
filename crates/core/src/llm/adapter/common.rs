@@ -33,6 +33,25 @@ pub(super) fn prepare(
             "request model or adapter does not match execution pin",
         ));
     }
+    if let Some(extensions) = &request.extensions {
+        let mismatched = match expected {
+            ShapeAdapterKey::OpenAiResponsesV1 | ShapeAdapterKey::OpenAiChatCompletionsV1 => {
+                extensions.claude.is_some() || extensions.gemini.is_some()
+            }
+            ShapeAdapterKey::ClaudeMessagesV1 => {
+                extensions.openai.is_some() || extensions.gemini.is_some()
+            }
+            ShapeAdapterKey::GeminiGenerateContentV1 => {
+                extensions.openai.is_some() || extensions.claude.is_some()
+            }
+        };
+        if mismatched {
+            return Err(ShapeAdapterError::new(
+                "provider_extension_mismatch",
+                "provider extension does not match the pinned wire family",
+            ));
+        }
+    }
     if options.max_output_tokens == 0 || options.max_output_tokens > 256_000 {
         return Err(ShapeAdapterError::new(
             "invalid_adapter_output_limit",
@@ -96,6 +115,28 @@ pub(super) fn openai_content(
         });
     }
     Ok(Value::Array(result))
+}
+
+pub(super) fn openai_responses_content(
+    parts: &[LlmContentPartIr],
+    resources: &AdapterResources,
+) -> Result<Value, ShapeAdapterError> {
+    parts
+        .iter()
+        .map(|part| match part {
+            LlmContentPartIr::Text { text } => Ok(json!({"type":"input_text","text":text})),
+            LlmContentPartIr::Image { artifact_ref } => Ok(json!({
+                "type":"input_image",
+                "image_url":material_data_url(artifact_ref, resources)?,
+            })),
+            LlmContentPartIr::File { artifact_ref } => Ok(json!({
+                "type":"input_file",
+                "file_data":material_data_url(artifact_ref, resources)?,
+                "filename":artifact_ref.artifact_id,
+            })),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Value::Array)
 }
 
 pub(super) fn text_only(parts: &[LlmContentPartIr]) -> Result<String, ShapeAdapterError> {
@@ -182,7 +223,29 @@ where
     })
 }
 
-fn material_data_url(
+pub(super) fn required_string<'a>(
+    value: &'a Value,
+    field: &str,
+    code: &'static str,
+) -> Result<&'a str, ShapeAdapterError> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| ShapeAdapterError::new(code, "required provider field is missing"))
+}
+
+pub(super) fn required_u64(
+    value: &Value,
+    field: &str,
+    code: &'static str,
+) -> Result<u64, ShapeAdapterError> {
+    value
+        .get(field)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ShapeAdapterError::new(code, "required provider integer is missing"))
+}
+
+pub(super) fn material_data_url(
     reference: &crate::artifact::ArtifactRef,
     resources: &AdapterResources,
 ) -> Result<String, ShapeAdapterError> {
@@ -201,6 +264,23 @@ fn material_data_url(
         reference.media_type,
         STANDARD.encode(&material.bytes)
     ))
+}
+
+pub(super) fn material_base64(
+    reference: &crate::artifact::ArtifactRef,
+    resources: &AdapterResources,
+) -> Result<String, ShapeAdapterError> {
+    let material = resources
+        .materials
+        .get(&reference.artifact_id)
+        .ok_or_else(|| {
+            ShapeAdapterError::new(
+                "artifact_material_unresolved",
+                "artifact bytes are unavailable to the shape adapter",
+            )
+        })?;
+    validate_material(reference, material)?;
+    Ok(STANDARD.encode(&material.bytes))
 }
 
 fn validate_material(

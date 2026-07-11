@@ -19,7 +19,7 @@ use zhuangsheng_core::{
 
 use crate::{graph::helpers::load_object_json, tests::store};
 
-fn operation() -> OperationKey {
+pub(super) fn operation() -> OperationKey {
     OperationKey::content_generation(
         Operation::GenerateContent,
         ContentGenerationKind::OpenAiResponses,
@@ -168,7 +168,7 @@ async fn graph_apply_resolves_llm_channel_and_preset_heads() {
     assert_eq!(pinned_preset, preset_v2.id);
 }
 
-fn channel_spec() -> LlmChannelRevisionSpec {
+pub(super) fn channel_spec() -> LlmChannelRevisionSpec {
     LlmChannelRevisionSpec {
         operation_taxonomy_version: 1,
         adapter_decoder_version: 1,
@@ -194,7 +194,7 @@ fn channel_spec() -> LlmChannelRevisionSpec {
     }
 }
 
-fn llm_draft(graph_id: &str, channel_id: &str, preset_id: &str) -> GraphDraft {
+pub(super) fn llm_draft(graph_id: &str, channel_id: &str, preset_id: &str) -> GraphDraft {
     serde_json::from_value(json!({
         "graphId":graph_id,
         "nodes":[

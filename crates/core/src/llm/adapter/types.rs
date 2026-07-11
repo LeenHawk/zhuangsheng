@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{artifact::ArtifactRef, llm::ir::LlmResponseIr};
+use crate::{
+    artifact::ArtifactRef,
+    llm::ir::{LlmResponseIr, LlmStreamEventIr},
+};
 
 use super::super::{ContentGenerationKind, LlmOperationExecutionPin};
 
@@ -100,6 +103,13 @@ pub struct OpaqueAttachmentDraft {
 
 pub struct DecodedTerminalDraft {
     pub response: LlmResponseIr,
+    pub sensitive_entries: Vec<SensitiveEntryDraft>,
+    pub opaque_attachments: Vec<OpaqueAttachmentDraft>,
+}
+
+#[derive(Default)]
+pub struct DecodedStreamBatch {
+    pub events: Vec<LlmStreamEventIr>,
     pub sensitive_entries: Vec<SensitiveEntryDraft>,
     pub opaque_attachments: Vec<OpaqueAttachmentDraft>,
 }

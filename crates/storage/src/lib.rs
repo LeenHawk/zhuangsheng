@@ -2,6 +2,7 @@ mod config;
 pub mod context;
 mod error;
 pub mod graph;
+pub mod llm;
 pub mod memory;
 pub mod migration;
 pub mod runtime;

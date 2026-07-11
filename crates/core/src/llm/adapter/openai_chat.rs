@@ -188,20 +188,12 @@ pub fn decode_openai_chat_terminal(
                 "chat choice has no assistant message",
             )
         })?;
-    let mut items = Vec::new();
-    if let Some(text) = message
+    let assistant_text = message
         .get("content")
         .and_then(Value::as_str)
         .or_else(|| message.get("refusal").and_then(Value::as_str))
-        .filter(|text| !text.is_empty())
-    {
-        items.push(LlmTurnItemIr::Message {
-            id: format!("{model_call_id}:message:0"),
-            role: MessageRole::Assistant,
-            content: vec![LlmContentPartIr::Text { text: text.into() }],
-            provenance: None,
-        });
-    }
+        .filter(|text| !text.is_empty());
+    let mut items = Vec::new();
     let mut sensitive_entries = Vec::new();
     let mut opaque_attachments = Vec::new();
     if let Some(reasoning) = message
@@ -235,6 +227,14 @@ pub fn decode_openai_chat_terminal(
         opaque_attachments.push(OpaqueAttachmentDraft {
             entry_key,
             target: OpaqueAttachmentTarget::Item { item_id: id },
+        });
+    }
+    if let Some(text) = assistant_text {
+        items.push(LlmTurnItemIr::Message {
+            id: format!("{model_call_id}:message:0"),
+            role: MessageRole::Assistant,
+            content: vec![LlmContentPartIr::Text { text: text.into() }],
+            provenance: None,
         });
     }
     if let Some(tool_calls) = message.get("tool_calls").and_then(Value::as_array) {
