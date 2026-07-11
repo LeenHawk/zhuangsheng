@@ -10,7 +10,10 @@ use crate::{
     },
 };
 
-use super::events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run};
+use super::{
+    events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run},
+    read_set::copy_attempt_reads,
+};
 
 impl SqliteStore {
     pub(crate) async fn process_due_timers(&self, now: i64) -> StorageResult<u64> {
@@ -279,6 +282,14 @@ async fn fire_retry<C: ConnectionTrait>(
         .get("retryOrdinal")
         .and_then(Value::as_i64)
         .ok_or_else(|| StorageError::Integrity("retry ordinal missing".into()))?;
+    let source = connection
+        .query_one(sql(
+            "SELECT node_attempt_id FROM runtime_timers WHERE id = ?",
+            vec![timer_id.into()],
+        ))
+        .await?
+        .ok_or_else(|| StorageError::Integrity("retry timer missing".into()))?;
+    let source_attempt_id: String = source.try_get("", "node_attempt_id")?;
     if !mark_fired(connection, timer_id, now).await? {
         return Ok(());
     }
@@ -298,6 +309,7 @@ async fn fire_retry<C: ConnectionTrait>(
     if inserted.rows_affected() != 1 {
         return Err(StorageError::Conflict("retry_run_status"));
     }
+    copy_attempt_reads(connection, &source_attempt_id, &attempt_id, now).await?;
     connection.execute(sql(
         "UPDATE node_instances SET status = 'ready', updated_at = ? WHERE id = ? AND status = 'waiting'",
         vec![now.into(), instance_id.into()],

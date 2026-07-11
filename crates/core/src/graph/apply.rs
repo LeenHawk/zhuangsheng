@@ -8,6 +8,7 @@ use super::{
     SchemaSemanticDigest,
     cycle::validate_cycles,
     normalize::{normalize_limits, unreachable_warnings},
+    router_validation::{normalize_router, validate_router},
 };
 
 pub fn apply_graph(draft: GraphDraft, taxonomy: u32, decoder: u32) -> DomainResult<AppliedGraph> {
@@ -24,19 +25,19 @@ pub fn apply_graph(draft: GraphDraft, taxonomy: u32, decoder: u32) -> DomainResu
             "/adapterDecoderVersion",
         ));
     }
+    let limits = normalize_limits(draft.limits, &mut issues);
     let nodes: Vec<_> = draft
         .nodes
         .into_iter()
         .map(|node| normalize_node(node, &mut issues))
         .collect();
-    validate_nodes(&nodes, &mut issues);
+    validate_nodes(&nodes, &limits, &mut issues);
     validate_selectors(&nodes, &mut issues);
     let edges = normalize_edges(draft.edges, &mut issues)?;
     validate_edges(&nodes, &edges, &mut issues);
     validate_outputs(&nodes, &draft.output_contract, &mut issues);
     validate_cycles(&nodes, &edges, &mut issues);
     let mut warnings = unreachable_warnings(&nodes, &edges);
-    let limits = normalize_limits(draft.limits, &mut issues);
     let schemas = compile_schemas(
         &nodes,
         draft.run_input_schema.as_ref(),
@@ -138,6 +139,8 @@ fn normalize_node(node: DraftGraphNode, issues: &mut Vec<ValidationIssue>) -> Gr
             format!("/nodes/{}/inputs", node.id),
         ));
     }
+    let mut kind = node.kind;
+    normalize_router(&mut kind);
     GraphNode {
         id: node.id,
         name: node.name,
@@ -146,11 +149,15 @@ fn normalize_node(node: DraftGraphNode, issues: &mut Vec<ValidationIssue>) -> Gr
         outputs,
         timeout_ms: node.timeout_ms,
         retry_policy: node.retry_policy,
-        kind: node.kind,
+        kind,
     }
 }
 
-fn validate_nodes(nodes: &[GraphNode], issues: &mut Vec<ValidationIssue>) {
+fn validate_nodes(
+    nodes: &[GraphNode],
+    limits: &super::RunLimits,
+    issues: &mut Vec<ValidationIssue>,
+) {
     let mut ids = HashSet::new();
     let mut entries = 0;
     for node in nodes {
@@ -162,45 +169,7 @@ fn validate_nodes(nodes: &[GraphNode], issues: &mut Vec<ValidationIssue>) {
         }
         validate_execution_policy(node, issues);
         unique_ports(node, issues);
-        if let DraftNodeKind::Router {
-            dsl_version,
-            rules,
-            default_outputs,
-            payload_port,
-            limits,
-            ..
-        } = &node.kind
-        {
-            if dsl_version != "router-dsl-v1" {
-                issues.push(issue(
-                    "unsupported_router_dsl",
-                    format!("/nodes/{}/dslVersion", node.id),
-                ));
-            }
-            let outputs: HashSet<_> = node.outputs.iter().map(|port| port.name.as_str()).collect();
-            let mut rule_ids = HashSet::new();
-            for rule in rules {
-                if rule.id.is_empty() || !rule_ids.insert(&rule.id) {
-                    issues.push(issue(
-                        "duplicate_router_rule",
-                        format!("/nodes/{}/rules", node.id),
-                    ));
-                }
-                check_output_names(&node.id, &rule.outputs, &outputs, issues);
-            }
-            check_output_names(&node.id, default_outputs, &outputs, issues);
-            if let Some(port) = payload_port
-                && !node.inputs.iter().any(|input| input.name == *port)
-            {
-                issues.push(issue(
-                    "router_payload_port_missing",
-                    format!("/nodes/{}/payloadPort", node.id),
-                ));
-            }
-            if let Some(limits) = limits {
-                check_output_names(&node.id, &limits.on_limit_outputs, &outputs, issues);
-            }
-        }
+        validate_router(node, limits, issues);
     }
     if entries == 0 {
         issues.push(issue("graph_has_no_input_node", "/nodes"));
@@ -408,22 +377,6 @@ fn unique_ports(node: &GraphNode, issues: &mut Vec<ValidationIssue>) {
             issues.push(issue(
                 "duplicate_or_empty_port",
                 format!("/nodes/{}/ports", node.id),
-            ));
-        }
-    }
-}
-fn check_output_names(
-    node: &str,
-    values: &[String],
-    outputs: &HashSet<&str>,
-    issues: &mut Vec<ValidationIssue>,
-) {
-    let mut seen = HashSet::new();
-    for value in values {
-        if !outputs.contains(value.as_str()) || !seen.insert(value) {
-            issues.push(issue(
-                "router_output_invalid",
-                format!("/nodes/{node}/outputs"),
             ));
         }
     }

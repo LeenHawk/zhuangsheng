@@ -1,5 +1,7 @@
 use thiserror::Error;
 use zhuangsheng_core::DomainError;
+use zhuangsheng_core::memory::MemoryValidationError;
+use zhuangsheng_core::state::StatePatchError;
 
 pub type StorageResult<T> = Result<T, StorageError>;
 
@@ -19,6 +21,10 @@ pub enum StorageError {
     Integrity(String),
     #[error(transparent)]
     Domain(#[from] DomainError),
+    #[error(transparent)]
+    StatePatch(#[from] StatePatchError),
+    #[error(transparent)]
+    MemoryValidation(#[from] MemoryValidationError),
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
 }
@@ -59,6 +65,14 @@ impl From<StorageError> for zhuangsheng_core::application::ApplicationError {
                 }
             }
             StorageError::Database(_) => ApplicationError::Unavailable,
+            StorageError::StatePatch(error) => ApplicationError::InvalidArgument {
+                code: error.code,
+                message: error.message,
+            },
+            StorageError::MemoryValidation(error) => ApplicationError::InvalidArgument {
+                code: error.code,
+                message: error.message,
+            },
             StorageError::Integrity(_) | StorageError::Domain(DomainError::Serialization(_)) => {
                 ApplicationError::Internal
             }

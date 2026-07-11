@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 use sea_orm::{ConnectionTrait, TransactionTrait};
-use serde_json::json;
+use serde_json::{Value, json};
 use zhuangsheng_core::{
     canonical,
+    router::RouterDecisionError,
     scheduler::{BuiltinResult, FinalizeAttemptCommand},
 };
 
@@ -14,28 +17,12 @@ use crate::{
 };
 
 use super::{
-    emit::{commit_run_output, emit_edges, prepare_outputs},
+    attempt_state::{AttemptState, load_attempt, validate_fence},
+    emit::{commit_run_output, emit_edges, ensure_edge_capacity, prepare_outputs},
     events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run, finish_wakeup},
+    reconcile::{ReconcileAttempt, ReconcileOutcome, reconcile_if_stale},
+    router::{persist_decision, persist_error},
 };
-
-struct AttemptState {
-    run_id: String,
-    node_instance_id: String,
-    node_id: String,
-    graph_revision_id: String,
-    inputs_object_id: String,
-    status: String,
-    worker_id: Option<String>,
-    lease_fence: i64,
-    run_control_epoch: i64,
-    result_key: Option<String>,
-    run_status: String,
-    current_control_epoch: i64,
-    drain_epoch: Option<i64>,
-    lease_until: Option<i64>,
-    attempt_deadline: Option<i64>,
-    run_deadline: i64,
-}
 
 impl SqliteStore {
     pub(crate) async fn finalize_attempt(
@@ -59,200 +46,276 @@ impl SqliteStore {
             .iter()
             .find(|node| node.id == state.node_id)
             .ok_or_else(|| StorageError::Integrity("attempt node missing from revision".into()))?;
-        match &command.result {
-            BuiltinResult::Failed { code, safe_message } => {
-                fail_attempt(&transaction, &state, &command, code, safe_message, now).await?;
-            }
-            BuiltinResult::Completed { outputs } => {
-                let stored = match prepare_outputs(
-                    &transaction,
-                    node,
-                    outputs,
-                    &revision.definition.limits,
-                    now,
-                )
-                .await
-                {
-                    Ok(stored) => stored,
-                    Err(error) if is_contract_error(&error) => {
-                        fail_attempt(
-                            &transaction,
-                            &state,
-                            &command,
-                            "node_output_contract_violation",
-                            &error.to_string(),
-                            now,
-                        )
-                        .await?;
-                        transaction.commit().await?;
-                        return Ok(());
-                    }
-                    Err(error) => return Err(error),
-                };
-                if let Err(error) = commit_run_output(
-                    &transaction,
-                    &state.run_id,
-                    &state.node_instance_id,
-                    &state.inputs_object_id,
-                    node,
-                    &revision.definition,
-                    now,
-                )
-                .await
-                {
-                    if !is_contract_error(&error) {
-                        return Err(error);
-                    }
-                    fail_attempt(
-                        &transaction,
-                        &state,
-                        &command,
-                        "run_output_contract_violation",
-                        &error.to_string(),
-                        now,
-                    )
-                    .await?;
+        if matches!(
+            &command.result,
+            BuiltinResult::RouterDecision { .. } | BuiltinResult::RouterFailed { .. }
+        ) {
+            match reconcile_if_stale(
+                &transaction,
+                ReconcileAttempt {
+                    run_id: &state.run_id,
+                    node_instance_id: &state.node_instance_id,
+                    attempt_id: &command.attempt_id,
+                    wakeup_id: &command.wakeup_id,
+                    worker_id: &command.worker_id,
+                    lease_fence: command.lease_fence,
+                    run_control_epoch: command.run_control_epoch,
+                    result_idempotency_key: &command.result_idempotency_key,
+                },
+                node,
+                &revision.definition.limits,
+                now,
+            )
+            .await?
+            {
+                ReconcileOutcome::Continue => {}
+                ReconcileOutcome::Requeued => {
                     transaction.commit().await?;
                     return Ok(());
                 }
-                let final_outputs = put_inline_object(
-                    &transaction,
-                    &canonical::to_vec(&json!({"schemaVersion":1,"outputs":stored}))?,
-                    now,
-                )
-                .await?;
-                if let Err(error) = emit_edges(
-                    &transaction,
-                    &state.run_id,
-                    &state.node_instance_id,
-                    node,
-                    &revision.definition,
-                    &stored,
-                    &revision.definition.limits,
-                    now,
-                )
-                .await
-                {
-                    if !is_contract_error(&error) {
-                        return Err(error);
-                    }
-                    fail_attempt(
-                        &transaction,
-                        &state,
-                        &command,
-                        "run_limit_exceeded",
-                        &error.to_string(),
-                        now,
-                    )
-                    .await?;
-                    transaction.commit().await?;
-                    return Ok(());
-                }
-                complete_rows(&transaction, &state, &command, &final_outputs, now).await?;
-                add_object_ref(
-                    &transaction,
-                    &final_outputs,
-                    "node_instance",
-                    &state.node_instance_id,
-                    "final_outputs",
-                    now,
-                )
-                .await?;
-                let seq = append_event(
-                    &transaction,
-                    Event {
-                        run_id: &state.run_id,
-                        event_type: "node.completed",
-                        importance: "critical",
-                        node_instance_id: Some(&state.node_instance_id),
-                        attempt_id: Some(&command.attempt_id),
-                        payload: json!({"schemaVersion":1,"nodeId":state.node_id}),
-                        now,
-                    },
-                )
-                .await?;
-                finish_wakeup(&transaction, &command.wakeup_id).await?;
-                if !node.is_entry {
-                    enqueue_wakeup(
+                ReconcileOutcome::Exhausted => {
+                    let error = RouterDecisionError {
+                        code: "router_read_conflict_exhausted".into(),
+                        safe_message: "Router read reconciliation budget was exhausted".into(),
+                        rule_id: None,
+                        evaluated_rule_ids: Vec::new(),
+                    };
+                    persist_error(
                         &transaction,
                         &state.run_id,
-                        Some(&state.node_id),
-                        "node_maybe_ready",
-                        seq,
-                        &format!("recheck:{}", state.node_instance_id),
+                        &state.node_instance_id,
+                        &command.attempt_id,
+                        &error,
                         now,
                     )
                     .await?;
+                    fail_attempt(
+                        &transaction,
+                        &state,
+                        &command,
+                        &error.code,
+                        &error.safe_message,
+                        now,
+                    )
+                    .await?;
+                    transaction.commit().await?;
+                    return Ok(());
                 }
-                enqueue_wakeup(
+            }
+        }
+        let router_outputs: BTreeMap<String, Value>;
+        let (outputs, router_decision) = match &command.result {
+            BuiltinResult::Failed { code, safe_message } => {
+                fail_attempt(&transaction, &state, &command, code, safe_message, now).await?;
+                transaction.commit().await?;
+                return Ok(());
+            }
+            BuiltinResult::RouterFailed { error } => {
+                persist_error(
                     &transaction,
                     &state.run_id,
-                    None,
-                    "settle_run",
-                    seq,
-                    &format!("settle:{}", state.node_instance_id),
+                    &state.node_instance_id,
+                    &command.attempt_id,
+                    error,
                     now,
                 )
                 .await?;
-                settle_interrupt_after_attempt(&transaction, &state.run_id, now).await?;
+                fail_attempt(
+                    &transaction,
+                    &state,
+                    &command,
+                    &error.code,
+                    &error.safe_message,
+                    now,
+                )
+                .await?;
+                transaction.commit().await?;
+                return Ok(());
             }
+            BuiltinResult::Completed { outputs } => (outputs, None),
+            BuiltinResult::RouterDecision { decision } => {
+                router_outputs = decision
+                    .selected_ports
+                    .iter()
+                    .map(|port| (port.clone(), decision.payload.clone()))
+                    .collect();
+                (&router_outputs, Some(decision))
+            }
+        };
+        let output_order = router_decision.map(|decision| decision.selected_ports.as_slice());
+        let stored = match prepare_outputs(
+            &transaction,
+            node,
+            outputs,
+            output_order,
+            &revision.definition.limits,
+            now,
+        )
+        .await
+        {
+            Ok(stored) => stored,
+            Err(error) if is_contract_error(&error) => {
+                fail_attempt(
+                    &transaction,
+                    &state,
+                    &command,
+                    "node_output_contract_violation",
+                    &error.to_string(),
+                    now,
+                )
+                .await?;
+                transaction.commit().await?;
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        };
+        if let Some(decision) = router_decision {
+            if let Err(error) = ensure_edge_capacity(
+                &transaction,
+                &state.run_id,
+                node,
+                &revision.definition,
+                &stored,
+                &revision.definition.limits,
+            )
+            .await
+            {
+                if !is_contract_error(&error) {
+                    return Err(error);
+                }
+                fail_attempt(
+                    &transaction,
+                    &state,
+                    &command,
+                    "run_limit_exceeded",
+                    &error.to_string(),
+                    now,
+                )
+                .await?;
+                transaction.commit().await?;
+                return Ok(());
+            }
+            persist_decision(
+                &transaction,
+                &state.run_id,
+                &state.node_instance_id,
+                &command.attempt_id,
+                decision,
+                &stored,
+                now,
+            )
+            .await?;
         }
+        if let Err(error) = commit_run_output(
+            &transaction,
+            &state.run_id,
+            &state.node_instance_id,
+            &state.inputs_object_id,
+            node,
+            &revision.definition,
+            now,
+        )
+        .await
+        {
+            if !is_contract_error(&error) {
+                return Err(error);
+            }
+            fail_attempt(
+                &transaction,
+                &state,
+                &command,
+                "run_output_contract_violation",
+                &error.to_string(),
+                now,
+            )
+            .await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
+        let final_outputs = put_inline_object(
+            &transaction,
+            &canonical::to_vec(&json!({"schemaVersion":1,"outputs":stored}))?,
+            now,
+        )
+        .await?;
+        if let Err(error) = emit_edges(
+            &transaction,
+            &state.run_id,
+            &state.node_instance_id,
+            node,
+            &revision.definition,
+            &stored,
+            output_order,
+            &revision.definition.limits,
+            now,
+        )
+        .await
+        {
+            if !is_contract_error(&error) {
+                return Err(error);
+            }
+            fail_attempt(
+                &transaction,
+                &state,
+                &command,
+                "run_limit_exceeded",
+                &error.to_string(),
+                now,
+            )
+            .await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
+        complete_rows(&transaction, &state, &command, &final_outputs, now).await?;
+        add_object_ref(
+            &transaction,
+            &final_outputs,
+            "node_instance",
+            &state.node_instance_id,
+            "final_outputs",
+            now,
+        )
+        .await?;
+        let seq = append_event(
+            &transaction,
+            Event {
+                run_id: &state.run_id,
+                event_type: "node.completed",
+                importance: "critical",
+                node_instance_id: Some(&state.node_instance_id),
+                attempt_id: Some(&command.attempt_id),
+                payload: json!({"schemaVersion":1,"nodeId":state.node_id}),
+                now,
+            },
+        )
+        .await?;
+        finish_wakeup(&transaction, &command.wakeup_id).await?;
+        if !node.is_entry {
+            enqueue_wakeup(
+                &transaction,
+                &state.run_id,
+                Some(&state.node_id),
+                "node_maybe_ready",
+                seq,
+                &format!("recheck:{}", state.node_instance_id),
+                now,
+            )
+            .await?;
+        }
+        enqueue_wakeup(
+            &transaction,
+            &state.run_id,
+            None,
+            "settle_run",
+            seq,
+            &format!("settle:{}", state.node_instance_id),
+            now,
+        )
+        .await?;
+        settle_interrupt_after_attempt(&transaction, &state.run_id, now).await?;
         transaction.commit().await?;
         Ok(())
     }
-}
-
-async fn load_attempt<C: ConnectionTrait>(
-    connection: &C,
-    attempt_id: &str,
-) -> StorageResult<AttemptState> {
-    let row = connection.query_one(sql(
-        "SELECT a.status, a.worker_id, a.lease_fence, a.run_control_epoch, a.result_idempotency_key, a.lease_until, a.deadline_at AS attempt_deadline, ni.id AS node_instance_id, ni.run_id, ni.node_id, ni.graph_revision_id, ni.inputs_object_id, r.status AS run_status, r.control_epoch AS current_control_epoch, r.drain_epoch, r.deadline_at AS run_deadline FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE a.id = ?",
-        vec![attempt_id.into()],
-    )).await?.ok_or_else(|| StorageError::NotFound { kind: "node_attempt", id: attempt_id.into() })?;
-    Ok(AttemptState {
-        run_id: row.try_get("", "run_id")?,
-        node_instance_id: row.try_get("", "node_instance_id")?,
-        node_id: row.try_get("", "node_id")?,
-        graph_revision_id: row.try_get("", "graph_revision_id")?,
-        inputs_object_id: row.try_get("", "inputs_object_id")?,
-        status: row.try_get("", "status")?,
-        worker_id: row.try_get("", "worker_id")?,
-        lease_fence: row.try_get("", "lease_fence")?,
-        run_control_epoch: row.try_get("", "run_control_epoch")?,
-        result_key: row.try_get("", "result_idempotency_key")?,
-        run_status: row.try_get("", "run_status")?,
-        current_control_epoch: row.try_get("", "current_control_epoch")?,
-        drain_epoch: row.try_get("", "drain_epoch")?,
-        lease_until: row.try_get("", "lease_until")?,
-        attempt_deadline: row.try_get("", "attempt_deadline")?,
-        run_deadline: row.try_get("", "run_deadline")?,
-    })
-}
-
-fn validate_fence(
-    state: &AttemptState,
-    command: &FinalizeAttemptCommand,
-    now: i64,
-) -> StorageResult<()> {
-    let lifecycle_accepts = (state.run_status == "running"
-        && state.run_control_epoch == state.current_control_epoch)
-        || (state.run_status == "interrupting"
-            && state.drain_epoch == Some(state.run_control_epoch));
-    if state.status != "running"
-        || state.worker_id.as_deref() != Some(&command.worker_id)
-        || state.lease_fence != command.lease_fence as i64
-        || state.run_control_epoch != command.run_control_epoch as i64
-        || !lifecycle_accepts
-        || state.lease_until.is_none_or(|deadline| now >= deadline)
-        || state
-            .attempt_deadline
-            .is_none_or(|deadline| now >= deadline)
-        || now >= state.run_deadline
-    {
-        return Err(StorageError::Conflict("attempt_fence"));
-    }
-    Ok(())
 }
 
 async fn settle_interrupt_after_attempt<C: ConnectionTrait>(

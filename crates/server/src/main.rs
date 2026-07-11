@@ -5,7 +5,7 @@ use std::{
 };
 
 use zhuangsheng_core::{
-    application::graph::GraphService,
+    application::{context::ContextService, graph::GraphService, memory::MemoryService},
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
 };
@@ -25,6 +25,8 @@ async fn main() -> anyhow::Result<()> {
     let bind_address = env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let store = Arc::new(SqliteStore::connect(database_url).await?);
     let graph_service: Arc<dyn GraphService> = store.clone();
+    let context_service: Arc<dyn ContextService> = store.clone();
+    let memory_service: Arc<dyn MemoryService> = store.clone();
     let runtime_service: Arc<dyn RuntimeService> = store.clone();
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(Scheduler::new(
@@ -33,7 +35,16 @@ async fn main() -> anyhow::Result<()> {
     )));
     let listener = tokio::net::TcpListener::bind(&bind_address).await?;
     tracing::info!(address = %listener.local_addr()?, "server listening");
-    axum::serve(listener, app(graph_service, runtime_service)).await?;
+    axum::serve(
+        listener,
+        app(
+            graph_service,
+            context_service,
+            memory_service,
+            runtime_service,
+        ),
+    )
+    .await?;
     Ok(())
 }
 

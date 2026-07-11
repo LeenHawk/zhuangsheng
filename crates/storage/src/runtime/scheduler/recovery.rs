@@ -10,7 +10,10 @@ use crate::{
     },
 };
 
-use super::events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run};
+use super::{
+    events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run},
+    read_set::copy_attempt_reads,
+};
 
 impl SqliteStore {
     pub(crate) async fn recover_expired_leases(&self, now: i64) -> StorageResult<u64> {
@@ -77,6 +80,7 @@ impl SqliteStore {
             "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) SELECT ?, ?, ?, ?, 'retry', 'queued', control_epoch, 0, ?, ? FROM graph_runs WHERE id = ? AND status IN ('running','interrupting')",
             vec![next_attempt.clone().into(), instance_id.clone().into(), (attempt_no + 1).into(), (retry_ordinal + 1).into(), format!("attempt:{instance_id}:{}", attempt_no + 1).into(), executor_id.into(), run_id.clone().into()],
         )).await?;
+        copy_attempt_reads(&transaction, &attempt_id, &next_attempt, now).await?;
         transaction.execute(sql(
             "UPDATE run_execution_counters SET total_attempts = total_attempts + 1 WHERE run_id = ?",
             vec![run_id.clone().into()],

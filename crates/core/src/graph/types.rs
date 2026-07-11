@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::schema::{JsonSchemaSpec, SchemaCompilationDraft};
 
+use super::RouterMemoryBinding;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphDraft {
@@ -53,9 +55,9 @@ pub enum DraftNodeKind {
         rules: Vec<RouterRule>,
         #[serde(default)]
         match_mode: RouterMatchMode,
-        #[serde(default)]
-        default_outputs: Vec<String>,
+        default_outputs: Option<Vec<String>>,
         payload_port: Option<String>,
+        memory: Option<RouterMemoryBinding>,
         limits: Option<RouterLimits>,
     },
 }
@@ -186,8 +188,7 @@ pub struct RouterLimits {
     pub max_visits_per_run: Option<u64>,
     pub timeout_ms_per_run: Option<u64>,
     pub max_read_reconciles: Option<u64>,
-    #[serde(default)]
-    pub on_limit_outputs: Vec<String>,
+    pub on_limit_outputs: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

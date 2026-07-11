@@ -16,7 +16,7 @@ use crate::app;
 async fn graph_http_vertical_slice_uses_public_contract() {
     let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
     let store = Arc::new(store);
-    let app = app(store.clone(), store.clone());
+    let app = app(store.clone(), store.clone(), store.clone(), store.clone());
     let created = call(
         &app,
         request(
@@ -194,7 +194,7 @@ async fn graph_http_vertical_slice_uses_public_contract() {
 async fn graph_http_errors_use_typed_envelope() {
     let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
     let store = Arc::new(store);
-    let app = app(store.clone(), store);
+    let app = app(store.clone(), store.clone(), store.clone(), store);
     let response = app
         .oneshot(request(
             "POST",
@@ -214,6 +214,101 @@ async fn graph_http_errors_use_typed_envelope() {
             .unwrap()
             .starts_with("trace_")
     );
+}
+
+#[tokio::test]
+async fn memory_http_flow_uses_service_contract_and_typed_commands() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    let app = app(store.clone(), store.clone(), store.clone(), store);
+    let proposed = call(
+        &app,
+        request(
+            "POST",
+            "/v1/memory-proposals",
+            json!({
+                "scopeId":"roleplay",
+                "memoryId":null,
+                "expectedHeadCommitId":null,
+                "change":{
+                    "type":"create",
+                    "content":{
+                        "schemaVersion":1,
+                        "text":"The moon gate opens at midnight",
+                        "tags":["lore"],
+                        "attributes":{}
+                    }
+                },
+                "reason":"persist story lore",
+                "evidenceRefs":["message:1"],
+                "requestedBy":{"kind":"user","id":"user-1"},
+                "schemaVersion":1,
+                "policyVersion":1,
+                "originRunId":null,
+                "originNodeInstanceId":null
+            }),
+            &[("idempotency-key", "memory-propose-http".into())],
+        ),
+        StatusCode::CREATED,
+    )
+    .await;
+    let proposal_id = proposed["id"].as_str().unwrap();
+    let memory_id = proposed["memoryId"].as_str().unwrap();
+    call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/memory-proposals/{proposal_id}/decision"),
+            json!({
+                "expectedStatus":"awaiting_review",
+                "decision":"approve",
+                "actor":{"kind":"user","id":"reviewer"}
+            }),
+            &[("idempotency-key", "memory-approve-http".into())],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/memory-proposals/{proposal_id}/apply"),
+            json!({"expectedStatus":"approved"}),
+            &[("idempotency-key", "memory-apply-http".into())],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    let record = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/memories/{memory_id}"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(record["status"], "active");
+    let results = call(
+        &app,
+        request(
+            "POST",
+            "/v1/memory-search",
+            json!({
+                "scopeId":"roleplay",
+                "text":"moon midnight",
+                "tags":["lore"],
+                "status":"active",
+                "limit":10
+            }),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(results["records"].as_array().unwrap().len(), 1);
 }
 
 fn request(method: &str, uri: &str, body: Value, headers: &[(&str, String)]) -> Request<Body> {

@@ -10,6 +10,8 @@ use crate::{
 use super::{
     events::{Event, append_event, finish_wakeup},
     load::load_inputs,
+    read_set::load_router_memory,
+    router::load_control_snapshot,
 };
 
 impl SqliteStore {
@@ -189,13 +191,15 @@ async fn claim_attempt<C: ConnectionTrait>(
     Ok(Some(SchedulerWork::Attempt(Box::new(ClaimedAttempt {
         wakeup_id: wakeup_id.into(),
         run_id: run_id.into(),
-        node_instance_id: instance_id,
-        attempt_id,
+        node_instance_id: instance_id.clone(),
+        attempt_id: attempt_id.clone(),
         worker_id: worker_id.into(),
         lease_fence: fence,
         run_control_epoch: u64::try_from(control_epoch)
             .map_err(|_| StorageError::Integrity("invalid run control epoch".into()))?,
         inputs: load_inputs(connection, &node, &inputs_id).await?,
+        memory: load_router_memory(connection, &attempt_id, &node).await?,
+        router_control: load_control_snapshot(connection, &node, &instance_id).await?,
         node,
     }))))
 }

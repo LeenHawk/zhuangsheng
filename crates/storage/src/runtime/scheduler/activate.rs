@@ -15,6 +15,8 @@ use crate::{
 use super::{
     events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run, finish_wakeup},
     load::object_metadata,
+    read_set::resolve_router_reads,
+    router::create_control_snapshot,
 };
 
 #[derive(Serialize)]
@@ -100,10 +102,12 @@ impl SqliteStore {
             "INSERT INTO node_instances (id, run_id, node_id, activation_seq, status, graph_revision_id, inputs_object_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'ready', ?, ?, ?, ?)",
             vec![instance_id.clone().into(), run_id.into(), node_id.into(), activation_seq.into(), revision_id.into(), inputs_id.clone().into(), now.into(), now.into()],
         )).await?;
+        create_control_snapshot(&transaction, run_id, node, &instance_id, now).await?;
         transaction.execute(sql(
             "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) SELECT ?, ?, 1, 0, 'start', 'queued', control_epoch, 0, ?, execution_manifest_object_id FROM graph_runs WHERE id = ?",
             vec![attempt_id.clone().into(), instance_id.clone().into(), format!("attempt:{instance_id}:1").into(), run_id.into()],
         )).await?;
+        resolve_router_reads(&transaction, run_id, &attempt_id, node, now).await?;
         for head in &heads {
             let consumed = transaction.execute(sql(
                 "UPDATE edge_queue_values SET consumed_by_instance_id = ?, consumed_at = ? WHERE id = ? AND consumed_at IS NULL",

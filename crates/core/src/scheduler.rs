@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     application::ApplicationError,
     graph::{DraftNodeKind, GraphNode, RetryPolicy},
+    router::{RouterControlSnapshot, RouterDecision, RouterDecisionError, evaluate_router},
 };
 
 #[derive(Debug, Clone)]
@@ -36,6 +37,8 @@ pub struct ClaimedAttempt {
     pub run_control_epoch: u64,
     pub node: GraphNode,
     pub inputs: BTreeMap<String, Value>,
+    pub memory: BTreeMap<String, Value>,
+    pub router_control: Option<RouterControlSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +46,8 @@ pub struct ClaimedAttempt {
 pub enum BuiltinResult {
     Completed { outputs: BTreeMap<String, Value> },
     Failed { code: String, safe_message: String },
+    RouterDecision { decision: RouterDecision },
+    RouterFailed { error: RouterDecisionError },
 }
 
 #[derive(Debug, Clone)]
@@ -177,10 +182,29 @@ fn execute_builtin(attempt: &ClaimedAttempt) -> BuiltinResult {
         DraftNodeKind::Output { .. } => BuiltinResult::Completed {
             outputs: BTreeMap::new(),
         },
-        DraftNodeKind::Router { .. } => BuiltinResult::Failed {
-            code: "router_execution_not_implemented".into(),
-            safe_message: "router execution is not available in this runtime milestone".into(),
-        },
+        DraftNodeKind::Router { .. } => {
+            let Some(control) = attempt.router_control.clone() else {
+                return BuiltinResult::RouterFailed {
+                    error: RouterDecisionError {
+                        code: "router_control_snapshot_missing".into(),
+                        safe_message: "Router control snapshot is missing".into(),
+                        rule_id: None,
+                        evaluated_rule_ids: Vec::new(),
+                    },
+                };
+            };
+            let memory = serde_json::Value::Object(
+                attempt
+                    .memory
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect(),
+            );
+            match evaluate_router(&attempt.node, &attempt.inputs, &memory, control) {
+                Ok(decision) => BuiltinResult::RouterDecision { decision },
+                Err(error) => BuiltinResult::RouterFailed { error },
+            }
+        }
     }
 }
 

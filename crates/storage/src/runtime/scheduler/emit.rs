@@ -32,22 +32,34 @@ pub(super) async fn prepare_outputs<C: ConnectionTrait>(
     connection: &C,
     node: &GraphNode,
     outputs: &BTreeMap<String, Value>,
+    output_order: Option<&[String]>,
     limits: &RunLimits,
     now: i64,
 ) -> StorageResult<BTreeMap<String, StoredValue>> {
-    if outputs.len() != node.outputs.len()
-        || node
-            .outputs
-            .iter()
-            .any(|port| !outputs.contains_key(&port.name))
+    let order: Vec<_> = output_order.map_or_else(
+        || node.outputs.iter().map(|port| port.name.clone()).collect(),
+        <[String]>::to_vec,
+    );
+    let declared: HashSet<_> = node.outputs.iter().map(|port| port.name.as_str()).collect();
+    let mut unique = HashSet::new();
+    if outputs.len() != order.len()
+        || order.is_empty() && matches!(&node.kind, DraftNodeKind::Router { .. })
+        || order.iter().any(|name| {
+            !declared.contains(name.as_str()) || !outputs.contains_key(name) || !unique.insert(name)
+        })
     {
         return Err(StorageError::InputContract(
             "node output ports do not match applied graph".into(),
         ));
     }
     let mut stored = BTreeMap::new();
-    for port in &node.outputs {
-        let value = &outputs[&port.name];
+    for name in order {
+        let port = node
+            .outputs
+            .iter()
+            .find(|port| port.name == name)
+            .ok_or_else(|| StorageError::Integrity("output port missing".into()))?;
+        let value = &outputs[&name];
         if let Some(spec) = &port.schema {
             schema::validate(spec, value)?;
         }
@@ -58,7 +70,7 @@ pub(super) async fn prepare_outputs<C: ConnectionTrait>(
             ));
         }
         stored.insert(
-            port.name.clone(),
+            name,
             StoredValue {
                 id: put_inline_object(connection, &bytes, now).await?,
                 content_hash: canonical::hash_bytes(&bytes),
@@ -78,18 +90,31 @@ pub(super) async fn emit_edges<C: ConnectionTrait>(
     node: &GraphNode,
     revision: &zhuangsheng_core::graph::AppliedGraphDefinition,
     values: &BTreeMap<String, StoredValue>,
+    output_order: Option<&[String]>,
     limits: &RunLimits,
     now: i64,
 ) -> StorageResult<()> {
     let mut edges: Vec<_> = revision
         .edges
         .iter()
-        .filter(|edge| edge.from.node_id == node.id)
+        .filter(|edge| edge.from.node_id == node.id && values.contains_key(&edge.from.output))
+        .collect();
+    let positions: BTreeMap<_, _> = output_order
+        .unwrap_or(&[])
+        .iter()
+        .enumerate()
+        .map(|(index, port)| (port.as_str(), index))
         .collect();
     edges.sort_by(|left, right| {
-        left.from
-            .output
-            .cmp(&right.from.output)
+        positions
+            .get(left.from.output.as_str())
+            .unwrap_or(&usize::MAX)
+            .cmp(
+                positions
+                    .get(right.from.output.as_str())
+                    .unwrap_or(&usize::MAX),
+            )
+            .then(left.from.output.cmp(&right.from.output))
             .then(left.id.cmp(&right.id))
     });
     if edges.is_empty() {
@@ -158,6 +183,38 @@ pub(super) async fn emit_edges<C: ConnectionTrait>(
             )
             .await?;
         }
+    }
+    Ok(())
+}
+
+pub(super) async fn ensure_edge_capacity<C: ConnectionTrait>(
+    connection: &C,
+    run_id: &str,
+    node: &GraphNode,
+    revision: &zhuangsheng_core::graph::AppliedGraphDefinition,
+    values: &BTreeMap<String, StoredValue>,
+    limits: &RunLimits,
+) -> StorageResult<()> {
+    let count = revision
+        .edges
+        .iter()
+        .filter(|edge| edge.from.node_id == node.id && values.contains_key(&edge.from.output))
+        .count() as i64;
+    if count == 0 {
+        return Ok(());
+    }
+    let counters = connection.query_one(sql(
+        "SELECT total_queue_values, pending_queue_values FROM run_execution_counters WHERE run_id = ?",
+        vec![run_id.into()],
+    )).await?.ok_or_else(|| StorageError::Integrity("run counters missing".into()))?;
+    let total: i64 = counters.try_get("", "total_queue_values")?;
+    let pending: i64 = counters.try_get("", "pending_queue_values")?;
+    if total.saturating_add(count) as u64 > limits.max_total_queue_values
+        || pending.saturating_add(count) as u64 > limits.max_pending_queue_values
+    {
+        return Err(StorageError::InputContract(
+            "run queue limit exceeded".into(),
+        ));
     }
     Ok(())
 }

@@ -48,7 +48,7 @@ pub fn validate_cycles(
             else {
                 continue;
             };
-            for output in &limits.on_limit_outputs {
+            for output in limits.on_limit_outputs.iter().flatten() {
                 let leaves = edges
                     .iter()
                     .filter(|edge| edge.from.node_id == guard && edge.from.output == *output)

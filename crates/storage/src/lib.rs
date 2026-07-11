@@ -1,5 +1,7 @@
+pub mod context;
 mod error;
 pub mod graph;
+pub mod memory;
 pub mod migration;
 pub mod runtime;
 mod store;
