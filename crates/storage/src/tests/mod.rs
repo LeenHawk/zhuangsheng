@@ -1,7 +1,9 @@
+mod config;
 mod context_patch;
 mod context_replay;
 mod graph_apply;
 mod graph_commands;
+mod llm_graph;
 mod memory;
 mod runtime_control;
 mod runtime_router;
@@ -10,6 +12,7 @@ mod runtime_router_support;
 mod runtime_scheduler;
 mod runtime_start;
 mod runtime_timers;
+mod secret_store;
 
 use serde_json::json;
 use zhuangsheng_core::{

@@ -134,12 +134,12 @@ async fn get_nested_revision(
     ))
 }
 
-fn json_body<T>(body: Result<Json<T>, JsonRejection>) -> ApiResult<T> {
+pub(super) fn json_body<T>(body: Result<Json<T>, JsonRejection>) -> ApiResult<T> {
     body.map(|Json(value)| value)
         .map_err(|error| ApiError::bad_request("invalid_json_body", error.body_text()))
 }
 
-fn required_header(headers: &HeaderMap, name: &'static str) -> ApiResult<String> {
+pub(super) fn required_header(headers: &HeaderMap, name: &'static str) -> ApiResult<String> {
     let value = headers
         .get(name)
         .ok_or_else(|| ApiError::bad_request("missing_header", format!("missing {name}")))?

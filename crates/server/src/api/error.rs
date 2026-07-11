@@ -86,6 +86,15 @@ impl From<ApplicationError> for ApiError {
                 false,
                 None,
             ),
+            ApplicationError::Gone { code, message } => {
+                Self::new(StatusCode::GONE, code, message, false, None)
+            }
+            ApplicationError::Unauthenticated { code, message } => {
+                Self::new(StatusCode::UNAUTHORIZED, code, message, false, None)
+            }
+            ApplicationError::RateLimited { code, message } => {
+                Self::new(StatusCode::TOO_MANY_REQUESTS, code, message, true, None)
+            }
             ApplicationError::Unavailable => Self::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "storage_unavailable",

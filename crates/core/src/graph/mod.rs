@@ -1,5 +1,9 @@
 mod apply;
 mod cycle;
+mod llm;
+#[cfg(test)]
+mod llm_tests;
+mod llm_validation;
 mod memory;
 mod normalize;
 #[cfg(test)]
@@ -9,6 +13,8 @@ mod router_validation;
 mod tests;
 mod types;
 
-pub use apply::apply_graph;
+pub use apply::{apply_graph, apply_graph_with_dependencies};
+pub use llm::*;
+pub use llm_validation::{GraphApplyDependencies, llm_model_requirements};
 pub use memory::*;
 pub use types::*;

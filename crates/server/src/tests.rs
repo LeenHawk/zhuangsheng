@@ -12,11 +12,22 @@ use zhuangsheng_storage::SqliteStore;
 
 use crate::app;
 
+mod config;
+mod secret;
+
 #[tokio::test]
 async fn graph_http_vertical_slice_uses_public_contract() {
     let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
     let store = Arc::new(store);
-    let app = app(store.clone(), store.clone(), store.clone(), store.clone());
+    let app = app(
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    );
     let created = call(
         &app,
         request(
@@ -194,7 +205,15 @@ async fn graph_http_vertical_slice_uses_public_contract() {
 async fn graph_http_errors_use_typed_envelope() {
     let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
     let store = Arc::new(store);
-    let app = app(store.clone(), store.clone(), store.clone(), store);
+    let app = app(
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store,
+    );
     let response = app
         .oneshot(request(
             "POST",
@@ -219,7 +238,15 @@ async fn graph_http_errors_use_typed_envelope() {
 #[tokio::test]
 async fn memory_http_flow_uses_service_contract_and_typed_commands() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let app = app(store.clone(), store.clone(), store.clone(), store);
+    let app = app(
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store,
+    );
     let proposed = call(
         &app,
         request(

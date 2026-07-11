@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     application::ApplicationError,
-    graph::{DraftNodeKind, GraphNode, RetryPolicy},
+    graph::{DraftNodeKind, GraphNode, LlmNodeExecutionSnapshot, RetryPolicy},
     router::{RouterControlSnapshot, RouterDecision, RouterDecisionError, evaluate_router},
 };
 
@@ -39,6 +39,7 @@ pub struct ClaimedAttempt {
     pub inputs: BTreeMap<String, Value>,
     pub memory: BTreeMap<String, Value>,
     pub router_control: Option<RouterControlSnapshot>,
+    pub execution_snapshot: Option<LlmNodeExecutionSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +182,16 @@ fn execute_builtin(attempt: &ClaimedAttempt) -> BuiltinResult {
         },
         DraftNodeKind::Output { .. } => BuiltinResult::Completed {
             outputs: BTreeMap::new(),
+        },
+        DraftNodeKind::Llm { .. } if attempt.execution_snapshot.is_none() => {
+            BuiltinResult::Failed {
+                code: "llm_execution_snapshot_missing".into(),
+                safe_message: "LLM execution snapshot is missing".into(),
+            }
+        }
+        DraftNodeKind::Llm { .. } => BuiltinResult::Failed {
+            code: "llm_executor_unavailable".into(),
+            safe_message: "LLM execution adapter is not configured".into(),
         },
         DraftNodeKind::Router { .. } => {
             let Some(control) = attempt.router_control.clone() else {

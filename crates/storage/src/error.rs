@@ -1,7 +1,10 @@
 use thiserror::Error;
 use zhuangsheng_core::DomainError;
+use zhuangsheng_core::llm::LlmConfigError;
 use zhuangsheng_core::memory::MemoryValidationError;
 use zhuangsheng_core::state::StatePatchError;
+
+use crate::secret::SecretStoreError;
 
 pub type StorageResult<T> = Result<T, StorageError>;
 
@@ -26,7 +29,13 @@ pub enum StorageError {
     #[error(transparent)]
     MemoryValidation(#[from] MemoryValidationError),
     #[error(transparent)]
+    LlmConfig(#[from] LlmConfigError),
+    #[error(transparent)]
+    SecretStore(#[from] SecretStoreError),
+    #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 impl From<StorageError> for zhuangsheng_core::application::ApplicationError {
@@ -64,7 +73,7 @@ impl From<StorageError> for zhuangsheng_core::application::ApplicationError {
                     message,
                 }
             }
-            StorageError::Database(_) => ApplicationError::Unavailable,
+            StorageError::Database(_) | StorageError::Io(_) => ApplicationError::Unavailable,
             StorageError::StatePatch(error) => ApplicationError::InvalidArgument {
                 code: error.code,
                 message: error.message,
@@ -73,6 +82,40 @@ impl From<StorageError> for zhuangsheng_core::application::ApplicationError {
                 code: error.code,
                 message: error.message,
             },
+            StorageError::LlmConfig(error) => ApplicationError::InvalidArgument {
+                code: error.code,
+                message: error.message,
+            },
+            StorageError::SecretStore(error) => {
+                let code = error.code();
+                match error {
+                    SecretStoreError::NotInitialized
+                    | SecretStoreError::AlreadyInitialized
+                    | SecretStoreError::Locked
+                    | SecretStoreError::SessionExpired => ApplicationError::Conflict(code),
+                    SecretStoreError::NotFound(id) => {
+                        ApplicationError::NotFound { kind: "secret", id }
+                    }
+                    SecretStoreError::UnlockFailed => ApplicationError::Unauthenticated {
+                        code,
+                        message: "secret store unlock failed".into(),
+                    },
+                    SecretStoreError::IdempotencyKeyExpired => ApplicationError::Gone {
+                        code,
+                        message: "idempotency result is no longer valid".into(),
+                    },
+                    SecretStoreError::InvalidArgument(message) => {
+                        ApplicationError::InvalidArgument { code, message }
+                    }
+                    SecretStoreError::CorruptStore
+                    | SecretStoreError::UnsupportedFormat
+                    | SecretStoreError::Crypto => ApplicationError::Internal,
+                    SecretStoreError::RateLimited => ApplicationError::RateLimited {
+                        code,
+                        message: "too many secret store unlock attempts".into(),
+                    },
+                }
+            }
             StorageError::Integrity(_) | StorageError::Domain(DomainError::Serialization(_)) => {
                 ApplicationError::Internal
             }

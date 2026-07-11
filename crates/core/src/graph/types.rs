@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::schema::{JsonSchemaSpec, SchemaCompilationDraft};
 
-use super::RouterMemoryBinding;
+use super::{LlmNodeConfig, RouterMemoryBinding};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +49,10 @@ pub enum DraftNodeKind {
     Output {
         output_key: String,
     },
+    Llm {
+        #[serde(flatten)]
+        config: Box<LlmNodeConfig>,
+    },
     Router {
         dsl_version: String,
         #[serde(default)]
@@ -92,14 +96,14 @@ pub struct OutputPortDefinition {
     pub schema: Option<JsonSchemaSpec>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConsumerInputBinding {
     #[serde(default)]
     pub selector: InputSelector,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputSelector {
     #[default]

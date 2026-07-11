@@ -1,7 +1,7 @@
 use sea_orm::{ConnectionTrait, TransactionTrait};
 use zhuangsheng_core::{
     canonical,
-    graph::{AppliedGraph, AppliedGraphDefinition, apply_graph},
+    graph::{AppliedGraph, AppliedGraphDefinition, apply_graph_with_dependencies},
 };
 
 use crate::{SqliteStore, StorageError, StorageResult};
@@ -10,6 +10,7 @@ use super::{
     ApplyGraphCommand, GraphRevisionView,
     draft::load_draft,
     helpers::*,
+    llm_dependencies::load_llm_dependencies,
     schema_bundle::{StoredSchemaBundle, StoredSchemaCompilation, verify_schema_bundle},
 };
 
@@ -47,10 +48,12 @@ impl SqliteStore {
         if draft.revision_token != command.expected_revision_token {
             return Err(StorageError::Conflict("graph_draft_revision"));
         }
-        let applied = apply_graph(
+        let dependencies = load_llm_dependencies(&transaction, &draft.document).await?;
+        let applied = apply_graph_with_dependencies(
             draft.document,
             command.operation_taxonomy_version,
             command.adapter_decoder_version,
+            &dependencies,
         )?;
         let now = now_ms();
         transaction.execute(sql(
@@ -178,9 +181,29 @@ pub(crate) async fn load_revision<C: ConnectionTrait>(
         "SELECT id, graph_id, revision_no, operation_taxonomy_version, adapter_decoder_version, definition_json, schema_bundle_object_id, content_hash, created_at FROM graph_revisions WHERE id = ?",
         vec![id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound { kind: "graph_revision", id: id.into() })?;
+    let taxonomy: i64 = row.try_get("", "operation_taxonomy_version")?;
+    let decoder: i64 = row.try_get("", "adapter_decoder_version")?;
+    if taxonomy <= 0
+        || decoder <= 0
+        || !zhuangsheng_core::compatibility::supports_operation_versions(
+            taxonomy as u32,
+            decoder as u32,
+        )
+    {
+        return Err(StorageError::Integrity(
+            "graph revision uses an unsupported operation version pair".into(),
+        ));
+    }
     let definition_json: String = row.try_get("", "definition_json")?;
     let definition: AppliedGraphDefinition = serde_json::from_str(&definition_json)
         .map_err(|error| StorageError::Integrity(error.to_string()))?;
+    if definition.operation_taxonomy_version != taxonomy as u32
+        || definition.adapter_decoder_version != decoder as u32
+    {
+        return Err(StorageError::Integrity(
+            "graph revision envelope and definition versions disagree".into(),
+        ));
+    }
     if canonical::hash(&definition)? != row.try_get::<String>("", "content_hash")? {
         return Err(StorageError::Integrity(
             "graph revision hash mismatch".into(),
@@ -189,8 +212,6 @@ pub(crate) async fn load_revision<C: ConnectionTrait>(
     let schema_bundle_id: String = row.try_get("", "schema_bundle_object_id")?;
     verify_schema_bundle(connection, &schema_bundle_id, &definition).await?;
     let revision_no: i64 = row.try_get("", "revision_no")?;
-    let taxonomy: i64 = row.try_get("", "operation_taxonomy_version")?;
-    let decoder: i64 = row.try_get("", "adapter_decoder_version")?;
     Ok(GraphRevisionView {
         id: row.try_get("", "id")?,
         graph_id: row.try_get("", "graph_id")?,

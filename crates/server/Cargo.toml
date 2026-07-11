@@ -16,6 +16,7 @@ tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 ulid.workspace = true
+zeroize.workspace = true
 zhuangsheng-core = { path = "../core" }
 zhuangsheng-storage = { path = "../storage" }
 

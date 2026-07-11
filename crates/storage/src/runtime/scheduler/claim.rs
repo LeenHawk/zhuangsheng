@@ -9,6 +9,7 @@ use crate::{
 
 use super::{
     events::{Event, append_event, finish_wakeup},
+    llm_snapshot::ensure_llm_snapshot,
     load::load_inputs,
     read_set::load_router_memory,
     router::load_control_snapshot,
@@ -155,6 +156,8 @@ async fn claim_attempt<C: ConnectionTrait>(
         .find(|node| node.id == node_id)
         .cloned()
         .ok_or_else(|| StorageError::Integrity("run node missing from revision".into()))?;
+    let execution_snapshot =
+        ensure_llm_snapshot(connection, &instance_id, &revision, &node, now).await?;
     let deadline = node
         .timeout_ms
         .and_then(|timeout| i64::try_from(timeout).ok())
@@ -200,6 +203,7 @@ async fn claim_attempt<C: ConnectionTrait>(
         inputs: load_inputs(connection, &node, &inputs_id).await?,
         memory: load_router_memory(connection, &attempt_id, &node).await?,
         router_control: load_control_snapshot(connection, &node, &instance_id).await?,
+        execution_snapshot,
         node,
     }))))
 }

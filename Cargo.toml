@@ -9,11 +9,18 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
+argon2 = "0.5"
 async-stream = "0.3"
 async-trait = "0.1"
 axum = "0.8"
+base64 = "0.22"
+chacha20poly1305 = "0.10"
 futures-core = "0.3"
+getrandom = "0.3"
+gproxy-protocol = { path = "samples/gproxy/crates/gproxy-protocol" }
 hex = "0.4"
+hkdf = "0.12"
+hmac = "0.12"
 http-body-util = "0.1"
 jsonschema = { version = "0.47", default-features = false, features = ["arbitrary-precision"] }
 num-bigint = "0.4"
@@ -24,14 +31,17 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_json_path = "0.7"
 sha2 = "0.10"
+subtle = "2.6"
 thiserror = "2.0"
 tempfile = "3.0"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "signal", "sync"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 ulid = "1.2"
+url = "2.5"
+zeroize = "1.8"
 
 [profile.dev]
 debug = 1

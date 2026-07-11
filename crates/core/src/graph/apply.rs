@@ -4,14 +4,24 @@ use crate::{DomainError, DomainResult, ValidationIssue, canonical, schema};
 
 use super::{
     AppliedGraph, AppliedGraphDefinition, DraftGraphEdge, DraftGraphNode, DraftNodeKind,
-    GraphDraft, GraphEdge, GraphNode, InputPortDefinition, OutputPortDefinition,
+    GraphDraft, GraphEdge, GraphNode, InputPortDefinition, LlmOutputSpec, OutputPortDefinition,
     SchemaSemanticDigest,
     cycle::validate_cycles,
+    llm_validation::{GraphApplyDependencies, normalize_llm_node},
     normalize::{normalize_limits, unreachable_warnings},
     router_validation::{normalize_router, validate_router},
 };
 
 pub fn apply_graph(draft: GraphDraft, taxonomy: u32, decoder: u32) -> DomainResult<AppliedGraph> {
+    apply_graph_with_dependencies(draft, taxonomy, decoder, &GraphApplyDependencies::default())
+}
+
+pub fn apply_graph_with_dependencies(
+    draft: GraphDraft,
+    taxonomy: u32,
+    decoder: u32,
+    dependencies: &GraphApplyDependencies,
+) -> DomainResult<AppliedGraph> {
     let mut issues = Vec::new();
     if taxonomy != crate::compatibility::OPERATION_TAXONOMY_VERSION {
         issues.push(issue(
@@ -26,11 +36,14 @@ pub fn apply_graph(draft: GraphDraft, taxonomy: u32, decoder: u32) -> DomainResu
         ));
     }
     let limits = normalize_limits(draft.limits, &mut issues);
-    let nodes: Vec<_> = draft
+    let mut nodes: Vec<_> = draft
         .nodes
         .into_iter()
         .map(|node| normalize_node(node, &mut issues))
         .collect();
+    for node in &mut nodes {
+        normalize_llm_node(node, dependencies, taxonomy, decoder, &mut issues);
+    }
     validate_nodes(&nodes, &limits, &mut issues);
     validate_selectors(&nodes, &mut issues);
     let edges = normalize_edges(draft.edges, &mut issues)?;
@@ -112,7 +125,9 @@ fn normalize_node(node: DraftGraphNode, issues: &mut Vec<ValidationIssue>) -> Gr
         if inputs.is_empty() {
             inputs.push(default_input());
         }
-        if outputs.is_empty() {
+        if outputs.is_empty() && matches!(node.kind, DraftNodeKind::Llm { .. }) {
+            outputs.push(default_output());
+        } else if outputs.is_empty() {
             issues.push(issue(
                 "router_outputs_required",
                 format!("/nodes/{}/outputs", node.id),
@@ -337,6 +352,11 @@ fn compile_schemas(
                 specs.push(spec);
             }
         }
+        if let DraftNodeKind::Llm { config } = &node.kind
+            && let Some(LlmOutputSpec::Json { schema, .. }) = &config.output
+        {
+            specs.push(schema);
+        }
     }
     for contract in contracts {
         if let Some(spec) = &contract.schema {
@@ -366,14 +386,21 @@ fn compile_schemas(
 }
 
 fn unique_ports(node: &GraphNode, issues: &mut Vec<ValidationIssue>) {
-    let mut names = HashSet::new();
-    for name in node
-        .inputs
-        .iter()
-        .map(|p| &p.name)
-        .chain(node.outputs.iter().map(|p| &p.name))
-    {
-        if name.is_empty() || !names.insert(name) {
+    for names in [
+        node.inputs
+            .iter()
+            .map(|port| &port.name)
+            .collect::<Vec<_>>(),
+        node.outputs
+            .iter()
+            .map(|port| &port.name)
+            .collect::<Vec<_>>(),
+    ] {
+        let mut seen = HashSet::new();
+        if names
+            .into_iter()
+            .any(|name| name.is_empty() || !seen.insert(name))
+        {
             issues.push(issue(
                 "duplicate_or_empty_port",
                 format!("/nodes/{}/ports", node.id),

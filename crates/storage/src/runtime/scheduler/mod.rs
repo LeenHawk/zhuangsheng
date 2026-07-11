@@ -4,6 +4,7 @@ mod claim;
 mod emit;
 mod events;
 mod finalize;
+mod llm_snapshot;
 mod load;
 mod long_term_read;
 mod read_set;

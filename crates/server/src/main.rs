@@ -5,7 +5,10 @@ use std::{
 };
 
 use zhuangsheng_core::{
-    application::{context::ContextService, graph::GraphService, memory::MemoryService},
+    application::{
+        channel::ChannelService, context::ContextService, graph::GraphService,
+        memory::MemoryService, preset::ContextPresetService, secret::SecretStoreService,
+    },
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
 };
@@ -25,9 +28,12 @@ async fn main() -> anyhow::Result<()> {
     let bind_address = env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let store = Arc::new(SqliteStore::connect(database_url).await?);
     let graph_service: Arc<dyn GraphService> = store.clone();
+    let channel_service: Arc<dyn ChannelService> = store.clone();
+    let preset_service: Arc<dyn ContextPresetService> = store.clone();
     let context_service: Arc<dyn ContextService> = store.clone();
     let memory_service: Arc<dyn MemoryService> = store.clone();
     let runtime_service: Arc<dyn RuntimeService> = store.clone();
+    let secret_service: Arc<dyn SecretStoreService> = store.clone();
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(Scheduler::new(
         scheduler_store,
@@ -39,9 +45,12 @@ async fn main() -> anyhow::Result<()> {
         listener,
         app(
             graph_service,
+            channel_service,
+            preset_service,
             context_service,
             memory_service,
             runtime_service,
+            secret_service,
         ),
     )
     .await?;

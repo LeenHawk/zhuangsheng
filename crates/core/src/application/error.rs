@@ -17,6 +17,12 @@ pub enum ApplicationError {
     Conflict(&'static str),
     #[error("idempotency key conflicts with another request")]
     IdempotencyConflict,
+    #[error("request result is no longer available: {code}")]
+    Gone { code: &'static str, message: String },
+    #[error("authentication failed: {code}")]
+    Unauthenticated { code: &'static str, message: String },
+    #[error("request rate limited: {code}")]
+    RateLimited { code: &'static str, message: String },
     #[error("storage is temporarily unavailable")]
     Unavailable,
     #[error("internal integrity failure")]

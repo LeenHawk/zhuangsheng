@@ -7,6 +7,8 @@ mod m20260712_000006_router_runtime;
 mod m20260712_000007_working_context;
 mod m20260712_000008_memory_read_sets;
 mod m20260712_000009_long_term_memory;
+mod m20260712_000010_llm_config;
+mod m20260712_000011_secret_store;
 
 use sea_orm_migration::prelude::*;
 
@@ -25,6 +27,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260712_000007_working_context::Migration),
             Box::new(m20260712_000008_memory_read_sets::Migration),
             Box::new(m20260712_000009_long_term_memory::Migration),
+            Box::new(m20260712_000010_llm_config::Migration),
+            Box::new(m20260712_000011_secret_store::Migration),
         ]
     }
 }
