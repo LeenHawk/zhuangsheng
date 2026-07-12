@@ -2,7 +2,7 @@ use zhuangsheng_core::{
     application::ApplicationError,
     canonical,
     llm::{
-        ActiveCountEffectCheckpoint, EffectRetryPolicy, LlmLogicalCallStatus, LlmLoopCheckpoint,
+        ActiveCountEffectCheckpoint, EffectRetryPolicy, LlmLogicalCallStatus,
         PrepareCountCallCommand, PrepareCountCallRetryCommand, RetryReadyResumeCountCall,
     },
 };
@@ -13,7 +13,7 @@ use super::{
     LocalLlmExecutor,
     counting_provider::execute_count,
     counting_state::{
-        CountRequestInput, count_pin, estimate_tokens, fence, initial_checkpoint,
+        CountRequestInput, CountedRequest, count_pin, estimate_tokens, fence, initial_checkpoint,
         prepared_checkpoint, reusable_completed_count,
     },
 };
@@ -21,7 +21,7 @@ use super::{
 pub(super) async fn count_request(
     executor: &LocalLlmExecutor,
     mut input: CountRequestInput<'_>,
-) -> Result<LlmLoopCheckpoint, ApplicationError> {
+) -> Result<CountedRequest, ApplicationError> {
     if input
         .prior_checkpoint
         .as_ref()
@@ -30,7 +30,10 @@ pub(super) async fn count_request(
         if input.retry.is_some() {
             return Err(ApplicationError::Internal);
         }
-        return input.prior_checkpoint.ok_or(ApplicationError::Internal);
+        return Ok(CountedRequest {
+            checkpoint: input.prior_checkpoint.ok_or(ApplicationError::Internal)?,
+            result: None,
+        });
     }
     let candidate_digest = canonical::hash_bytes(&input.candidate_bytes);
     let request_digest = canonical::hash_bytes(&input.request_bytes);
@@ -42,7 +45,10 @@ pub(super) async fn count_request(
         if input.retry.is_some() {
             return Err(ApplicationError::Internal);
         }
-        return Ok(checkpoint.clone());
+        return Ok(CountedRequest {
+            checkpoint: checkpoint.clone(),
+            result: Some(input.completed.take().ok_or(ApplicationError::Internal)?),
+        });
     }
     if let Some(retry) = input.retry.take() {
         return retry_count(executor, input, retry, candidate_digest, request_digest).await;
@@ -55,7 +61,7 @@ async fn prepare_count(
     input: CountRequestInput<'_>,
     candidate_digest: String,
     request_digest: String,
-) -> Result<LlmLoopCheckpoint, ApplicationError> {
+) -> Result<CountedRequest, ApplicationError> {
     let pin = count_pin(input.execution)?;
     let count_call_id = new_id("countcall");
     let effect_id = new_id("effect");
@@ -63,7 +69,6 @@ async fn prepare_count(
     let ordinal = input.prior_checkpoint.as_ref().map_or(1, |checkpoint| {
         checkpoint.count_calls_used.saturating_add(1)
     });
-    let initial = input.prior_checkpoint.is_none();
     let mut checkpoint = input
         .prior_checkpoint
         .clone()
@@ -107,7 +112,7 @@ async fn prepare_count(
                     backoff_ms: vec![50, 250],
                 },
                 checkpoint,
-                initial_transcript: initial.then(|| input.transcript.to_vec()),
+                candidate_transcript: Some(input.transcript.to_vec()),
             },
             input.now,
         )
@@ -138,7 +143,7 @@ async fn retry_count(
     retry: RetryReadyResumeCountCall,
     candidate_digest: String,
     request_digest: String,
-) -> Result<LlmLoopCheckpoint, ApplicationError> {
+) -> Result<CountedRequest, ApplicationError> {
     if retry.trim_candidate_bytes != input.candidate_bytes
         || retry.request_bytes != input.request_bytes
     {

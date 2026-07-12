@@ -361,7 +361,7 @@ fn prepare_command(setup: &CountSetup, checkpoint: LlmLoopCheckpoint) -> Prepare
             backoff_ms: vec![50],
         },
         checkpoint,
-        initial_transcript: None,
+        candidate_transcript: None,
     }
 }
 

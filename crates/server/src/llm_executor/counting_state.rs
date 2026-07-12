@@ -4,9 +4,9 @@ use zhuangsheng_core::{
     canonical,
     graph::LlmNodeExecutionSnapshot,
     llm::{
-        ActiveCountEffectCheckpoint, CountExecutionPin, EffectAttemptFence, LlmLogicalCallStatus,
-        LlmLoopCheckpoint, Operation, PreparedCountCall, RetryReadyResumeCountCall,
-        adapter::WireGenerationRequest,
+        ActiveCountEffectCheckpoint, CompletedResumeCountCall, CountExecutionPin,
+        EffectAttemptFence, LlmLogicalCallStatus, LlmLoopCheckpoint, Operation, PreparedCountCall,
+        RetryReadyResumeCountCall, adapter::WireGenerationRequest,
     },
     scheduler::ClaimedAttempt,
 };
@@ -19,9 +19,15 @@ pub(super) struct CountRequestInput<'a> {
     pub request_bytes: Vec<u8>,
     pub prior_checkpoint: Option<LlmLoopCheckpoint>,
     pub retry: Option<RetryReadyResumeCountCall>,
+    pub completed: Option<CompletedResumeCountCall>,
     pub provider_wire: Option<WireGenerationRequest>,
     pub credential: Option<&'a SecretValue>,
     pub now: i64,
+}
+
+pub(super) struct CountedRequest {
+    pub checkpoint: LlmLoopCheckpoint,
+    pub result: Option<CompletedResumeCountCall>,
 }
 
 pub(super) fn prepared_checkpoint(

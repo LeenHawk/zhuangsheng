@@ -4,15 +4,18 @@ use zhuangsheng_core::{
     canonical,
     graph::LlmNodeExecutionSnapshot,
     llm::{
-        CountCallOutcome, CountResultSource, FinishCountCallCommand, LlmLogicalCallStatus,
-        LlmLoopCheckpoint, Operation, StartCountCallCommand,
+        CompletedResumeCountCall, CountCallOutcome, CountResultSource, FinishCountCallCommand,
+        LlmLogicalCallStatus, LlmLoopCheckpoint, Operation, StartCountCallCommand,
         adapter::{WireGenerationRequest, decode_count_terminal, encode_count_request},
         ir::LlmRequestIr,
     },
     scheduler::ClaimedAttempt,
 };
 
-use super::{LocalLlmExecutor, counting_state::fence};
+use super::{
+    LocalLlmExecutor,
+    counting_state::{CountedRequest, fence},
+};
 
 pub(super) fn provider_count_wire(
     execution: &LlmNodeExecutionSnapshot,
@@ -53,7 +56,7 @@ pub(super) async fn execute_count(
     credential: Option<&SecretValue>,
     estimate: u64,
     now: i64,
-) -> Result<LlmLoopCheckpoint, ApplicationError> {
+) -> Result<CountedRequest, ApplicationError> {
     let (token_count, source) = if let Some(wire) = provider_wire {
         checkpoint
             .active_count_effect
@@ -113,5 +116,11 @@ pub(super) async fn execute_count(
     if let Some(pause) = &executor.count_completed_pause {
         pause.wait_once().await;
     }
-    Ok(completed)
+    Ok(CountedRequest {
+        checkpoint: completed,
+        result: Some(CompletedResumeCountCall {
+            token_count,
+            source,
+        }),
+    })
 }

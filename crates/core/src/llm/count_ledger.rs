@@ -37,7 +37,7 @@ pub struct PrepareCountCallCommand {
     pub effect_idempotency_key: String,
     pub retry_policy: EffectRetryPolicy,
     pub checkpoint: LlmLoopCheckpoint,
-    pub initial_transcript: Option<Vec<LlmTurnItemIr>>,
+    pub candidate_transcript: Option<Vec<LlmTurnItemIr>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +62,13 @@ pub struct RetryReadyResumeCountCall {
     pub effect_id: String,
     pub trim_candidate_bytes: Vec<u8>,
     pub request_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletedResumeCountCall {
+    pub token_count: u64,
+    pub source: CountResultSource,
 }
 
 pub struct StartCountCallCommand {

@@ -200,24 +200,22 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
         let safety_margin = (context_window / 20)
             .max(256)
             .min(context_window.saturating_sub(reserved_output));
-        let assembly = match assemble_context(
-            &ContextAssemblyInput {
-                node_input,
-                config: execution.context.clone(),
-                bindings: context_snapshot.bindings.clone(),
-                budget: ContextBudgetInput {
-                    context_window_tokens: context_window,
-                    reserved_output_tokens: reserved_output,
-                    fixed_request_tokens: fixed_request_estimate(execution),
-                    safety_margin_tokens: safety_margin,
-                    count_source: ContextCountSource::Estimate,
-                },
-                read_set_ref: context_snapshot.read_set_ref.clone(),
-                read_set_digest: context_snapshot.read_set_digest.clone(),
-                allow_sensitive: false,
+        let mut assembly_input = ContextAssemblyInput {
+            node_input,
+            config: execution.context.clone(),
+            bindings: context_snapshot.bindings.clone(),
+            budget: ContextBudgetInput {
+                context_window_tokens: context_window,
+                reserved_output_tokens: reserved_output,
+                fixed_request_tokens: fixed_request_estimate(execution),
+                safety_margin_tokens: safety_margin,
+                count_source: ContextCountSource::Estimate,
             },
-            &EstimateTokenCounter,
-        ) {
+            read_set_ref: context_snapshot.read_set_ref.clone(),
+            read_set_digest: context_snapshot.read_set_digest.clone(),
+            allow_sensitive: false,
+        };
+        let mut assembly = match assemble_context(&assembly_input, &EstimateTokenCounter) {
             Ok(output) => output,
             Err(error) => return Ok(assembly_failure(error)),
         };
@@ -255,7 +253,7 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
             }
             ChannelCredential::None => None,
         };
-        let base_transcript_len = assembly.messages.len();
+        let mut base_transcript_len = assembly.messages.len();
         let resume = resume_attempt(
             self,
             attempt,
@@ -276,6 +274,7 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
         let mut recovered_completed = resume.recovered_completed;
         let mut output_repairs_used = resume.output_repairs_used;
         let mut retry_ready_count_call = resume.retry_ready_count_call;
+        let mut completed_count_call = resume.completed_count_call;
         loop {
             let completed = if let Some(completed) = recovered_completed.take() {
                 completed
@@ -307,6 +306,8 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                         built,
                         prior_checkpoint: prior_checkpoint.take(),
                         retry_count: retry_ready_count_call.take(),
+                        completed_count: completed_count_call.take(),
+                        input_token_limit: assembly.budget_report.available_input_tokens,
                         credential: credential.as_ref(),
                         reserved_output,
                         now,
@@ -315,6 +316,44 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                 .await?
                 {
                     ModelCallResult::Completed(completed) => *completed,
+                    ModelCallResult::Reassemble {
+                        checkpoint,
+                        token_count,
+                        overage,
+                        source,
+                    } => {
+                        if checkpoint.model_calls_used != 0 || !transcript_tail.is_empty() {
+                            return Err(ApplicationError::Internal);
+                        }
+                        assembly_input.budget.fixed_request_tokens = assembly_input
+                            .budget
+                            .fixed_request_tokens
+                            .checked_add(overage)
+                            .ok_or(ApplicationError::Internal)?;
+                        assembly_input.budget.count_source = match source {
+                            zhuangsheng_core::llm::CountResultSource::Provider => {
+                                ContextCountSource::Provider
+                            }
+                            zhuangsheng_core::llm::CountResultSource::Local => {
+                                ContextCountSource::Local
+                            }
+                            zhuangsheng_core::llm::CountResultSource::Estimate => {
+                                ContextCountSource::Estimate
+                            }
+                        };
+                        assembly = match assemble_context(&assembly_input, &EstimateTokenCounter) {
+                            Ok(output) => output,
+                            Err(error) => return Ok(assembly_failure(error)),
+                        };
+                        base_transcript_len = assembly.messages.len();
+                        prior_checkpoint = Some(*checkpoint);
+                        completed_count_call =
+                            Some(zhuangsheng_core::llm::CompletedResumeCountCall {
+                                token_count,
+                                source,
+                            });
+                        continue;
+                    }
                     ModelCallResult::Terminal(result) => return Ok(result),
                 }
             };

@@ -34,8 +34,17 @@ pub(super) fn resume_active_count(
             if state.retry_ready_count_call.is_some() {
                 return Err(ApplicationError::Internal);
             }
+            output.completed_count_call = Some(
+                state
+                    .completed_count_call
+                    .take()
+                    .ok_or(ApplicationError::Internal)?,
+            );
         }
         LlmLogicalCallStatus::RetryReady => {
+            if state.completed_count_call.is_some() {
+                return Err(ApplicationError::Internal);
+            }
             output.retry_ready_count_call = Some(
                 state
                     .retry_ready_count_call

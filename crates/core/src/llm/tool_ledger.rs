@@ -227,6 +227,7 @@ pub struct LlmResumeState {
     pub pending_output_repair: Option<super::PendingLlmOutputRepair>,
     pub retry_ready_model_call: Option<RetryReadyResumeModelCall>,
     pub retry_ready_count_call: Option<super::RetryReadyResumeCountCall>,
+    pub completed_count_call: Option<super::CompletedResumeCountCall>,
     pub prepared_tool_calls: Vec<PreparedResumeToolCall>,
     pub retry_ready_tool_calls: Vec<RetryReadyResumeToolCall>,
 }

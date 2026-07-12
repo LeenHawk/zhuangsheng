@@ -86,10 +86,12 @@ impl SqliteStore {
         if checkpoint.context_snapshot_ref.is_empty() {
             checkpoint.context_snapshot_ref = context.execution_snapshot_object_id.clone();
         }
-        if checkpoint.transcript_ref.is_empty() {
-            let transcript = command.initial_transcript.as_ref().ok_or_else(|| {
-                StorageError::InvalidArgument("initial count transcript is missing".into())
-            })?;
+        if let Some(transcript) = command.candidate_transcript.as_ref() {
+            if checkpoint.model_calls_used != 0 {
+                return Err(StorageError::InvalidArgument(
+                    "count candidate cannot replace an active model transcript".into(),
+                ));
+            }
             let authoritative_read_set =
                 compute_llm_read_set_digest(&transaction, &command.originating_attempt_id).await?;
             if authoritative_read_set != checkpoint.read_set_digest {
@@ -103,9 +105,9 @@ impl SqliteStore {
             }))?;
             checkpoint.transcript_ref =
                 put_inline_object(&transaction, &transcript_bytes, now).await?;
-        } else if command.initial_transcript.is_some() {
+        } else if checkpoint.transcript_ref.is_empty() {
             return Err(StorageError::InvalidArgument(
-                "initial transcript is only valid without a checkpoint transcript".into(),
+                "initial count transcript is missing".into(),
             ));
         }
         let active = checkpoint.active_count_effect.as_mut().ok_or_else(|| {
@@ -343,7 +345,7 @@ fn validate_prepare(command: &PrepareCountCallCommand) -> StorageResult<()> {
         || command.retry_policy.max_attempts == 0
         || command.retry_policy.max_attempts > 32
         || command
-            .initial_transcript
+            .candidate_transcript
             .as_ref()
             .is_some_and(|items| items.len() > 4096)
     {

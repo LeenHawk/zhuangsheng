@@ -82,7 +82,7 @@ async fn expired_provider_count_reuses_logical_call_via_reconcile() {
                     backoff_ms: vec![10],
                 },
                 checkpoint: prepared_checkpoint,
-                initial_transcript: None,
+                candidate_transcript: None,
             },
             now,
         )

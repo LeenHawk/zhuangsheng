@@ -2,9 +2,9 @@ use zhuangsheng_core::{
     application::{ApplicationError, secret::SecretValue},
     graph::LlmNodeExecutionSnapshot,
     llm::{
-        ActiveModelEffectCheckpoint, LlmLogicalCallStatus, LlmLoopCheckpoint,
-        LlmRequestBuildOutput, PrepareInitialModelCallCommand, PrepareModelCallCommand,
-        ResolvedRequestTool, RetryReadyResumeCountCall,
+        ActiveModelEffectCheckpoint, CompletedResumeCountCall, LlmLogicalCallStatus,
+        LlmLoopCheckpoint, LlmRequestBuildOutput, PrepareInitialModelCallCommand,
+        PrepareModelCallCommand, ResolvedRequestTool, RetryReadyResumeCountCall,
         adapter::{AdapterExecutionOptions, DecodedTerminalDraft, encode_generation_request},
     },
     scheduler::{ClaimedAttempt, LlmAttemptExecution},
@@ -25,6 +25,12 @@ use super::{
 
 pub(super) enum ModelCallResult {
     Completed(Box<CompletedModelCall>),
+    Reassemble {
+        checkpoint: Box<LlmLoopCheckpoint>,
+        token_count: u64,
+        overage: u64,
+        source: zhuangsheng_core::llm::CountResultSource,
+    },
     Terminal(LlmAttemptExecution),
 }
 
@@ -34,6 +40,8 @@ pub(super) struct ModelCallInput<'a> {
     pub built: LlmRequestBuildOutput,
     pub prior_checkpoint: Option<LlmLoopCheckpoint>,
     pub retry_count: Option<RetryReadyResumeCountCall>,
+    pub completed_count: Option<CompletedResumeCountCall>,
+    pub input_token_limit: u64,
     pub credential: Option<&'a SecretValue>,
     pub reserved_output: u64,
     pub now: i64,
@@ -57,6 +65,8 @@ pub(super) async fn run_model_call(
         built,
         prior_checkpoint,
         retry_count,
+        completed_count,
+        input_token_limit,
         credential,
         reserved_output,
         now,
@@ -88,24 +98,44 @@ pub(super) async fn run_model_call(
         durable_generation_request(&execution.operation, &built.request, options)?;
     let provider_count_wire = provider_count_wire(execution, &wire);
     let count_request_bytes = durable_count_request(&built.request, provider_count_wire.as_ref())?;
-    let prior_checkpoint = Some(
-        count_request(
-            executor,
-            CountRequestInput {
-                attempt,
-                execution,
-                transcript: &built.request.transcript,
-                candidate_bytes: count_candidate_bytes(&built.request)?,
-                request_bytes: count_request_bytes,
-                prior_checkpoint,
-                retry: retry_count,
-                provider_wire: provider_count_wire,
-                credential,
-                now,
-            },
-        )
-        .await?,
-    );
+    let counted = count_request(
+        executor,
+        CountRequestInput {
+            attempt,
+            execution,
+            transcript: &built.request.transcript,
+            candidate_bytes: count_candidate_bytes(&built.request)?,
+            request_bytes: count_request_bytes,
+            prior_checkpoint,
+            retry: retry_count,
+            completed: completed_count,
+            provider_wire: provider_count_wire,
+            credential,
+            now,
+        },
+    )
+    .await?;
+    if let Some(result) = counted.result.as_ref()
+        && result.token_count > input_token_limit
+    {
+        let count_limit = execution
+            .limits
+            .max_count_calls
+            .ok_or(ApplicationError::Internal)?;
+        if counted.checkpoint.count_calls_used >= count_limit {
+            return Ok(ModelCallResult::Terminal(finalize_failure(
+                "llm_count_budget_exceeded",
+                "provider token count exceeds the input budget after bounded trimming",
+            )));
+        }
+        return Ok(ModelCallResult::Reassemble {
+            checkpoint: Box::new(counted.checkpoint),
+            token_count: result.token_count,
+            overage: result.token_count - input_token_limit,
+            source: result.source,
+        });
+    }
+    let prior_checkpoint = Some(counted.checkpoint);
     let model_call_id = new_id("modelcall");
     let effect_id = new_id("effect");
     let effect_attempt_id = new_id("effectattempt");

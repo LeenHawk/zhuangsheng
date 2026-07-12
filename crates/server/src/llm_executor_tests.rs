@@ -22,7 +22,8 @@ use zhuangsheng_core::{
         adapter::WireGenerationRequest,
         context::{
             ContextAssemblyMode, ContextAssemblySpec, ContextBudgetPolicy, ContextBudgetStrategy,
-            ContextItem, ContextPosition, ContextRole, ContextSource, TokenBudgetHint,
+            ContextItem, ContextPosition, ContextRole, ContextSource, OverflowPolicy,
+            TokenBudgetHint,
         },
     },
     runtime::{RunContextCommand, RunOutputValueView, RunStatus, StartRunCommand},
@@ -273,7 +274,7 @@ async fn create_llm_graph_inner(
         .publish_context_preset_version(PublishContextPresetVersionCommand {
             preset_id: preset.id.clone(),
             expected_head_version_id: None,
-            spec: context_spec(),
+            spec: context_spec(provider_count),
             idempotency_key: "llm-e2e-preset-version".into(),
         })
         .await
@@ -316,29 +317,50 @@ async fn create_llm_graph_inner(
         .id
 }
 
-fn context_spec() -> ContextAssemblySpec {
+fn context_spec(with_optional: bool) -> ContextAssemblySpec {
+    let mut items = vec![ContextItem {
+        id: "user-input".into(),
+        name: None,
+        enabled: true,
+        requested_role: ContextRole::User,
+        source: ContextSource::Input {
+            path: "/default/message".into(),
+        },
+        position: ContextPosition::UserInput,
+        order: 0,
+        priority: 100,
+        insertion_depth: 0,
+        budget: TokenBudgetHint {
+            max_tokens: None,
+            required: true,
+        },
+        overflow: None,
+    }];
+    if with_optional {
+        items.push(ContextItem {
+            id: "optional-lore".into(),
+            name: None,
+            enabled: true,
+            requested_role: ContextRole::Context,
+            source: ContextSource::Literal {
+                text: "lore ".repeat(800),
+            },
+            position: ContextPosition::Start,
+            order: 0,
+            priority: 1,
+            insertion_depth: 0,
+            budget: TokenBudgetHint {
+                max_tokens: None,
+                required: false,
+            },
+            overflow: Some(OverflowPolicy::Drop),
+        });
+    }
     ContextAssemblySpec {
         id: None,
         name: Some("Role Play".into()),
         mode: ContextAssemblyMode::Chat,
-        items: vec![ContextItem {
-            id: "user-input".into(),
-            name: None,
-            enabled: true,
-            requested_role: ContextRole::User,
-            source: ContextSource::Input {
-                path: "/default/message".into(),
-            },
-            position: ContextPosition::UserInput,
-            order: 0,
-            priority: 100,
-            insertion_depth: 0,
-            budget: TokenBudgetHint {
-                max_tokens: None,
-                required: true,
-            },
-            overflow: None,
-        }],
+        items,
         budget: Some(ContextBudgetPolicy {
             max_input_tokens: None,
             strategy: Some(ContextBudgetStrategy::Strict),

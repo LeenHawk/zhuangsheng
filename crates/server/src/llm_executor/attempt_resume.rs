@@ -34,6 +34,7 @@ pub(super) struct ResumeLoopState {
     pub recovered_completed: Option<CompletedModelCall>,
     pub output_repairs_used: u64,
     pub retry_ready_count_call: Option<zhuangsheng_core::llm::RetryReadyResumeCountCall>,
+    pub completed_count_call: Option<zhuangsheng_core::llm::CompletedResumeCountCall>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -121,6 +122,9 @@ pub(super) async fn resume_attempt(
                     ModelCallResult::Completed(completed) => *completed,
                     ModelCallResult::Terminal(result) => {
                         return Ok(AttemptResume::Terminal(result));
+                    }
+                    ModelCallResult::Reassemble { .. } => {
+                        return Err(ApplicationError::Internal);
                     }
                 },
             );
