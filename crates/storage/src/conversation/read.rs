@@ -1,5 +1,8 @@
 use sea_orm::ConnectionTrait;
-use zhuangsheng_core::conversation::{ConversationContextV1, ConversationView};
+use zhuangsheng_core::conversation::{
+    ConversationContextV1, ConversationInputShape, ConversationRunProfile, ConversationRunSpec,
+    ConversationView,
+};
 
 use crate::{StorageError, StorageResult, graph::helpers::sql};
 
@@ -8,7 +11,7 @@ pub(crate) async fn load_conversation<C: ConnectionTrait>(
     conversation_id: &str,
 ) -> StorageResult<ConversationView> {
     let row = connection.query_one_raw(sql(
-        "SELECT c.id, c.title, c.context_id, c.active_branch_id, c.active_head_commit_id, c.created_at, c.updated_at, ctx.kind AS context_kind, ctx.status AS context_status, b.status AS branch_status, b.head_commit_id AS branch_head, p.head_commit_id AS projection_head, p.projection_json, vc.aggregate_id AS commit_context, vc.lineage_key AS commit_branch FROM conversations c JOIN contexts ctx ON ctx.id = c.context_id JOIN context_branches b ON b.context_id = c.context_id AND b.id = c.active_branch_id JOIN materialized_projections p ON p.aggregate_kind = 'working_context' AND p.aggregate_id = c.context_id AND p.lineage_key = c.active_branch_id JOIN version_commits vc ON vc.id = c.active_head_commit_id AND vc.aggregate_kind = 'working_context' WHERE c.id = ?",
+        "SELECT c.id, c.title, c.context_id, c.active_branch_id, c.active_head_commit_id, c.default_graph_revision_id, c.default_reply_output_key, c.default_input_shape, c.run_profile_revision_no, c.created_at, c.updated_at, ctx.kind AS context_kind, ctx.status AS context_status, b.status AS branch_status, b.head_commit_id AS branch_head, p.head_commit_id AS projection_head, p.projection_json, vc.aggregate_id AS commit_context, vc.lineage_key AS commit_branch FROM conversations c JOIN contexts ctx ON ctx.id = c.context_id JOIN context_branches b ON b.context_id = c.context_id AND b.id = c.active_branch_id JOIN materialized_projections p ON p.aggregate_kind = 'working_context' AND p.aggregate_id = c.context_id AND p.lineage_key = c.active_branch_id JOIN version_commits vc ON vc.id = c.active_head_commit_id AND vc.aggregate_kind = 'working_context' WHERE c.id = ?",
         vec![conversation_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound { kind: "conversation", id: conversation_id.into() })?;
     let active_head: String = row.try_get("", "active_head_commit_id")?;
@@ -32,12 +35,43 @@ pub(crate) async fn load_conversation<C: ConnectionTrait>(
     projection
         .validate()
         .map_err(|message| StorageError::Integrity(message.into()))?;
+    let graph_revision_id: Option<String> = row.try_get("", "default_graph_revision_id")?;
+    let reply_output_key: Option<String> = row.try_get("", "default_reply_output_key")?;
+    let input_shape: Option<String> = row.try_get("", "default_input_shape")?;
+    let revision_no: Option<i64> = row.try_get("", "run_profile_revision_no")?;
+    let run_profile = match (
+        graph_revision_id,
+        reply_output_key,
+        input_shape.as_deref(),
+        revision_no,
+    ) {
+        (None, None, None, None) => None,
+        (
+            Some(graph_revision_id),
+            Some(reply_output_key),
+            Some("conversation_message_v1"),
+            Some(revision_no),
+        ) if revision_no > 0 => Some(ConversationRunProfile {
+            run: ConversationRunSpec {
+                graph_revision_id,
+                reply_output_key,
+                input_shape: ConversationInputShape::ConversationMessageV1,
+            },
+            revision_no: revision_no as u64,
+        }),
+        _ => {
+            return Err(StorageError::Integrity(
+                "conversation run profile is corrupt".into(),
+            ));
+        }
+    };
     Ok(ConversationView {
         id: row.try_get("", "id")?,
         title: row.try_get("", "title")?,
         context_id,
         active_branch_id: branch_id,
         active_head_commit_id: active_head,
+        run_profile,
         created_at: row.try_get("", "created_at")?,
         updated_at: row.try_get("", "updated_at")?,
     })

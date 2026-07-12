@@ -15,6 +15,7 @@ use crate::{AppServices, StreamEventHub, app};
 mod artifact;
 mod config;
 mod conversation;
+mod conversation_profile;
 mod secret;
 
 fn test_app(store: Arc<SqliteStore>) -> axum::Router {

@@ -169,6 +169,15 @@ Candidate 以 `(turnId, runId)` 唯一，不需要另一份 candidate ID。Messa
 
 系统 schema registry 发布唯一内建的 `AssistantReplyPayloadV1` canonical `JsonSchemaSpec`。其 document 是 closed object：只允许且必须包含 `schemaVersion/type/content`，前两项分别为 `const: 1` 和 `const: "assistant_reply"`，`content` item 使用本地 `$defs` 完整嵌入 canonical `LlmContentPartIr`/`ArtifactRef` schema，`additionalProperties=false`，不使用 remote ref。V1 canonical cap vector 恰为 `16-domain-consistency.md` 列出的 phase-one baseline hard caps；Release manifest 固定该 document 的 `canonicalDocumentHash`、profile/format version 和 cap vector，任一变化都要发布新 contract version，不能根据当前默认值在启动时临时生成另一份 schema。
 
+V1 release manifest 固定如下；两者均使用 schema/profile/format version `1` 和 phase-one baseline cap vector：
+
+| Contract | `canonicalDocumentHash` |
+| --- | --- |
+| `ConversationRunInputV1` / `conversation_message_v1` | `sha256:83957b98515709421dd4b3c2b388032cc6f14546635512b83601ed995ff13bfc` |
+| `AssistantReplyPayloadV1` | `sha256:64e3f242a84362910d87ae9ba004a971ab3f59c33886980faec80f4a79c4695d` |
+
+实现必须从内建 canonical source 重算并与 manifest 常量相等；修改 document、profile、format 或 cap 时发布新 contract version，不能原地替换这些常量。
+
 创建 candidate 前校验 `replyOutputKey` 在该 GraphRevision output contract 中是 `required + single`，且其 compilation 的 `canonicalDocumentHash` 必须与上述内建 schema 完全相同，owner effective limits 每一项都必须 `<=` canonical limit cap。完整 `schemaHash` 包含 owner-specific limits，因此允许在相同 document 下因进一步收窄 limits 而不同。阶段一不尝试判定任意 JSON Schema 的“可赋值/子类型”关系；未来若接受其他形状，必须发布显式 compatibility ID + canonical-document-hash allowlist。Candidate 持久化该 key，projector 不读取后来修改的 Conversation 配置或猜测“第一个 output”。Projector 仍使用 owner 固定的完整 `schemaHash/compiled payload` 对实例执行 exact validation，只接受该 tagged object 并直接使用其 `content`，不对任意 JSON 做 stringify、字段猜测或隐式转换。普通 GraphRevision 无需声明 conversation-specific 字段；同一图的不同 workflow binding 可选择不同合法 reply key。
 
 Conversation workflow 的 run input 不由 adapter 把用户消息猜成任意 JSON。阶段一只支持 `conversation_message_v1`：ConversationService 预分配 Turn/message/commit IDs，以已持久的 user content 构造 canonical `ConversationRunInputV1`，要求 GraphRevision 显式存在且验证通过对应 `runInputSchema`，再把同一份不可变 RunInputRef 交给 core create-run 事务。Regenerate 必须从原 Turn 重用相同 user message/content/commit 构造同一 input，不接受另一份隐式输入；新 graph revision 不接受该 schema 时创建直接失败。

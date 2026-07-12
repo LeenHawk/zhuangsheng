@@ -2,11 +2,12 @@ use axum::{
     Json, Router,
     extract::{Path, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use serde::Deserialize;
 use zhuangsheng_core::{
-    application::conversation::CreateConversationCommand, conversation::ConversationView,
+    application::conversation::{CreateConversationCommand, UpdateConversationRunProfileCommand},
+    conversation::{ConversationRunProfile, ConversationRunSpec, ConversationView},
 };
 
 use super::{
@@ -16,14 +17,27 @@ use super::{
 };
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateConversationBody {
     title: Option<String>,
+    default_run: Option<ConversationRunSpec>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateRunProfileBody {
+    expected_revision_no: u64,
+    run: ConversationRunSpec,
 }
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/conversations", post(create_conversation))
         .route("/v1/conversations/{conversation_id}", get(get_conversation))
+        .route(
+            "/v1/conversations/{conversation_id}/run-profile",
+            put(update_run_profile),
+        )
 }
 
 async fn create_conversation(
@@ -36,10 +50,31 @@ async fn create_conversation(
         .conversation_service
         .create_conversation(CreateConversationCommand {
             title: body.title,
+            default_run: body.default_run,
             idempotency_key: required_header(&headers, "idempotency-key")?,
         })
         .await?;
     Ok((StatusCode::CREATED, Json(conversation)))
+}
+
+async fn update_run_profile(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<String>,
+    headers: HeaderMap,
+    body: Result<Json<UpdateRunProfileBody>, JsonRejection>,
+) -> ApiResult<Json<ConversationRunProfile>> {
+    let body = json_body(body)?;
+    Ok(Json(
+        state
+            .conversation_service
+            .update_run_profile(UpdateConversationRunProfileCommand {
+                conversation_id,
+                expected_revision_no: body.expected_revision_no,
+                run: body.run,
+                idempotency_key: required_header(&headers, "idempotency-key")?,
+            })
+            .await?,
+    ))
 }
 
 async fn get_conversation(

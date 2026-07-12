@@ -51,6 +51,25 @@ impl Default for JsonSchemaLimits {
     }
 }
 
+impl JsonSchemaLimits {
+    pub fn fits_within(&self, cap: &Self) -> bool {
+        self.max_schema_bytes <= cap.max_schema_bytes
+            && self.max_schema_nodes <= cap.max_schema_nodes
+            && self.max_schema_depth <= cap.max_schema_depth
+            && self.max_local_refs <= cap.max_local_refs
+            && self.max_ref_depth <= cap.max_ref_depth
+            && self.max_regex_bytes <= cap.max_regex_bytes
+            && self.max_instance_bytes <= cap.max_instance_bytes
+            && self.max_instance_depth <= cap.max_instance_depth
+            && self.max_collection_items <= cap.max_collection_items
+            && self.max_string_bytes <= cap.max_string_bytes
+            && self.max_number_digits <= cap.max_number_digits
+            && self.max_number_exponent_magnitude <= cap.max_number_exponent_magnitude
+            && self.max_validation_errors <= cap.max_validation_errors
+            && self.validation_fuel <= cap.validation_fuel
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonSchemaSpec {

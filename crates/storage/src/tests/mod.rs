@@ -6,6 +6,7 @@ mod config;
 mod context_patch;
 mod context_replay;
 mod conversation_root;
+mod conversation_run_profile;
 mod graph_apply;
 mod graph_commands;
 mod llm_count_ledger;

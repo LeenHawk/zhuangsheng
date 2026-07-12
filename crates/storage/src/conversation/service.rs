@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use zhuangsheng_core::{
     application::{
         ApplicationError,
-        conversation::{ConversationService, CreateConversationCommand},
+        conversation::{
+            ConversationService, CreateConversationCommand, UpdateConversationRunProfileCommand,
+        },
     },
-    conversation::ConversationView,
+    conversation::{ConversationRunProfile, ConversationView},
 };
 
 use crate::{SqliteStore, graph::helpers::now_ms};
@@ -27,6 +29,15 @@ impl ConversationService for SqliteStore {
         conversation_id: &str,
     ) -> Result<ConversationView, ApplicationError> {
         load_conversation(&self.db, conversation_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn update_run_profile(
+        &self,
+        command: UpdateConversationRunProfileCommand,
+    ) -> Result<ConversationRunProfile, ApplicationError> {
+        self.update_conversation_run_profile_at(command, now_ms())
             .await
             .map_err(Into::into)
     }

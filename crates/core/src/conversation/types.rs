@@ -58,6 +58,43 @@ pub struct ConversationView {
     pub context_id: String,
     pub active_branch_id: String,
     pub active_head_commit_id: String,
+    pub run_profile: Option<ConversationRunProfile>,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationInputShape {
+    ConversationMessageV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationRunSpec {
+    pub graph_revision_id: String,
+    pub reply_output_key: String,
+    pub input_shape: ConversationInputShape,
+}
+
+impl ConversationRunSpec {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.graph_revision_id.is_empty()
+            || self.graph_revision_id.len() > 128
+            || self.reply_output_key.is_empty()
+            || self.reply_output_key.len() > 128
+            || self.input_shape != ConversationInputShape::ConversationMessageV1
+        {
+            return Err("conversation run spec is invalid");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationRunProfile {
+    #[serde(flatten)]
+    pub run: ConversationRunSpec,
+    pub revision_no: u64,
 }

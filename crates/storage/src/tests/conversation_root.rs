@@ -11,6 +11,7 @@ async fn conversation_root_is_atomic_durable_and_idempotent() {
     let store = store().await;
     let command = CreateConversationCommand {
         title: Some("The Moonlit Archive".into()),
+        default_run: None,
         idempotency_key: "create-conversation-root".into(),
     };
     let created = store
@@ -63,6 +64,7 @@ async fn conversation_root_is_atomic_durable_and_idempotent() {
             .create_conversation_at(
                 CreateConversationCommand {
                     title: Some("Different title".into()),
+                    default_run: None,
                     idempotency_key: "create-conversation-root".into(),
                 },
                 NOW + 2,
@@ -80,6 +82,7 @@ async fn invalid_or_corrupt_conversation_root_fails_closed() {
             .create_conversation_at(
                 CreateConversationCommand {
                     title: Some("bad\ntitle".into()),
+                    default_run: None,
                     idempotency_key: "invalid-conversation".into(),
                 },
                 NOW,
@@ -92,6 +95,7 @@ async fn invalid_or_corrupt_conversation_root_fails_closed() {
         .create_conversation_at(
             CreateConversationCommand {
                 title: None,
+                default_run: None,
                 idempotency_key: "valid-conversation".into(),
             },
             NOW + 1,

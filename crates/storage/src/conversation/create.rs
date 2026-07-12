@@ -3,15 +3,20 @@ use serde_json::json;
 use zhuangsheng_core::{
     application::conversation::CreateConversationCommand,
     canonical,
-    conversation::{ConversationContextV1, ConversationView},
+    conversation::{ConversationContextV1, ConversationRunProfile, ConversationView},
 };
 
 use crate::{
     SqliteStore, StorageError, StorageResult,
-    graph::helpers::{load_object_json, new_id, put_inline_object, sql},
+    graph::helpers::{new_id, put_inline_object, sql},
 };
 
-use super::read::load_conversation;
+use super::{
+    contract::validate_run_spec,
+    events::append_event,
+    read::load_conversation,
+    receipt::{Receipt, finish, replay},
+};
 
 impl SqliteStore {
     pub async fn create_conversation_at(
@@ -24,9 +29,17 @@ impl SqliteStore {
             "schemaVersion":1,
             "command":"create_conversation",
             "title":command.title,
+            "defaultRun":command.default_run,
         }))?;
         let transaction = self.db.begin().await?;
-        if let Some(view) = replay(&transaction, &command.idempotency_key, &digest).await? {
+        if let Some(view) = replay::<_, ConversationView>(
+            &transaction,
+            "conversation:create",
+            &command.idempotency_key,
+            &digest,
+        )
+        .await?
+        {
             let current = load_conversation(&transaction, &view.id).await?;
             if current.context_id != view.context_id {
                 return Err(StorageError::Integrity(
@@ -40,6 +53,16 @@ impl SqliteStore {
         let context_id = new_id("context");
         let branch_id = new_id("branch");
         let commit_id = new_id("commit");
+        if let Some(run) = &command.default_run {
+            validate_run_spec(&transaction, run).await?;
+        }
+        let run_profile = command
+            .default_run
+            .clone()
+            .map(|run| ConversationRunProfile {
+                run,
+                revision_no: 1,
+            });
         let snapshot = ConversationContextV1::empty();
         let snapshot_id =
             put_inline_object(&transaction, &canonical::to_vec(&snapshot)?, now).await?;
@@ -60,8 +83,8 @@ impl SqliteStore {
             vec![context_id.clone().into(), branch_id.clone().into(), commit_id.clone().into(), canonical::to_string(&snapshot)?.into(), now.into()],
         )).await?;
         transaction.execute_raw(sql(
-            "INSERT INTO conversations (id, context_id, active_branch_id, active_head_commit_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            vec![conversation_id.clone().into(), context_id.clone().into(), branch_id.clone().into(), commit_id.clone().into(), command.title.clone().into(), now.into(), now.into()],
+            "INSERT INTO conversations (id, context_id, active_branch_id, active_head_commit_id, default_graph_revision_id, default_reply_output_key, default_input_shape, run_profile_revision_no, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            vec![conversation_id.clone().into(), context_id.clone().into(), branch_id.clone().into(), commit_id.clone().into(), run_profile.as_ref().map(|profile| profile.run.graph_revision_id.clone()).into(), run_profile.as_ref().map(|profile| profile.run.reply_output_key.clone()).into(), run_profile.as_ref().map(|_| "conversation_message_v1".to_owned()).into(), run_profile.as_ref().map(|profile| profile.revision_no as i64).into(), command.title.clone().into(), now.into(), now.into()],
         )).await?;
         add_ref(
             &transaction,
@@ -75,9 +98,8 @@ impl SqliteStore {
         append_event(
             &transaction,
             &conversation_id,
-            &context_id,
-            &branch_id,
-            &commit_id,
+            "conversation.created",
+            &json!({"schemaVersion":1,"conversationId":conversation_id,"contextId":context_id,"branchId":branch_id,"headCommitId":commit_id,"runProfile":run_profile}),
             now,
         )
         .await?;
@@ -87,10 +109,24 @@ impl SqliteStore {
             context_id,
             active_branch_id: branch_id,
             active_head_commit_id: commit_id,
+            run_profile,
             created_at: now,
             updated_at: now,
         };
-        finish_receipt(&transaction, &command.idempotency_key, &digest, &view, now).await?;
+        finish(
+            &transaction,
+            Receipt {
+                scope: "conversation:create",
+                key: &command.idempotency_key,
+                digest: &digest,
+                command_kind: "conversation.create",
+                resource_kind: "conversation",
+                resource_id: &view.id,
+                now,
+            },
+            &view,
+        )
+        .await?;
         transaction.commit().await?;
         Ok(view)
     }
@@ -110,64 +146,7 @@ fn validate(command: &CreateConversationCommand) -> StorageResult<()> {
     Ok(())
 }
 
-async fn replay<C: ConnectionTrait>(
-    connection: &C,
-    key: &str,
-    digest: &str,
-) -> StorageResult<Option<ConversationView>> {
-    let row = connection.query_one_raw(sql("SELECT request_digest, result_object_id FROM application_command_receipts WHERE scope = 'conversation:create' AND idempotency_key = ? AND status = 'completed'", vec![key.into()])).await?;
-    let Some(row) = row else { return Ok(None) };
-    if row.try_get::<String>("", "request_digest")? != digest {
-        return Err(StorageError::IdempotencyConflict);
-    }
-    load_object_json(connection, &row.try_get::<String>("", "result_object_id")?)
-        .await
-        .map(Some)
-}
-
-async fn finish_receipt<C: ConnectionTrait>(
-    connection: &C,
-    key: &str,
-    digest: &str,
-    view: &ConversationView,
-    now: i64,
-) -> StorageResult<()> {
-    let object_id = put_inline_object(connection, &canonical::to_vec(view)?, now).await?;
-    connection.execute_raw(sql(
-        "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, resource_id, status, result_object_id, created_at, completed_at) VALUES ('conversation:create', ?, ?, 'conversation.create', 'conversation', ?, 'completed', ?, ?, ?)",
-        vec![key.into(), digest.into(), view.id.clone().into(), object_id.clone().into(), now.into(), now.into()],
-    )).await?;
-    add_ref(
-        connection,
-        &object_id,
-        "application_receipt",
-        &format!("conversation:create:{key}"),
-        "result",
-        now,
-    )
-    .await
-}
-
-async fn append_event<C: ConnectionTrait>(
-    connection: &C,
-    conversation_id: &str,
-    context_id: &str,
-    branch_id: &str,
-    commit_id: &str,
-    now: i64,
-) -> StorageResult<()> {
-    connection.execute_raw(sql(
-        "INSERT INTO domain_event_counters (aggregate_kind, aggregate_id, lineage_key, next_seq) VALUES ('conversation', ?, 'global', 2)",
-        vec![conversation_id.into()],
-    )).await?;
-    connection.execute_raw(sql(
-        "INSERT INTO domain_events (id, aggregate_kind, aggregate_id, lineage_key, seq, event_type, schema_version, payload_json, created_at) VALUES (?, 'conversation', ?, 'global', 1, 'conversation.created', 1, ?, ?)",
-        vec![new_id("domain_event").into(), conversation_id.into(), canonical::to_string(&json!({"schemaVersion":1,"conversationId":conversation_id,"contextId":context_id,"branchId":branch_id,"headCommitId":commit_id}))?.into(), now.into()],
-    )).await?;
-    Ok(())
-}
-
-async fn add_ref<C: ConnectionTrait>(
+async fn add_ref<C: sea_orm::ConnectionTrait>(
     connection: &C,
     object_id: &str,
     owner_kind: &str,
