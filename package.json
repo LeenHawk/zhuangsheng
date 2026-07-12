@@ -1,0 +1,11 @@
+{
+  "name": "zhuangsheng-workspace",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "corepack pnpm --filter @zhuangsheng/web build",
+    "dev": "corepack pnpm --filter @zhuangsheng/web dev",
+    "test": "corepack pnpm -r --if-present test",
+    "typecheck": "corepack pnpm -r --if-present typecheck"
+  }
+}
