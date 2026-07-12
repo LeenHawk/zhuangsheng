@@ -5,11 +5,16 @@ use axum::{
     routing::{get, post},
 };
 use serde::Deserialize;
+use serde_json::Value;
+use std::collections::BTreeMap;
 use zhuangsheng_core::{
     application::preset::{
-        ContextPresetView, CreateContextPresetCommand, PublishContextPresetVersionCommand,
+        ContextPresetPreviewView, ContextPresetView, CreateContextPresetCommand,
+        PreviewContextPresetCommand, PublishContextPresetVersionCommand,
     },
-    llm::context::{ContextAssemblySpec, ContextPresetVersion},
+    llm::context::{
+        ContextAssemblySpec, ContextBudgetInput, ContextPresetVersion, ResolvedContextBinding,
+    },
 };
 
 use super::{
@@ -30,6 +35,17 @@ struct PublishVersionBody {
     spec: ContextAssemblySpec,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewBody {
+    version_id: Option<String>,
+    #[serde(default)]
+    node_input: Value,
+    #[serde(default)]
+    sample_bindings: BTreeMap<String, ResolvedContextBinding>,
+    budget: ContextBudgetInput,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/context-presets", post(create_preset).get(list_presets))
@@ -39,7 +55,28 @@ pub fn routes() -> Router<AppState> {
             post(publish_version),
         )
         .route("/v1/context-presets/{preset_id}/head", get(get_head))
+        .route("/v1/context-presets/{preset_id}/preview", post(preview))
         .route("/v1/context-preset-versions/{version_id}", get(get_version))
+}
+
+async fn preview(
+    State(state): State<AppState>,
+    Path(preset_id): Path<String>,
+    body: Result<Json<PreviewBody>, JsonRejection>,
+) -> ApiResult<Json<ContextPresetPreviewView>> {
+    let body = json_body(body)?;
+    Ok(Json(
+        state
+            .preset_service
+            .preview_context_preset(PreviewContextPresetCommand {
+                preset_id,
+                version_id: body.version_id,
+                node_input: body.node_input,
+                sample_bindings: body.sample_bindings,
+                budget: body.budget,
+            })
+            .await?,
+    ))
 }
 
 async fn create_preset(

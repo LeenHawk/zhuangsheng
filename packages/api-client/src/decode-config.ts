@@ -1,6 +1,6 @@
-import { nullableString, number, record, string } from "./decode-helpers";
+import { boolean, nullableString, number, record, string } from "./decode-helpers";
 import { DecodeError } from "./decode-error";
-import type { ChannelRevisionView, ChannelView, ContextPresetVersionView, ContextPresetView } from "./config-types";
+import type { ChannelRevisionView, ChannelView, ContextBudgetAction, ContextCountSource, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView } from "./config-types";
 import type { JsonObject } from "./graph-types";
 
 const list = <T>(value: unknown, path: string, decode: (value: unknown, path: string) => T): T[] => {
@@ -67,4 +67,85 @@ export const decodeContextPresetVersion = (value: unknown): ContextPresetVersion
     contentHash: string(item.contentHash, "contextPresetVersion.contentHash"),
     createdAt: number(item.createdAt, "contextPresetVersion.createdAt"),
   };
+};
+
+const actions = new Set<ContextBudgetAction>(["kept", "dropped", "truncated", "deduped", "unsupported"]);
+const countSources = new Set<ContextCountSource>(["provider", "local", "estimate"]);
+
+export const decodeContextPresetPreview = (value: unknown): ContextPresetPreviewView => {
+  const item = record(value, "contextPresetPreview");
+  const contentMode = string(item.contentMode, "contextPresetPreview.contentMode");
+  if (contentMode !== "metadata_only") throw new DecodeError("contextPresetPreview.contentMode");
+  const countSource = decodeCountSource(item.countSource, "contextPresetPreview.countSource");
+  if (!Array.isArray(item.items)) throw new DecodeError("contextPresetPreview.items");
+  const budget = record(item.budgetReport, "contextPresetPreview.budgetReport");
+  if (!Array.isArray(budget.items)) throw new DecodeError("contextPresetPreview.budgetReport.items");
+  const snapshot = record(item.snapshot, "contextPresetPreview.snapshot");
+  const budgetCountSource = decodeCountSource(budget.countSource, "contextPresetPreview.budgetReport.countSource");
+  if (budgetCountSource !== countSource) throw new DecodeError("contextPresetPreview.countSource");
+  return {
+    presetId: string(item.presetId, "contextPresetPreview.presetId"),
+    versionId: string(item.versionId, "contextPresetPreview.versionId"),
+    contentMode,
+    countSource,
+    items: item.items.map((raw, index) => previewItem(raw, `contextPresetPreview.items[${index}]`)),
+    budgetReport: {
+      availableInputTokens: nonNegative(budget.availableInputTokens, "contextPresetPreview.budgetReport.availableInputTokens"),
+      fixedRequestTokens: nonNegative(budget.fixedRequestTokens, "contextPresetPreview.budgetReport.fixedRequestTokens"),
+      assembledTokens: nonNegative(budget.assembledTokens, "contextPresetPreview.budgetReport.assembledTokens"),
+      countSource: budgetCountSource,
+      items: budget.items.map((raw, index) => budgetItem(raw, `contextPresetPreview.budgetReport.items[${index}]`)),
+    },
+    snapshot: {
+      config: record(snapshot.config, "contextPresetPreview.snapshot.config") as JsonObject,
+      readSetRef: string(snapshot.readSetRef, "contextPresetPreview.snapshot.readSetRef"),
+      readSetDigest: string(snapshot.readSetDigest, "contextPresetPreview.snapshot.readSetDigest"),
+      resolvedBindingsDigest: string(snapshot.resolvedBindingsDigest, "contextPresetPreview.snapshot.resolvedBindingsDigest"),
+      assemblyDigest: string(snapshot.assemblyDigest, "contextPresetPreview.snapshot.assemblyDigest"),
+    },
+  };
+};
+
+const previewItem = (value: unknown, path: string) => {
+  const item = record(value, path);
+  return {
+    itemId: string(item.itemId, `${path}.itemId`),
+    name: nullableString(item.name, `${path}.name`),
+    sourceType: string(item.sourceType, `${path}.sourceType`),
+    requestedRole: string(item.requestedRole, `${path}.requestedRole`),
+    enabled: boolean(item.enabled, `${path}.enabled`),
+    included: boolean(item.included, `${path}.included`),
+    tokenCount: nonNegative(item.tokenCount, `${path}.tokenCount`),
+    action: decodeAction(item.action, `${path}.action`),
+    reason: nullableString(item.reason, `${path}.reason`),
+  };
+};
+
+const budgetItem = (value: unknown, path: string) => {
+  const item = record(value, path);
+  return {
+    itemId: string(item.itemId, `${path}.itemId`),
+    included: boolean(item.included, `${path}.included`),
+    tokenCount: nonNegative(item.tokenCount, `${path}.tokenCount`),
+    action: decodeAction(item.action, `${path}.action`),
+    reason: nullableString(item.reason, `${path}.reason`),
+  };
+};
+
+const decodeAction = (value: unknown, path: string) => {
+  const action = string(value, path) as ContextBudgetAction;
+  if (!actions.has(action)) throw new DecodeError(path);
+  return action;
+};
+
+const decodeCountSource = (value: unknown, path: string) => {
+  const source = string(value, path) as ContextCountSource;
+  if (!countSources.has(source)) throw new DecodeError(path);
+  return source;
+};
+
+const nonNegative = (value: unknown, path: string) => {
+  const parsed = number(value, path);
+  if (parsed < 0) throw new DecodeError(path);
+  return parsed;
 };

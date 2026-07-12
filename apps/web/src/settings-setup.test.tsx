@@ -45,6 +45,7 @@ describe("first-run settings", () => {
       channels={[]}
       presets={[]}
       templates={[]}
+      preview={null}
       loading={false}
       pending={null}
       error={null}
@@ -52,6 +53,7 @@ describe("first-run settings", () => {
       onStoreSecret={onStoreSecret}
       onPublishChannel={async () => undefined}
       onPublishPreset={async () => undefined}
+      onPreviewPreset={() => undefined}
       onCreateTemplate={async () => undefined}
     />);
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "secret-provider-value" } });
@@ -69,12 +71,14 @@ describe("first-run settings", () => {
     const onPublishChannel = vi.fn(async () => undefined);
     const onPublishPreset = vi.fn(async () => undefined);
     const onCreateTemplate = vi.fn(async () => undefined);
+    const onPreviewPreset = vi.fn();
     render(<SettingsSetup
       status={{ initialized: true, storeId: "store_1", formatVersion: 1, locked: false }}
       secrets={[secret]}
       channels={[{ id: "channel_1", name: "Primary", headRevisionId: "channelrev_1", createdAt: 1, updatedAt: 1 }]}
       presets={[{ id: "preset_1", name: "Character", headVersionId: "presetver_1", createdAt: 1, updatedAt: 1 }]}
       templates={[]}
+      preview={null}
       loading={false}
       pending={null}
       error={null}
@@ -82,6 +86,7 @@ describe("first-run settings", () => {
       onStoreSecret={async () => undefined}
       onPublishChannel={onPublishChannel}
       onPublishPreset={onPublishPreset}
+      onPreviewPreset={onPreviewPreset}
       onCreateTemplate={onCreateTemplate}
     />);
     fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "roleplay-model" } });
@@ -100,6 +105,8 @@ describe("first-run settings", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "创建 Agent 模板" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "创建 Agent 模板" }));
     await waitFor(() => expect(onCreateTemplate).toHaveBeenCalledWith({ name: "Role Play Agent", channelId: "channel_1", presetId: "preset_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview Character" }));
+    expect(onPreviewPreset).toHaveBeenCalledWith(expect.objectContaining({ id: "preset_1", headVersionId: "presetver_1" }));
   });
 
   it("compiles role fields into one canonical required ContextPreset item", () => {

@@ -69,6 +69,46 @@ describe("HttpConfigClient", () => {
       createdAt: 1,
     })).toThrow(DecodeError);
   });
+
+  it("requests a metadata-only local preset preview with explicit sample boundaries", async () => {
+    let body: unknown;
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      body = JSON.parse(init?.body as string);
+      return Response.json(preview());
+    });
+    const result = await new HttpConfigClient("https://settings.example")
+      .previewPreset("preset_1", "presetver_1");
+    expect(body).toMatchObject({
+      versionId: "presetver_1",
+      nodeInput: {},
+      sampleBindings: {},
+      budget: { countSource: "estimate", contextWindowTokens: 16384 },
+    });
+    expect(result.items[0]).toMatchObject({ itemId: "character", tokenCount: 12, action: "kept" });
+    expect(JSON.stringify(result)).not.toContain("You are Alice");
+  });
+});
+
+const preview = () => ({
+  presetId: "preset_1",
+  versionId: "presetver_1",
+  contentMode: "metadata_only",
+  countSource: "estimate",
+  items: [{ itemId: "character", name: "Alice", sourceType: "literal", requestedRole: "system", enabled: true, included: true, tokenCount: 12, action: "kept", reason: null }],
+  budgetReport: {
+    availableInputTokens: 13824,
+    fixedRequestTokens: 0,
+    assembledTokens: 12,
+    countSource: "estimate",
+    items: [{ itemId: "character", included: true, tokenCount: 12, action: "kept", reason: null }],
+  },
+  snapshot: {
+    config: { type: "preset", presetId: "preset_1", versionId: "presetver_1", version: 1, contentHash: "hash" },
+    readSetRef: "context-preview:presetver_1:sample-bindings",
+    readSetDigest: "sha256:read",
+    resolvedBindingsDigest: "sha256:bindings",
+    assemblyDigest: "sha256:assembly",
+  },
 });
 
 describe("HttpSecretClient metadata commands", () => {

@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { ContactRound } from "lucide-react";
 
-import type { ContextPresetView } from "@zhuangsheng/api-client";
+import type { ContextPresetPreviewView, ContextPresetView } from "@zhuangsheng/api-client";
 import { Badge, Button, Card, Input, Textarea } from "@zhuangsheng/ui";
+import { ContextPreviewPanel } from "./context-preview-panel";
 
 interface InputValue { name: string; characterName: string; identity: string; personality: string; speakingStyle: string; boundaries: string }
 
-export function RolePresetSetupCard({ presets, pending, onSubmit }: { presets: ContextPresetView[]; pending: boolean; onSubmit: (input: InputValue) => Promise<void> }) {
+export function RolePresetSetupCard({ presets, preview, pending, previewPending, onSubmit, onPreview }: { presets: ContextPresetView[]; preview: ContextPresetPreviewView | null; pending: boolean; previewPending: boolean; onSubmit: (input: InputValue) => Promise<void>; onPreview: (preset: ContextPresetView) => void }) {
   const [form, setForm] = useState<InputValue>({ name: "角色模板", characterName: "", identity: "", personality: "", speakingStyle: "", boundaries: "" });
   const set = (key: keyof InputValue, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const valid = form.name.trim().length > 0 && form.characterName.trim().length > 0 && form.identity.trim().length > 0;
@@ -24,7 +25,8 @@ export function RolePresetSetupCard({ presets, pending, onSubmit }: { presets: C
         <Field label="内容边界"><Textarea value={form.boundaries} onChange={(event) => set("boundaries", event.target.value)} /></Field>
         <div className="md:col-span-2"><Button type="submit" disabled={!valid || pending}>{pending ? "正在发布…" : "发布角色模板"}</Button></div>
       </form>
-      {presets.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{presets.map((preset) => <Badge key={preset.id} tone={preset.headVersionId ? "success" : "warning"}>{preset.name} · {preset.headVersionId ? "已发布" : "待完成"}</Badge>)}</div>}
+      {presets.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{presets.map((preset) => <div key={preset.id} className="flex items-center gap-1"><Badge tone={preset.headVersionId ? "success" : "warning"}>{preset.name} · {preset.headVersionId ? "已发布" : "待完成"}</Badge>{preset.headVersionId && <Button size="compact" variant="secondary" disabled={previewPending} onClick={() => onPreview(preset)}>Preview {preset.name}</Button>}</div>)}</div>}
+      {preview && <ContextPreviewPanel preview={preview} />}
     </Card>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createIdempotencyKey, type ChannelView, type ContextPresetView, type GenerationProviderKind, type JsonObject, type RolePlayGraphOptionView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
+import { createIdempotencyKey, type ChannelView, type ContextPresetPreviewView, type ContextPresetView, type GenerationProviderKind, type JsonObject, type RolePlayGraphOptionView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
 
@@ -37,8 +37,9 @@ export function useInitialSetup() {
   const [channels, setChannels] = useState<ChannelView[]>([]);
   const [presets, setPresets] = useState<ContextPresetView[]>([]);
   const [templates, setTemplates] = useState<RolePlayGraphOptionView[]>([]);
+  const [preview, setPreview] = useState<ContextPresetPreviewView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<"secret" | "channel" | "preset" | "template" | null>(null);
+  const [pending, setPending] = useState<"secret" | "channel" | "preset" | "template" | "preview" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const commandKeys = useRef(new Map<string, string>());
 
@@ -108,6 +109,7 @@ export function useInitialSetup() {
         setPresets((items) => [...items, preset as ContextPresetView]);
       }
       const version = await client.config.publishPreset(preset.id, { expectedHeadVersionId: null, spec: buildRolePresetSpec(input) }, keyFor(`${signature}:publish`));
+      setPreview(null);
       done(`${signature}:create`); done(`${signature}:publish`);
       setPresets((items) => items.map((item) => item.id === preset?.id ? { ...item, headVersionId: version.id, updatedAt: version.createdAt } : item));
     } catch (cause) { setError(messageFor(cause)); throw cause; }
@@ -127,7 +129,15 @@ export function useInitialSetup() {
     finally { setPending(null); }
   };
 
-  return { status, secrets, channels, presets, templates, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset, createTemplate };
+  const previewPreset = async (preset: ContextPresetView) => {
+    if (!preset.headVersionId) return;
+    setPending("preview"); setError(null);
+    try { setPreview(await client.config.previewPreset(preset.id, preset.headVersionId)); }
+    catch (cause) { setError(messageFor(cause)); }
+    finally { setPending(null); }
+  };
+
+  return { status, secrets, channels, presets, templates, preview, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset, previewPreset: (preset: ContextPresetView) => void previewPreset(preset), createTemplate };
 }
 
 export function buildRolePresetSpec(input: RolePresetInput): JsonObject {

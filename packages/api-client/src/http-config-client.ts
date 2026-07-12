@@ -1,5 +1,5 @@
-import { decodeChannel, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
-import type { ChannelRevisionView, ChannelView, ContextPresetVersionView, ContextPresetView, PublishChannelInput, PublishPresetInput } from "./config-types";
+import { decodeChannel, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
+import type { ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, PublishChannelInput, PublishPresetInput } from "./config-types";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
 
@@ -42,6 +42,30 @@ export class HttpConfigClient {
 
   async publishPreset(presetId: string, input: PublishPresetInput, idempotencyKey = createIdempotencyKey()): Promise<ContextPresetVersionView> {
     return decodeContextPresetVersion(await this.command(`/v1/context-presets/${encodeURIComponent(presetId)}/revisions`, input, idempotencyKey));
+  }
+
+  async previewPreset(presetId: string, versionId?: string | null, signal?: AbortSignal): Promise<ContextPresetPreviewView> {
+    return decodeContextPresetPreview(await requestJson(
+      this.baseUrl,
+      `/v1/context-presets/${encodeURIComponent(presetId)}/preview`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          versionId: versionId ?? null,
+          nodeInput: {},
+          sampleBindings: {},
+          budget: {
+            contextWindowTokens: 16_384,
+            reservedOutputTokens: 2_048,
+            fixedRequestTokens: 0,
+            safetyMarginTokens: 512,
+            countSource: "estimate",
+          },
+        }),
+        signal,
+      },
+    ));
   }
 
   private command(path: string, body: unknown, idempotencyKey: string): Promise<unknown> {

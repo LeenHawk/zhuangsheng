@@ -106,6 +106,53 @@ async fn channel_and_preset_http_flow_publish_immutable_configuration() {
     .await;
     assert_eq!(version["versionNo"], 1);
     assert_eq!(version["spec"]["preview"]["content"], "metadata_only");
+    let preview = call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/context-presets/{preset_id}/preview"),
+            json!({
+                "versionId":version["id"],
+                "nodeInput":{},
+                "sampleBindings":{},
+                "budget":{
+                    "contextWindowTokens":16384,
+                    "reservedOutputTokens":2048,
+                    "fixedRequestTokens":0,
+                    "safetyMarginTokens":512,
+                    "countSource":"estimate"
+                }
+            }),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(preview["contentMode"], "metadata_only");
+    assert_eq!(preview["countSource"], "estimate");
+    assert_eq!(preview["items"][0]["itemId"], "character");
+    assert!(preview["items"][0]["tokenCount"].as_u64().unwrap() > 0);
+    assert!(
+        !serde_json::to_string(&preview)
+            .unwrap()
+            .contains("You are Alice")
+    );
+    let unsupported_count = call(
+        &app,
+        request(
+            "POST",
+            &format!("/v1/context-presets/{preset_id}/preview"),
+            json!({
+                "nodeInput":{},"sampleBindings":{},
+                "budget":{"contextWindowTokens":16384,"reservedOutputTokens":2048,
+                    "fixedRequestTokens":0,"safetyMarginTokens":512,"countSource":"provider"}
+            }),
+            &[],
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert_eq!(unsupported_count["error"]["code"], "invalid_argument");
 }
 
 #[tokio::test]

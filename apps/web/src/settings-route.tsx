@@ -10,6 +10,7 @@ export function SettingsRoute() {
     channels={setup.channels}
     presets={setup.presets}
     templates={setup.templates}
+    preview={setup.preview}
     loading={setup.loading}
     pending={setup.pending}
     error={setup.error}
@@ -17,6 +18,7 @@ export function SettingsRoute() {
     onStoreSecret={setup.storeSecret}
     onPublishChannel={setup.publishChannel}
     onPublishPreset={setup.publishRolePreset}
+    onPreviewPreset={setup.previewPreset}
     onCreateTemplate={setup.createTemplate}
   />;
 }

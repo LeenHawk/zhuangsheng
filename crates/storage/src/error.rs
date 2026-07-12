@@ -1,6 +1,7 @@
 use thiserror::Error;
 use zhuangsheng_core::DomainError;
 use zhuangsheng_core::llm::LlmConfigError;
+use zhuangsheng_core::llm::context::ContextAssemblyError;
 use zhuangsheng_core::memory::MemoryValidationError;
 use zhuangsheng_core::state::StatePatchError;
 
@@ -30,6 +31,8 @@ pub enum StorageError {
     MemoryValidation(#[from] MemoryValidationError),
     #[error(transparent)]
     LlmConfig(#[from] LlmConfigError),
+    #[error(transparent)]
+    ContextAssembly(#[from] ContextAssemblyError),
     #[error(transparent)]
     SecretStore(#[from] SecretStoreError),
     #[error(transparent)]
@@ -83,6 +86,10 @@ impl From<StorageError> for zhuangsheng_core::application::ApplicationError {
                 message: error.message,
             },
             StorageError::LlmConfig(error) => ApplicationError::InvalidArgument {
+                code: error.code,
+                message: error.message,
+            },
+            StorageError::ContextAssembly(error) => ApplicationError::InvalidArgument {
                 code: error.code,
                 message: error.message,
             },

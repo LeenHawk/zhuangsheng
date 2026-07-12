@@ -3,34 +3,11 @@ use ulid::Ulid;
 use zhuangsheng_core::{
     canonical,
     graph::LlmNodeExecutionSnapshot,
-    llm::{
-        ActiveModelEffectCheckpoint, LlmLogicalCallStatus,
-        context::{ContextAssemblyError, ContextAssemblyResult, ContextRole, ContextTokenCounter},
-        ir::LlmContentPartIr,
-    },
+    llm::{ActiveModelEffectCheckpoint, LlmLogicalCallStatus, context::ContextAssemblyError},
     scheduler::{BuiltinResult, LlmAttemptExecution},
 };
 
 use crate::provider::ProviderHttpError;
-
-pub(super) struct EstimateTokenCounter;
-
-impl ContextTokenCounter for EstimateTokenCounter {
-    fn count(
-        &self,
-        _role: ContextRole,
-        content: &[LlmContentPartIr],
-    ) -> ContextAssemblyResult<u64> {
-        let mut tokens = 4u64;
-        for part in content {
-            tokens = tokens.saturating_add(match part {
-                LlmContentPartIr::Text { text } => (text.chars().count() as u64).div_ceil(2),
-                LlmContentPartIr::Image { .. } | LlmContentPartIr::File { .. } => 256,
-            });
-        }
-        Ok(tokens)
-    }
-}
 
 pub(super) fn fixed_request_estimate(execution: &LlmNodeExecutionSnapshot) -> u64 {
     let bytes = canonical::to_vec(&json!({

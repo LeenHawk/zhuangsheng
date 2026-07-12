@@ -10,7 +10,10 @@ use zhuangsheng_core::{
     llm::{
         ChannelCredential, InitialToolBatchInput, InitialToolBatchPlan, LlmRequestBuildInput,
         build_llm_request,
-        context::{ContextAssemblyInput, ContextBudgetInput, ContextCountSource, assemble_context},
+        context::{
+            ContextAssemblyInput, ContextBudgetInput, ContextCountSource, EstimateTokenCounter,
+            assemble_context,
+        },
         plan_initial_tool_batch,
     },
     scheduler::{ClaimedAttempt, LlmAttemptExecution, LlmAttemptExecutor},

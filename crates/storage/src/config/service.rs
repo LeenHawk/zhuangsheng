@@ -6,7 +6,8 @@ use zhuangsheng_core::{
             ChannelService, ChannelView, CreateChannelCommand, PublishChannelRevisionCommand,
         },
         preset::{
-            ContextPresetService, ContextPresetView, CreateContextPresetCommand,
+            ContextPresetPreviewView, ContextPresetService, ContextPresetView,
+            CreateContextPresetCommand, PreviewContextPresetCommand,
             PublishContextPresetVersionCommand,
         },
         tool::{
@@ -144,6 +145,15 @@ impl ContextPresetService for SqliteStore {
         preset_id: &str,
     ) -> Result<ContextPresetVersion, ApplicationError> {
         SqliteStore::get_context_preset_head(self, preset_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn preview_context_preset(
+        &self,
+        command: PreviewContextPresetCommand,
+    ) -> Result<ContextPresetPreviewView, ApplicationError> {
+        self.preview_context_preset_view(command)
             .await
             .map_err(Into::into)
     }

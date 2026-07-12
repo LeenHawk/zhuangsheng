@@ -1,6 +1,6 @@
 import { AlertCircle, Loader2, RefreshCw, Settings2 } from "lucide-react";
 
-import type { ChannelView, ContextPresetView, RolePlayGraphOptionView, SecretMetadataView, SecretStoreStatusView } from "@zhuangsheng/api-client";
+import type { ChannelView, ContextPresetPreviewView, ContextPresetView, RolePlayGraphOptionView, SecretMetadataView, SecretStoreStatusView } from "@zhuangsheng/api-client";
 import { Badge, Button } from "@zhuangsheng/ui";
 
 import { ChannelSetupCard } from "./channel-setup-card";
@@ -10,10 +10,11 @@ import { SecretSetupCard } from "./secret-setup-card";
 
 interface Props {
   status: SecretStoreStatusView | null; secrets: SecretMetadataView[]; channels: ChannelView[]; presets: ContextPresetView[]; templates: RolePlayGraphOptionView[];
-  loading: boolean; pending: "secret" | "channel" | "preset" | "template" | null; error: string | null; onReload: () => void;
+  preview: ContextPresetPreviewView | null; loading: boolean; pending: "secret" | "channel" | "preset" | "template" | "preview" | null; error: string | null; onReload: () => void;
   onStoreSecret: React.ComponentProps<typeof SecretSetupCard>["onSubmit"];
   onPublishChannel: React.ComponentProps<typeof ChannelSetupCard>["onSubmit"];
   onPublishPreset: React.ComponentProps<typeof RolePresetSetupCard>["onSubmit"];
+  onPreviewPreset: React.ComponentProps<typeof RolePresetSetupCard>["onPreview"];
   onCreateTemplate: React.ComponentProps<typeof AgentTemplateSetupCard>["onSubmit"];
 }
 
@@ -27,7 +28,7 @@ export function SettingsSetup(props: Props) {
       {!props.loading && <>
         <SecretSetupCard status={props.status} secrets={props.secrets} pending={props.pending === "secret"} onSubmit={props.onStoreSecret} />
         <ChannelSetupCard channels={props.channels} secrets={props.secrets} pending={props.pending === "channel"} onSubmit={props.onPublishChannel} />
-        <RolePresetSetupCard presets={props.presets} pending={props.pending === "preset"} onSubmit={props.onPublishPreset} />
+        <RolePresetSetupCard presets={props.presets} preview={props.preview} pending={props.pending === "preset"} previewPending={props.pending === "preview"} onSubmit={props.onPublishPreset} onPreview={props.onPreviewPreset} />
         <AgentTemplateSetupCard channels={props.channels} presets={props.presets} templates={props.templates} pending={props.pending === "template"} onSubmit={props.onCreateTemplate} />
       </>}
     </div>

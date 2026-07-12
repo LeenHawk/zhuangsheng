@@ -293,6 +293,8 @@ Turn 与 regeneration body 分别使用 `13-conversation-turn-run.md` 的 `Submi
 
 Channel/model discovery 只返回临时结果；发布 immutable channel revision 后才成为运行权威。Preset preview 显式选择 local 或 remote count，后者显示目标 channel；若 store locked，run 外 application request 返回 typed `secret_store_locked`，UI解锁后用同 request digest/idempotency key重试，不伪造缺少 run/node 的 WaitRecord。Tool descriptor API 只返回当前 principal 可发现的 model-facing metadata，不返回 executor key、其他 scope 或 secret。`GET /graph-revisions/{id}` 让 RunView 可直接解析固定 revision。
 
+Preset preview 的阶段一 request body 为 `{ versionId?, nodeInput, sampleBindings, budget }`；`sampleBindings` 是调用方主动提供的测试材料，不是权限 token，也不触发 storage resolver。缺失 binding 只作为 unresolved empty sample 展示。响应固定 metadata-only，并明确 count source；adapter 不返回 assembled content，也不能把 sample digest 写成 GraphRun/NodeInstance read set。真实执行预览必须读取该 run 已 pin 的 snapshot/read set，不能把此 endpoint 的 sample 结果当作恢复事实。
+
 Secret 列表只返回 SecretRef/metadata。Secret initialize/create/update/unlock request 被 adapter 标记为 sensitive：禁止 body logging、重试缓存、analytics 和错误回显；远程 Web 部署必须使用 TLS。Tauri 可以通过平台安全输入调用等价 application command。
 
 ## SSE 事件流
