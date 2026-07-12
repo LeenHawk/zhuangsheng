@@ -45,6 +45,30 @@ impl SqliteStore {
             transaction.commit().await?;
             return Ok(());
         }
+        if should_wait_for_aggregation(&transaction, run_id, wakeup_id).await? {
+            let updated = transaction.execute_raw(sql(
+                "UPDATE graph_runs SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'",
+                vec![now.into(), run_id.into()],
+            )).await?;
+            finish_wakeup(&transaction, wakeup_id).await?;
+            if updated.rows_affected() == 1 {
+                append_event(
+                    &transaction,
+                    Event {
+                        run_id,
+                        event_type: "run.waiting",
+                        importance: "critical",
+                        node_instance_id: None,
+                        attempt_id: None,
+                        payload: json!({"schemaVersion":1,"reason":"aggregation_window"}),
+                        now,
+                    },
+                )
+                .await?;
+            }
+            transaction.commit().await?;
+            return Ok(());
+        }
         if has_active_work(&transaction, run_id, wakeup_id).await? {
             finish_wakeup(&transaction, wakeup_id).await?;
             transaction.commit().await?;
@@ -113,6 +137,29 @@ impl SqliteStore {
         transaction.commit().await?;
         Ok(())
     }
+}
+
+async fn should_wait_for_aggregation<C: ConnectionTrait>(
+    connection: &C,
+    run_id: &str,
+    current_wakeup: &str,
+) -> StorageResult<bool> {
+    let open = connection.query_one_raw(sql(
+        "SELECT 1 AS present FROM aggregation_windows WHERE run_id = ? AND status = 'open' LIMIT 1",
+        vec![run_id.into()],
+    )).await?.is_some();
+    if !open {
+        return Ok(false);
+    }
+    let executable = connection.query_one_raw(sql(
+        "SELECT 1 AS present FROM node_instances WHERE run_id = ? AND status IN ('ready','running') LIMIT 1",
+        vec![run_id.into()],
+    )).await?.is_some();
+    let wakeup = connection.query_one_raw(sql(
+        "SELECT 1 AS present FROM scheduler_wakeups WHERE run_id = ? AND id <> ? AND status IN ('pending','claimed') LIMIT 1",
+        vec![run_id.into(), current_wakeup.into()],
+    )).await?.is_some();
+    Ok(!executable && !wakeup)
 }
 
 async fn has_active_work<C: ConnectionTrait>(

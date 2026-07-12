@@ -1,6 +1,8 @@
 mod activate;
 mod activation_failure;
 mod activation_inputs;
+mod aggregator;
+mod aggregator_close;
 mod attempt_state;
 mod claim;
 mod emit;

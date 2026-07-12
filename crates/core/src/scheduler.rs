@@ -320,6 +320,10 @@ fn execute_builtin(attempt: &ClaimedAttempt) -> BuiltinResult {
                 .into(),
             }
         }
+        DraftNodeKind::Aggregator { .. } => BuiltinResult::Failed {
+            code: "aggregator_storage_execution_required".into(),
+            safe_message: "Aggregator must execute through durable storage coordination".into(),
+        },
     }
 }
 

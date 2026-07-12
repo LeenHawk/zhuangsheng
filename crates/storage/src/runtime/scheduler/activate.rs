@@ -10,6 +10,7 @@ use crate::{
 use super::{
     activation_failure::{ActivationFailure, fail_input_activation},
     activation_inputs::{build_inputs, queue_heads},
+    aggregator,
     events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run, finish_wakeup},
     join_by_key::{self, JoinPreparation},
     llm_read_set::resolve_llm_reads,
@@ -51,6 +52,20 @@ impl SqliteStore {
             .ok_or_else(|| StorageError::Integrity("wakeup node missing from revision".into()))?;
         if matches!(&node.kind, DraftNodeKind::Input { .. }) {
             finish_and_settle(&transaction, wakeup_id, run_id, now).await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
+        if matches!(&node.kind, DraftNodeKind::Aggregator { .. }) {
+            aggregator::activate(
+                &transaction,
+                wakeup_id,
+                run_id,
+                node,
+                &revision_id,
+                &revision.definition,
+                now,
+            )
+            .await?;
             transaction.commit().await?;
             return Ok(());
         }
@@ -284,7 +299,7 @@ async fn claimed_wakeup<C: ConnectionTrait>(
     )).await?.is_some())
 }
 
-async fn finish_and_settle<C: ConnectionTrait>(
+pub(super) async fn finish_and_settle<C: ConnectionTrait>(
     connection: &C,
     wakeup_id: &str,
     run_id: &str,
@@ -322,7 +337,7 @@ async fn has_active<C: ConnectionTrait>(
     )).await?.is_some())
 }
 
-async fn allocate_activation_seq<C: ConnectionTrait>(
+pub(super) async fn allocate_activation_seq<C: ConnectionTrait>(
     connection: &C,
     run: &str,
     node: &str,
@@ -342,7 +357,7 @@ async fn allocate_activation_seq<C: ConnectionTrait>(
     Ok(seq)
 }
 
-async fn limits_exceeded<C: ConnectionTrait>(
+pub(super) async fn limits_exceeded<C: ConnectionTrait>(
     connection: &C,
     run: &str,
     limits: &zhuangsheng_core::graph::RunLimits,

@@ -152,6 +152,10 @@ pub(crate) async fn fail_run<C: ConnectionTrait>(
         "UPDATE coordination_buffer_items SET status = 'cancelled', terminal_at = ? WHERE run_id = ? AND status = 'indexed'",
         vec![now.into(), run_id.into()],
     )).await?;
+    connection.execute_raw(sql(
+        "UPDATE aggregation_windows SET status = 'cancelled', closed_at = ? WHERE run_id = ? AND status = 'open'",
+        vec![now.into(), run_id.into()],
+    )).await?;
     add_object_ref(
         connection,
         &error_id,

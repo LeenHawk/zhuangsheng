@@ -244,6 +244,10 @@ async fn abort_run<C: ConnectionTrait>(
         vec![now.into(), context.run_id.clone().into()],
     )).await?;
     connection.execute_raw(sql(
+        "UPDATE aggregation_windows SET status = 'cancelled', closed_at = ? WHERE run_id = ? AND status = 'open'",
+        vec![now.into(), context.run_id.clone().into()],
+    )).await?;
+    connection.execute_raw(sql(
         "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE run_id = ? AND status IN ('pending','claimed')",
         vec![context.run_id.clone().into()],
     )).await?;

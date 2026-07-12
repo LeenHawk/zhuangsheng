@@ -176,3 +176,36 @@ fn join_by_key_requires_complete_valid_selectors_and_bounded_limits() {
         assert!(issues.iter().any(|issue| issue.code == code), "{code}");
     }
 }
+
+#[test]
+fn aggregator_materializes_output_and_validates_shape_and_limits() {
+    let draft: GraphDraft = serde_json::from_value(json!({
+        "graphId":"graph-aggregator",
+        "nodes":[
+            {"id":"input","kind":"input"},
+            {"id":"aggregate","kind":"aggregator","count":2,"timeoutMs":1000},
+            {"id":"output","kind":"output","outputKey":"items"}
+        ],
+        "edges":[
+            {"from":{"nodeId":"input","output":"default"},"to":{"nodeId":"aggregate","input":"default"}},
+            {"from":{"nodeId":"aggregate","output":"default"},"to":{"nodeId":"output","input":"default"}}
+        ],
+        "outputContract":[{"key":"items","collection":"append","required":true}]
+    })).unwrap();
+    let applied = apply_graph(draft.clone(), 1, 1).unwrap();
+    assert_eq!(applied.definition.nodes[1].outputs[0].name, "default");
+    let mut invalid = draft;
+    let DraftNodeKind::Aggregator { count } = &mut invalid.nodes[1].kind else {
+        unreachable!()
+    };
+    *count = 0;
+    invalid.nodes[1].timeout_ms = Some(0);
+    let DomainError::GraphValidation(issues) = apply_graph(invalid, 1, 1).unwrap_err() else {
+        panic!("expected graph validation")
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == "invalid_aggregator_limits")
+    );
+}

@@ -55,6 +55,19 @@ pub(super) fn validate_coordination(
                 push(issues, "invalid_join_by_key_limits", node, None);
             }
         }
+        DraftNodeKind::Aggregator { count } => {
+            if node.inputs.len() != 1 || node.outputs.len() != 1 {
+                push(issues, "invalid_aggregator_shape", node, None);
+            }
+            if *count == 0
+                || *count > limits.max_coordinator_buffered_values
+                || node.timeout_ms.is_none()
+                || node.timeout_ms > Some(limits.max_run_wall_clock_ms)
+                || *count > 1 && limits.max_attempts_per_activation < 2
+            {
+                push(issues, "invalid_aggregator_limits", node, None);
+            }
+        }
         _ => {}
     }
 }

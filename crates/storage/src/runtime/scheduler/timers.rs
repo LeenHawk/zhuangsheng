@@ -11,6 +11,7 @@ use crate::{
 };
 
 use super::{
+    aggregator_close,
     events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run},
     read_set::copy_attempt_reads,
 };
@@ -18,10 +19,32 @@ use super::{
 impl SqliteStore {
     pub(crate) async fn process_due_timers(&self, now: i64) -> StorageResult<u64> {
         let transaction = self.db.begin().await?;
-        let row = transaction.query_one_raw(sql(
-            "SELECT id, run_id, node_instance_id, node_attempt_id, kind, payload_object_id FROM runtime_timers WHERE status = 'pending' AND due_at <= ? ORDER BY due_at, id LIMIT 1",
+        let aggregation = transaction.query_one_raw(sql(
+            "SELECT w.id, w.deadline_at AS due_at FROM aggregation_windows w JOIN graph_runs r ON r.id = w.run_id WHERE w.status = 'open' AND w.deadline_at <= ? AND r.status IN ('running','waiting') ORDER BY w.deadline_at, w.id LIMIT 1",
             vec![now.into()],
         )).await?;
+        let row = transaction.query_one_raw(sql(
+            "SELECT id, run_id, node_instance_id, node_attempt_id, kind, payload_object_id, due_at FROM runtime_timers WHERE status = 'pending' AND due_at <= ? ORDER BY due_at, id LIMIT 1",
+            vec![now.into()],
+        )).await?;
+        let aggregation_is_first = match (&aggregation, &row) {
+            (Some(aggregation), Some(timer)) => {
+                aggregation.try_get::<i64>("", "due_at")? < timer.try_get::<i64>("", "due_at")?
+            }
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if aggregation_is_first {
+            let aggregation = aggregation.expect("checked above");
+            aggregator_close::close_due(
+                &transaction,
+                &aggregation.try_get::<String>("", "id")?,
+                now,
+            )
+            .await?;
+            transaction.commit().await?;
+            return Ok(1);
+        }
         let Some(row) = row else {
             transaction.commit().await?;
             return Ok(0);

@@ -74,6 +74,9 @@ pub enum DraftNodeKind {
         max_open_keys: u64,
         max_buffered_per_key_per_port: u64,
     },
+    Aggregator {
+        count: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
