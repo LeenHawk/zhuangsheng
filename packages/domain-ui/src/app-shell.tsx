@@ -3,8 +3,9 @@ import { BookOpen, Brain, FileArchive, GitBranch, Orbit, Settings, Sparkles, Wor
 
 import type { UiExperienceMode } from "@zhuangsheng/api-client";
 import { Badge, cn } from "@zhuangsheng/ui";
+import { CommandPalette } from "./command-palette";
 
-type Section = "stories" | "memory" | "artifacts" | "studio" | "runs" | "contexts" | "settings";
+type Section = "stories" | "library" | "memory" | "artifacts" | "studio" | "runs" | "contexts" | "settings";
 
 interface AppShellProps {
   mode: UiExperienceMode;
@@ -16,6 +17,7 @@ interface AppShellProps {
 
 const userNavigation = [
   { id: "stories" as const, label: "故事", icon: BookOpen },
+  { id: "library" as const, label: "资料库", icon: FileArchive },
   { id: "memory" as const, label: "记忆", icon: Brain },
   { id: "settings" as const, label: "设置", icon: Settings },
 ];
@@ -50,6 +52,7 @@ export function AppShell({ mode, section, onModeChange, onSectionChange, childre
               </button>
             ))}
           </nav>
+          <CommandPalette items={navigation.map(({ id, label }) => ({ id, label }))} onSelect={onSectionChange} />
           <div className="ml-auto flex items-center gap-2 rounded-xl border border-default bg-surface p-1" aria-label="界面模式">
             {(["user", "expert"] as const).map((value) => (
               <button key={value} onClick={() => onModeChange(value)} className={cn("min-h-8 rounded-lg px-3 text-xs font-semibold text-muted transition-colors", mode === value && "bg-elevated text-primary shadow-sm")} aria-pressed={mode === value}>

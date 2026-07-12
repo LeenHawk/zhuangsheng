@@ -85,7 +85,8 @@ function RevisionGraph({
         <h2 className="font-semibold text-primary">Fixed graph revision</h2>
         <span className="font-mono text-muted">{revision.id} · {revision.contentHash}</span>
       </div>
-      <GraphCanvas graph={graph} nodeOverlay={overlay} edgeOverlay={edgeOverlay} />
+      <div className="space-y-2 p-2 md:hidden">{graph.nodes.map((node) => <div key={node.id} className="rounded-xl bg-elevated p-3"><p className="font-mono text-xs font-semibold">{node.name ?? node.id}</p><p className="mt-1 text-[11px] text-muted">{node.kind} · {overlay[node.id]?.status ?? "idle"}</p></div>)}</div>
+      <div className="hidden md:block"><GraphCanvas graph={graph} nodeOverlay={overlay} edgeOverlay={edgeOverlay} /></div>
     </Card>
   );
 }

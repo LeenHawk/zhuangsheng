@@ -24,7 +24,7 @@ export function StoryComposer({ enabled, pending, error, onSubmit }: StoryCompos
     }
   };
   return (
-    <Card className="mx-auto mt-8 max-w-3xl p-3 shadow-panel">
+    <Card className="sticky bottom-20 z-20 mx-auto mt-8 max-w-3xl p-3 shadow-panel md:static">
       <form onSubmit={submit}>
         <label className="sr-only" htmlFor="story-message">继续故事</label>
         <Textarea

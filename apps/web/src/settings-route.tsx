@@ -1,10 +1,15 @@
-import { SettingsSetup } from "@zhuangsheng/domain-ui";
+import { useState } from "react";
+
+import { ApplicationSettings, SettingsSetup } from "@zhuangsheng/domain-ui";
 
 import { useInitialSetup } from "./use-initial-setup";
+import { loadUiPreferences, saveUiPreferences } from "./ui-preferences";
 
 export function SettingsRoute() {
   const setup = useInitialSetup();
-  return <SettingsSetup
+  const [preferences, setPreferences] = useState(loadUiPreferences);
+  const savePreferences = (value: typeof preferences) => { saveUiPreferences(value); setPreferences(value); };
+  return <div className="mx-auto max-w-5xl space-y-6 pb-24"><ApplicationSettings value={preferences} onSave={savePreferences} /><SettingsSetup
     status={setup.status}
     secrets={setup.secrets}
     channels={setup.channels}
@@ -25,5 +30,5 @@ export function SettingsRoute() {
     onDiscoverModels={setup.discoverModels}
     onPublishDiscoveredModel={setup.publishDiscoveredModel}
     onInspectTemplate={setup.inspectTemplate}
-  />;
+  /></div>;
 }

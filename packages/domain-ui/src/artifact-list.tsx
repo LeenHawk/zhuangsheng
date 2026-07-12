@@ -28,7 +28,8 @@ export function ArtifactList({ items, contentUrl }: Props) {
           <Badge>{retention(metadata.retention)}</Badge>
           <Button asChild variant="secondary">
             <a href={contentUrl(metadata.artifactId)} download={metadata.name ?? "artifact"} onClick={(event) => {
-              if (metadata.classification === "sensitive" && !window.confirm("这是敏感 Artifact。确认下载到本地设备？")) event.preventDefault();
+              const confirmSensitive = document.documentElement.dataset.confirmSensitiveDownloads !== "false";
+              if (confirmSensitive && metadata.classification === "sensitive" && !window.confirm("这是敏感 Artifact。确认下载到本地设备？")) event.preventDefault();
             }}><Download className="size-4" />下载</a>
           </Button>
         </div>

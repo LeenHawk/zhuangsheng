@@ -133,6 +133,16 @@ export class HttpConfigClient {
     return decodeContextPresetVersion(await this.command(`/v1/context-presets/${encodeURIComponent(presetId)}/revisions`, input, idempotencyKey));
   }
 
+  async getPresetVersion(versionId: string, signal?: AbortSignal): Promise<ContextPresetVersionView> {
+    const version = decodeContextPresetVersion(await requestJson(
+      this.baseUrl,
+      `/v1/context-preset-versions/${encodeURIComponent(versionId)}`,
+      { signal },
+    ));
+    if (version.id !== versionId) throw new DecodeError("contextPresetVersion.id");
+    return version;
+  }
+
   async previewPreset(presetId: string, versionId?: string | null, signal?: AbortSignal): Promise<ContextPresetPreviewView> {
     return decodeContextPresetPreview(await requestJson(
       this.baseUrl,
