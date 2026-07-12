@@ -188,7 +188,7 @@ async fn graph_http_vertical_slice_uses_public_contract() {
     )
     .await;
     assert_eq!(resumed["status"], "running");
-    Scheduler::new(store, "http-test-worker")
+    Scheduler::new(store.clone(), "http-test-worker")
         .run_until_idle(now_ms(), 64)
         .await
         .unwrap();
@@ -217,13 +217,22 @@ async fn graph_http_vertical_slice_uses_public_contract() {
     );
 
     let last_seq = loaded_run["lastDurableSeq"].as_u64().unwrap();
+    let terminal_seq = store
+        .list_run_events(run_id, 0, 500)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|event| event.event_type == "run.completed")
+        .unwrap()
+        .durable_seq;
+    assert!(last_seq >= terminal_seq);
     let response = app
         .clone()
         .oneshot(request(
             "GET",
             &format!("/v1/runs/{run_id}/events"),
             json!(null),
-            &[("last-event-id", (last_seq - 1).to_string())],
+            &[("last-event-id", (terminal_seq - 1).to_string())],
         ))
         .await
         .unwrap();
@@ -235,7 +244,7 @@ async fn graph_http_vertical_slice_uses_public_contract() {
         .unwrap()
         .unwrap();
     let data = String::from_utf8(frame.into_data().unwrap().to_vec()).unwrap();
-    assert!(data.contains(&format!("id: {last_seq}")));
+    assert!(data.contains(&format!("id: {terminal_seq}")));
     assert!(data.contains("event: run.completed"));
 }
 
