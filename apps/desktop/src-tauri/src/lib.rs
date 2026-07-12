@@ -6,13 +6,15 @@ use tauri::{Emitter, Manager};
 #[cfg(feature = "tauri-runtime")]
 use zhuangsheng_core::scheduler::{Scheduler, SchedulerStore};
 #[cfg(feature = "tauri-runtime")]
-use zhuangsheng_server::llm_executor::LocalLlmExecutor;
+use zhuangsheng_server::{
+    RemoteModelDiscoveryService, llm_executor::LocalLlmExecutor, provider::HttpProviderClient,
+};
 #[cfg(feature = "tauri-runtime")]
 use zhuangsheng_storage::SqliteStore;
 #[cfg(feature = "tauri-runtime")]
-use zhuangsheng_tauri_adapter::TauriAdapter;
+use zhuangsheng_tauri_adapter::{TauriAdapter, TauriServices};
 
-#[cfg(feature = "tauri-runtime")]
+#[cfg(feature = "tauri-ipc")]
 mod commands;
 
 #[cfg(feature = "tauri-runtime")]
@@ -55,14 +57,22 @@ pub fn run() {
                     tokio::time::sleep(Duration::from_millis(250)).await;
                 }
             });
-            app.manage(TauriAdapter::new(
+            let model_discovery = Arc::new(RemoteModelDiscoveryService::new(
                 store.clone(),
                 store.clone(),
-                store.clone(),
-                store.clone(),
-                store.clone(),
-                store.clone(),
+                Arc::new(HttpProviderClient::new()?),
             ));
+            app.manage(TauriAdapter::new(TauriServices {
+                runtime: store.clone(),
+                graph: store.clone(),
+                channel: store.clone(),
+                model_discovery: Some(model_discovery),
+                preset: store.clone(),
+                conversation: store.clone(),
+                context: store.clone(),
+                memory: store.clone(),
+                secret: store.clone(),
+            }));
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -94,6 +104,35 @@ pub fn run() {
             commands::get_secret_store_status,
             commands::initialize_secret_store,
             commands::unlock_secret_store,
+            commands::list_secrets,
+            commands::put_secret,
+            commands::conversation::list_conversations,
+            commands::conversation::get_conversation,
+            commands::conversation::get_conversation_timeline,
+            commands::conversation::get_turn_candidates,
+            commands::conversation::submit_conversation_turn,
+            commands::conversation::select_conversation_candidate,
+            commands::conversation::regenerate_conversation_candidate,
+            commands::conversation::resolve_candidate_projection,
+            commands::conversation::list_roleplay_graph_options,
+            commands::conversation::get_roleplay_compatibility,
+            commands::conversation::list_context_branches,
+            commands::config::list_channels,
+            commands::config::publish_channel_revision,
+            commands::config::get_channel_revision,
+            commands::config::discover_channel_models,
+            commands::config::list_context_presets,
+            commands::config::publish_context_preset_version,
+            commands::config::get_context_preset_version,
+            commands::config::preview_context_preset,
+            commands::config::create_roleplay_template,
+            commands::config::get_graph_revision,
+            commands::memory::list_memory_proposals,
+            commands::memory::propose_memory_change,
+            commands::memory::decide_memory_proposal,
+            commands::memory::apply_memory_proposal,
+            commands::memory::get_memory_record,
+            commands::memory::search_memory,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run zhuangsheng desktop application");

@@ -6,7 +6,8 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["tauri-runtime"]
-tauri-runtime = ["dep:tauri", "tauri/wry"]
+tauri-ipc = ["dep:tauri"]
+tauri-runtime = ["tauri-ipc", "tauri/wry"]
 
 [workspace]
 

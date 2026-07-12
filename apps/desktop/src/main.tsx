@@ -1,35 +1,40 @@
-import { StrictMode, useCallback, useEffect, useState } from "react";
+import { lazy, StrictMode, Suspense, useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 
-import { TauriTransport, type RunListView, type RunView } from "@zhuangsheng/api-client";
-import { AppShell, RunList } from "@zhuangsheng/domain-ui";
+import { type UiExperienceMode } from "@zhuangsheng/api-client";
+import { AppShell, SurfacePlaceholder } from "@zhuangsheng/domain-ui";
 
+import { LocalStories } from "./local-stories";
+import { LocalSettings } from "./local-settings";
+import { LocalMemory } from "./local-memory";
+import { LocalLibrary } from "./local-library";
 import "../../web/src/styles.css";
 
-const transport = new TauriTransport({
-  invoke: (operation, payload) => invoke(operation, payload as Record<string, unknown>),
-  listen: async (event, handler) => {
-    const unlisten = await listen(event, handler);
-    return unlisten;
-  },
-});
+const LocalRuns = lazy(async () => ({ default: (await import("./local-runs")).LocalRuns }));
 
 function DesktopApp() {
-  const [runs, setRuns] = useState<RunView[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const reload = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const result = await transport.query<RunListView>({ operation: "list_recent_runs", payload: { limit: 50 } });
-      setRuns(result.items);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "本地 adapter 不可用"); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => { void reload(); }, [reload]);
-  return <AppShell mode="expert" section="runs" onModeChange={() => undefined} onSectionChange={() => undefined}><RunList runs={runs} loading={loading} error={error} onReload={() => void reload()} onOpen={() => undefined} /></AppShell>;
+  const [mode, setMode] = useState<UiExperienceMode>(() =>
+    localStorage.getItem("zhuangsheng.uiMode") === "expert" ? "expert" : "user");
+  const [section, setSection] = useState<"stories" | "library" | "memory" | "settings" | "studio" | "runs" | "contexts" | "artifacts">("stories");
+  const [inspectRunId, setInspectRunId] = useState<string | null>(null);
+  const [resumeStoryId, setResumeStoryId] = useState<string | null>(null);
+  const clearInspectRun = useCallback(() => setInspectRunId(null), []);
+  const clearResumeStory = useCallback(() => setResumeStoryId(null), []);
+  const content = section === "stories"
+    ? <LocalStories initialStoryId={resumeStoryId} onStoryOpened={clearResumeStory} onInspectRun={(runId, storyId) => { setInspectRunId(runId); setResumeStoryId(storyId); setSection("runs"); }} onConfigure={() => setSection("settings")} />
+    : section === "runs"
+      ? <Suspense fallback={<SurfacePlaceholder label="本地 Run" title="正在加载运行诊断" description="正在读取固定 Graph 与 durable trace。" />}><LocalRuns initialRunId={inspectRunId} onRunOpened={clearInspectRun} onOpenContext={() => setSection("contexts")} onReturnToStory={() => setSection("stories")} /></Suspense>
+      : section === "settings"
+        ? <LocalSettings />
+        : section === "memory"
+          ? <LocalMemory />
+          : section === "library"
+            ? <LocalLibrary onOpenSettings={() => setSection("settings")} onOpenArtifacts={() => setSection("artifacts")} />
+      : <SurfacePlaceholder label="本地 surface" title="此区域正在接入本地 transport" description="数据仍保存在本机 SQLite；当前可使用完整故事对话与运行列表。" />;
+  const changeMode = (next: UiExperienceMode) => {
+    localStorage.setItem("zhuangsheng.uiMode", next); setMode(next);
+  };
+  return <AppShell mode={mode} section={section} onModeChange={changeMode} onSectionChange={setSection}>{content}</AppShell>;
 }
 
 const root = document.getElementById("root");

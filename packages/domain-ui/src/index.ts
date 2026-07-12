@@ -15,3 +15,4 @@ export * from "./story-detail";
 export * from "./story-list";
 export * from "./story-wait-actions";
 export * from "./human-response-card";
+export * from "./role-preset-spec";

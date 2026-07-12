@@ -5,17 +5,27 @@ use zhuangsheng_core::{
         conversation::{CreateConversationCommand, UpdateConversationRunProfileCommand},
         graph::{CreateGraphCommand, CreateGraphResult},
         preset::{ContextPresetView, CreateContextPresetCommand},
-        secret::{SecretStoreSessionView, SecretStoreStatusView},
+        secret::{SecretMetadataView, SecretStoreSessionView, SecretStoreStatusView},
     },
     context_merge::{MergeContextCommand, MergeContextView},
     conversation::{ConversationRunProfile, ConversationView, RolePlaySettingsView},
-    llm::{EffectResolutionView, ResolveEffectUnknownCommand},
+    llm::EffectResolutionView,
     runtime::{
         ContextBranchView, DurableRunEventView, ForkContextCommand, RunControlCommand, RunListView,
-        RunView, StartRunCommand, SubmitWaitResponseCommand, WaitDeliveryView, WaitView,
+        RunView, StartRunCommand, WaitDeliveryView, WaitView,
     },
 };
-use zhuangsheng_tauri_adapter::{CommandResult, SensitiveSecretInput, TauriAdapter};
+use zhuangsheng_tauri_adapter::{
+    CommandResult, ResolveEffectUnknownInput, SatisfyWaitInput, SensitivePutSecretInput,
+    SensitiveSecretInput, TauriAdapter,
+};
+
+#[path = "commands_config.rs"]
+pub mod config;
+#[path = "commands_conversation.rs"]
+pub mod conversation;
+#[path = "commands_memory.rs"]
+pub mod memory;
 
 #[tauri::command]
 pub async fn start_run(
@@ -77,16 +87,16 @@ pub async fn cancel_run(
 #[tauri::command]
 pub async fn satisfy_wait(
     state: State<'_, TauriAdapter>,
-    command: SubmitWaitResponseCommand,
+    input: SatisfyWaitInput,
 ) -> CommandResult<WaitDeliveryView> {
-    state.satisfy_wait(command).await
+    state.satisfy_wait(input).await
 }
 #[tauri::command]
 pub async fn resolve_effect_unknown(
     state: State<'_, TauriAdapter>,
-    command: ResolveEffectUnknownCommand,
+    input: ResolveEffectUnknownInput,
 ) -> CommandResult<EffectResolutionView> {
-    state.resolve_effect_unknown(command).await
+    state.resolve_effect_unknown(input).await
 }
 #[tauri::command]
 pub async fn fork_context(
@@ -163,4 +173,19 @@ pub async fn unlock_secret_store(
     input: SensitiveSecretInput,
 ) -> CommandResult<SecretStoreSessionView> {
     state.unlock_secret_store(input).await
+}
+
+#[tauri::command]
+pub async fn list_secrets(
+    state: State<'_, TauriAdapter>,
+) -> CommandResult<Vec<SecretMetadataView>> {
+    state.list_secrets().await
+}
+
+#[tauri::command]
+pub async fn put_secret(
+    state: State<'_, TauriAdapter>,
+    input: SensitivePutSecretInput,
+) -> CommandResult<SecretMetadataView> {
+    state.put_secret(input).await
 }

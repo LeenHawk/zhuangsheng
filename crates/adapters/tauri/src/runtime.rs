@@ -1,13 +1,40 @@
+use serde::{Deserialize, Serialize};
+use ulid::Ulid;
 use zhuangsheng_core::{
     context_merge::{MergeContextCommand, MergeContextView},
-    llm::{EffectResolutionView, ResolveEffectUnknownCommand},
+    llm::{
+        EffectResolutionActorKind, EffectResolutionKind, EffectResolutionView,
+        ResolveEffectUnknownCommand,
+    },
     runtime::{
         ContextBranchView, DurableRunEventView, ForkContextCommand, RunControlCommand, RunListView,
-        RunView, StartRunCommand, SubmitWaitResponseCommand, WaitDeliveryView, WaitView,
+        RunView, StartRunCommand, SubmitWaitResponseCommand, WaitDeliveryView, WaitResponsePayload,
+        WaitView,
     },
 };
 
 use crate::{CommandResult, TauriAdapter};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SatisfyWaitInput {
+    pub wait_id: String,
+    pub delivery_id: String,
+    pub response: WaitResponsePayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveEffectUnknownInput {
+    pub effect_id: String,
+    pub expected_effect_attempt_id: String,
+    pub expected_run_control_epoch: u64,
+    pub kind: EffectResolutionKind,
+    pub decision: serde_json::Value,
+    pub result_object_id: Option<String>,
+    pub evidence_object_id: Option<String>,
+    pub idempotency_key: String,
+}
 
 impl TauriAdapter {
     pub async fn start_run(&self, command: StartRunCommand) -> CommandResult<RunView> {
@@ -50,18 +77,39 @@ impl TauriAdapter {
         Ok(self.runtime.request_cancel(command).await?)
     }
 
-    pub async fn satisfy_wait(
-        &self,
-        command: SubmitWaitResponseCommand,
-    ) -> CommandResult<WaitDeliveryView> {
-        Ok(self.runtime.submit_wait_response(command).await?)
+    pub async fn satisfy_wait(&self, input: SatisfyWaitInput) -> CommandResult<WaitDeliveryView> {
+        Ok(self
+            .runtime
+            .submit_wait_response(SubmitWaitResponseCommand {
+                wait_id: input.wait_id,
+                delivery_id: input.delivery_id,
+                actor_kind: "human".into(),
+                actor_id: Some("local-user".into()),
+                payload: input.response,
+            })
+            .await?)
     }
 
     pub async fn resolve_effect_unknown(
         &self,
-        command: ResolveEffectUnknownCommand,
+        input: ResolveEffectUnknownInput,
     ) -> CommandResult<EffectResolutionView> {
-        Ok(self.runtime.resolve_effect_unknown(command).await?)
+        Ok(self
+            .runtime
+            .resolve_effect_unknown(ResolveEffectUnknownCommand {
+                resolution_id: format!("effectresolution_{}", Ulid::new()),
+                effect_id: input.effect_id,
+                expected_effect_attempt_id: input.expected_effect_attempt_id,
+                expected_run_control_epoch: input.expected_run_control_epoch,
+                command_idempotency_key: input.idempotency_key,
+                kind: input.kind,
+                decision: input.decision,
+                result_object_id: input.result_object_id,
+                evidence_object_id: input.evidence_object_id,
+                actor_kind: EffectResolutionActorKind::Human,
+                actor_id: Some("local-user".into()),
+            })
+            .await?)
     }
 
     pub async fn fork_context(
