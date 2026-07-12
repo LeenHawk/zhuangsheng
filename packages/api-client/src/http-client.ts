@@ -9,6 +9,7 @@ import {
 } from "./decode";
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
 import { requestJson } from "./http-json";
+import { HttpGraphClient } from "./http-graph-client";
 import { HttpRuntimeClient } from "./http-runtime-client";
 import { HttpSecretClient } from "./http-secret-client";
 import { createIdempotencyKey } from "./idempotency";
@@ -53,10 +54,12 @@ export interface SelectConversationCandidateInput {
 export class HttpApiClient {
   readonly runtime: HttpRuntimeClient;
   readonly secrets: HttpSecretClient;
+  readonly graphs: HttpGraphClient;
 
   constructor(private readonly baseUrl = "") {
     this.runtime = new HttpRuntimeClient(baseUrl);
     this.secrets = new HttpSecretClient(baseUrl);
+    this.graphs = new HttpGraphClient(baseUrl);
   }
 
   async listConversations(signal?: AbortSignal): Promise<ConversationListView> {

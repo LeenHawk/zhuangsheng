@@ -1,4 +1,5 @@
 export * from "./app-shell";
+export * from "./graph-studio";
 export * from "./run-detail";
 export * from "./run-list";
 export * from "./story-detail";
