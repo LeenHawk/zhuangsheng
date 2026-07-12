@@ -23,6 +23,7 @@ describe("HttpConfigClient", () => {
       credentialSecretId: "provider-key",
       allowLoopbackHttp: false,
       allowUnauthenticated: false,
+      structuredOutput: true,
     }, "publish-key");
 
     expect(call).not.toBeNull();
@@ -32,7 +33,7 @@ describe("HttpConfigClient", () => {
     const body = JSON.parse(request.init.body as string);
     expect(body.expectedHeadRevisionId).toBeNull();
     expect(body.spec.credential).toEqual({ type: "secret", apiKeyRef: { scheme: "secret", id: "provider-key" } });
-    expect(body.spec.modelCatalogs[0]).toMatchObject({ policy: "allowlist", models: [{ id: "gpt-roleplay", capabilities: {} }] });
+    expect(body.spec.modelCatalogs[0]).toMatchObject({ policy: "allowlist", models: [{ id: "gpt-roleplay", capabilities: { structuredOutput: true } }] });
     expect(body.spec.operationKeys).toEqual([{ operation: "generate_content", kind: "open_ai_responses" }]);
   });
 

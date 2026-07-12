@@ -4,7 +4,7 @@ import { Cable, CheckCircle2 } from "lucide-react";
 import type { ChannelView, GenerationProviderKind, SecretMetadataView } from "@zhuangsheng/api-client";
 import { Badge, Button, Card, Input } from "@zhuangsheng/ui";
 
-interface InputValue { name: string; baseUrl: string; providerKind: GenerationProviderKind; modelId: string; credentialSecretId: string | null }
+interface InputValue { name: string; baseUrl: string; providerKind: GenerationProviderKind; modelId: string; credentialSecretId: string | null; structuredOutput: boolean }
 const providers: Array<{ value: GenerationProviderKind; label: string; baseUrl: string }> = [
   { value: "open_ai_responses", label: "OpenAI Responses", baseUrl: "https://api.openai.com/v1" },
   { value: "open_ai_chat_completions", label: "OpenAI Chat Completions", baseUrl: "https://api.openai.com/v1" },
@@ -13,9 +13,9 @@ const providers: Array<{ value: GenerationProviderKind; label: string; baseUrl: 
 ];
 
 export function ChannelSetupCard({ channels, secrets, pending, onSubmit }: { channels: ChannelView[]; secrets: SecretMetadataView[]; pending: boolean; onSubmit: (input: InputValue) => Promise<void> }) {
-  const [form, setForm] = useState<InputValue>({ name: "Primary model", baseUrl: providers[0]!.baseUrl, providerKind: providers[0]!.value, modelId: "", credentialSecretId: secrets[0]?.secretRef.id ?? null });
+  const [form, setForm] = useState<InputValue>({ name: "Primary model", baseUrl: providers[0]!.baseUrl, providerKind: providers[0]!.value, modelId: "", credentialSecretId: secrets[0]?.secretRef.id ?? null, structuredOutput: false });
   const set = <K extends keyof InputValue>(key: K, value: InputValue[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const valid = form.name.trim().length > 0 && form.baseUrl.trim().length > 0 && form.modelId.trim().length > 0;
+  const valid = form.name.trim().length > 0 && form.baseUrl.trim().length > 0 && form.modelId.trim().length > 0 && form.structuredOutput;
   const submit = async (event: FormEvent) => { event.preventDefault(); if (!valid || pending) return; try { await onSubmit({ ...form, name: form.name.trim(), baseUrl: form.baseUrl.trim(), modelId: form.modelId.trim() }); } catch { /* command error is rendered by the route */ } };
   return (
     <Card className="p-5">
@@ -27,6 +27,7 @@ export function ChannelSetupCard({ channels, secrets, pending, onSubmit }: { cha
         <Field label="Base URL"><Input value={form.baseUrl} onChange={(event) => set("baseUrl", event.target.value)} inputMode="url" /></Field>
         <Field label="Model ID"><Input value={form.modelId} onChange={(event) => set("modelId", event.target.value)} placeholder="例如 gpt-4.1-mini" /></Field>
         <Field label="凭据"><select className="min-h-11 w-full rounded-xl border border-default bg-canvas px-3 text-sm" value={form.credentialSecretId ?? ""} onChange={(event) => set("credentialSecretId", event.target.value || null)}><option value="">无需认证（仅本地/明确允许）</option>{secrets.map((secret) => <option key={secret.secretRef.id} value={secret.secretRef.id}>{secret.name || secret.secretRef.id}</option>)}</select></Field>
+        <label className="flex items-center gap-2 text-sm text-secondary"><input type="checkbox" checked={form.structuredOutput} onChange={(event) => set("structuredOutput", event.target.checked)} />我确认该模型支持结构化 JSON 输出（角色回复合同需要）</label>
         <div className="flex items-end"><Button type="submit" disabled={!valid || pending}>{pending ? "正在发布…" : "发布 Channel"}</Button></div>
       </form>
       {channels.length > 0 && <ul className="mt-4 space-y-2">{channels.map((channel) => <li key={channel.id} className="flex items-center gap-2 rounded-xl bg-elevated px-3 py-2 text-sm"><CheckCircle2 className={`size-4 ${channel.headRevisionId ? "text-success" : "text-warning"}`} /><span>{channel.name}</span><span className="ml-auto text-xs text-muted">{channel.headRevisionId ? "已发布" : "待完成发布"}</span></li>)}</ul>}

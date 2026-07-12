@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createIdempotencyKey, type ChannelView, type ContextPresetView, type GenerationProviderKind, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
+import { createIdempotencyKey, type ChannelView, type ContextPresetView, type GenerationProviderKind, type RolePlayGraphOptionView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
 
@@ -10,6 +10,7 @@ export interface ChannelSetupInput {
   providerKind: GenerationProviderKind;
   modelId: string;
   credentialSecretId: string | null;
+  structuredOutput: boolean;
 }
 
 export interface RolePresetInput {
@@ -35,8 +36,9 @@ export function useInitialSetup() {
   const [secrets, setSecrets] = useState<SecretMetadataView[]>([]);
   const [channels, setChannels] = useState<ChannelView[]>([]);
   const [presets, setPresets] = useState<ContextPresetView[]>([]);
+  const [templates, setTemplates] = useState<RolePlayGraphOptionView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<"secret" | "channel" | "preset" | null>(null);
+  const [pending, setPending] = useState<"secret" | "channel" | "preset" | "template" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const commandKeys = useRef(new Map<string, string>());
 
@@ -44,11 +46,12 @@ export function useInitialSetup() {
     setLoading(true); setError(null);
     try {
       const nextStatus = await client.secrets.status(signal);
-      const [nextSecrets, nextChannels, nextPresets] = await Promise.all([
+      const [nextSecrets, nextChannels, nextPresets, nextTemplates] = await Promise.all([
         nextStatus.initialized ? client.secrets.list(signal) : Promise.resolve([]),
         client.config.listChannels(signal), client.config.listPresets(signal),
+        client.listRolePlayGraphOptions(signal),
       ]);
-      setStatus(nextStatus); setSecrets(nextSecrets); setChannels(nextChannels); setPresets(nextPresets);
+      setStatus(nextStatus); setSecrets(nextSecrets); setChannels(nextChannels); setPresets(nextPresets); setTemplates(nextTemplates);
     } catch (cause) { if (!signal?.aborted) setError(messageFor(cause)); }
     finally { if (!signal?.aborted) setLoading(false); }
   }, []);
@@ -87,6 +90,7 @@ export function useInitialSetup() {
         expectedHeadRevisionId: null, baseUrl: input.baseUrl, providerKind: input.providerKind, modelId: input.modelId,
         credentialSecretId: input.credentialSecretId, allowLoopbackHttp: input.baseUrl.startsWith("http://127.0.0.1") || input.baseUrl.startsWith("http://localhost"),
         allowUnauthenticated: input.credentialSecretId === null,
+        structuredOutput: input.structuredOutput,
       }, keyFor(`${signature}:publish`));
       done(`${signature}:create`); done(`${signature}:publish`);
       setChannels((items) => items.map((item) => item.id === channel?.id ? { ...item, headRevisionId: revision.id, updatedAt: revision.createdAt } : item));
@@ -110,7 +114,20 @@ export function useInitialSetup() {
     finally { setPending(null); }
   };
 
-  return { status, secrets, channels, presets, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset };
+  const createTemplate = async (input: { name: string; channelId: string; presetId: string }) => {
+    const signature = `template:${JSON.stringify(input)}`;
+    setPending("template"); setError(null);
+    try {
+      const revision = await client.graphs.createRolePlayTemplate(input.name, input.channelId, input.presetId, { idempotencyKey: keyFor(signature) });
+      done(signature);
+      const options = await client.listRolePlayGraphOptions();
+      setTemplates(options);
+      return revision;
+    } catch (cause) { setError(messageFor(cause)); throw cause; }
+    finally { setPending(null); }
+  };
+
+  return { status, secrets, channels, presets, templates, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset, createTemplate };
 }
 
 export function buildRolePresetSpec(input: RolePresetInput) {

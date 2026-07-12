@@ -12,12 +12,14 @@ describe("StoryList", () => {
     render(
       <StoryList
         stories={[]}
+        templates={[template]}
         loading={false}
         pending={false}
         error={null}
         onReload={() => undefined}
         onCreate={onCreate}
         onOpen={() => undefined}
+        onConfigure={() => undefined}
       />,
     );
 
@@ -26,6 +28,42 @@ describe("StoryList", () => {
     fireEvent.change(screen.getByLabelText(/故事名称/), { target: { value: "月下档案馆" } });
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
 
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith("月下档案馆"));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith("月下档案馆", {
+      graphRevisionId: "graphrev_1",
+      replyOutputKey: "reply",
+      inputShape: "conversation_message_v1",
+    }));
+  });
+
+  it("routes an unconfigured user into the guided Agent setup", () => {
+    const onConfigure = vi.fn();
+    render(<StoryList
+      stories={[]}
+      templates={[]}
+      loading={false}
+      pending={false}
+      error={null}
+      onReload={() => undefined}
+      onCreate={async () => undefined}
+      onOpen={() => undefined}
+      onConfigure={onConfigure}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "配置首个 Agent" }));
+    expect(onConfigure).toHaveBeenCalledOnce();
   });
 });
+
+const template = {
+  graphId: "graph_1",
+  graphName: "Alice Agent",
+  revisionId: "graphrev_1",
+  revisionNo: 1,
+  replyOutputKeys: ["reply"],
+  primaryLlmNodeId: "reply",
+  compatibility: {
+    mode: "editable" as const,
+    profileVersion: 1 as const,
+    editableFields: ["model", "context.character"],
+  },
+};

@@ -26,7 +26,7 @@ export class HttpConfigClient {
       transportPolicy: { allowLoopbackHttp: input.allowLoopbackHttp, allowUnauthenticated: input.allowUnauthenticated },
       credential,
       operationKeys: [operationKey],
-      modelCatalogs: [{ operationKey, policy: "allowlist", models: [{ id: input.modelId, capabilities: {} }] }],
+      modelCatalogs: [{ operationKey, policy: "allowlist", models: [{ id: input.modelId, capabilities: { structuredOutput: input.structuredOutput } }] }],
       capabilities: [],
     };
     return decodeChannelRevision(await this.command(`/v1/channels/${encodeURIComponent(channelId)}/revisions`, { expectedHeadRevisionId: input.expectedHeadRevisionId, spec }, idempotencyKey));

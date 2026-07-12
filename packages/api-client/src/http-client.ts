@@ -29,6 +29,7 @@ import type {
 
 export interface CreateConversationInput {
   title?: string;
+  defaultRun?: ConversationRunSpec;
 }
 
 export interface UpdateConversationRunProfileInput {
@@ -73,7 +74,10 @@ export class HttpApiClient {
     return decodeConversation(await this.request("/v1/conversations", {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
-      body: JSON.stringify({ title: input.title?.trim() || null, defaultRun: null }),
+      body: JSON.stringify({
+        title: input.title?.trim() || null,
+        defaultRun: input.defaultRun ?? null,
+      }),
     }));
   }
 

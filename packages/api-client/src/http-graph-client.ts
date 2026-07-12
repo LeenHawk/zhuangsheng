@@ -55,6 +55,20 @@ export class HttpGraphClient {
     }));
   }
 
+  async createRolePlayTemplate(
+    name: string,
+    channelId: string,
+    presetId: string,
+    options: GraphCommandOptions = {},
+  ): Promise<GraphRevisionView> {
+    return decodeGraphRevision(await this.request("/v1/roleplay/templates", {
+      method: "POST",
+      headers: this.commandHeaders(options.idempotencyKey),
+      body: JSON.stringify({ name, channelId, presetId }),
+      signal: options.signal,
+    }));
+  }
+
   private commandHeaders(key?: string): Record<string, string> {
     return { "content-type": "application/json", "idempotency-key": key ?? createIdempotencyKey() };
   }

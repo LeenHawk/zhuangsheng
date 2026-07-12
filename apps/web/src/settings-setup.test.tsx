@@ -27,6 +27,7 @@ describe("first-run settings", () => {
     const listSecrets = vi.spyOn(client.secrets, "list");
     vi.spyOn(client.config, "listChannels").mockResolvedValue([]);
     vi.spyOn(client.config, "listPresets").mockResolvedValue([]);
+    vi.spyOn(client, "listRolePlayGraphOptions").mockResolvedValue([]);
 
     const { result } = renderHook(() => useInitialSetup());
 
@@ -43,6 +44,7 @@ describe("first-run settings", () => {
       secrets={[]}
       channels={[]}
       presets={[]}
+      templates={[]}
       loading={false}
       pending={null}
       error={null}
@@ -50,6 +52,7 @@ describe("first-run settings", () => {
       onStoreSecret={onStoreSecret}
       onPublishChannel={async () => undefined}
       onPublishPreset={async () => undefined}
+      onCreateTemplate={async () => undefined}
     />);
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "secret-provider-value" } });
     fireEvent.change(screen.getByLabelText("设置主密码"), { target: { value: "long-master-password" } });
@@ -65,11 +68,13 @@ describe("first-run settings", () => {
   it("maps friendly connection and character fields to canonical commands", async () => {
     const onPublishChannel = vi.fn(async () => undefined);
     const onPublishPreset = vi.fn(async () => undefined);
+    const onCreateTemplate = vi.fn(async () => undefined);
     render(<SettingsSetup
       status={{ initialized: true, storeId: "store_1", formatVersion: 1, locked: false }}
       secrets={[secret]}
-      channels={[]}
-      presets={[]}
+      channels={[{ id: "channel_1", name: "Primary", headRevisionId: "channelrev_1", createdAt: 1, updatedAt: 1 }]}
+      presets={[{ id: "preset_1", name: "Character", headVersionId: "presetver_1", createdAt: 1, updatedAt: 1 }]}
+      templates={[]}
       loading={false}
       pending={null}
       error={null}
@@ -77,15 +82,24 @@ describe("first-run settings", () => {
       onStoreSecret={async () => undefined}
       onPublishChannel={onPublishChannel}
       onPublishPreset={onPublishPreset}
+      onCreateTemplate={onCreateTemplate}
     />);
     fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "roleplay-model" } });
+    const structuredOutput = screen.getByLabelText("我确认该模型支持结构化 JSON 输出（角色回复合同需要）");
+    expect(structuredOutput).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "发布 Channel" })).toBeDisabled();
+    fireEvent.click(structuredOutput);
+    expect(structuredOutput).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "发布 Channel" }));
-    await waitFor(() => expect(onPublishChannel).toHaveBeenCalledWith(expect.objectContaining({ providerKind: "open_ai_responses", modelId: "roleplay-model", credentialSecretId: "provider-key" })));
+    await waitFor(() => expect(onPublishChannel).toHaveBeenCalledWith(expect.objectContaining({ providerKind: "open_ai_responses", modelId: "roleplay-model", credentialSecretId: "provider-key", structuredOutput: true })));
 
     fireEvent.change(screen.getByLabelText("角色名称"), { target: { value: "Alice" } });
     fireEvent.change(screen.getByLabelText("身份与背景"), { target: { value: "月下档案馆的守护者" } });
     fireEvent.click(screen.getByRole("button", { name: "发布角色模板" }));
     await waitFor(() => expect(onPublishPreset).toHaveBeenCalledWith(expect.objectContaining({ characterName: "Alice", identity: "月下档案馆的守护者" })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "创建 Agent 模板" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "创建 Agent 模板" }));
+    await waitFor(() => expect(onCreateTemplate).toHaveBeenCalledWith({ name: "Role Play Agent", channelId: "channel_1", presetId: "preset_1" }));
   });
 
   it("compiles role fields into one canonical required ContextPreset item", () => {

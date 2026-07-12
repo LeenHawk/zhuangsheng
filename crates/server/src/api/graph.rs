@@ -7,8 +7,8 @@ use axum::{
 use serde::Deserialize;
 use zhuangsheng_core::{
     application::graph::{
-        ApplyGraphCommand, CreateGraphCommand, CreateGraphResult, GraphDraftView,
-        GraphRevisionView, GraphView, UpdateGraphDraftCommand,
+        ApplyGraphCommand, CreateGraphCommand, CreateGraphResult, CreateRolePlayTemplateCommand,
+        GraphDraftView, GraphRevisionView, GraphView, UpdateGraphDraftCommand,
     },
     conversation::{RolePlayCompatibilityView, RolePlayGraphOptionView},
     graph::GraphDraft,
@@ -34,6 +34,14 @@ struct ApplyGraphBody {
     adapter_decoder_version: u32,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateRolePlayTemplateBody {
+    name: String,
+    channel_id: String,
+    preset_id: String,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/graphs", post(create_graph).get(list_graphs))
@@ -42,6 +50,7 @@ pub fn routes() -> Router<AppState> {
             get(get_draft).put(update_draft),
         )
         .route("/v1/graphs/{graph_id}/apply", post(apply_graph))
+        .route("/v1/roleplay/templates", post(create_roleplay_template))
         .route(
             "/v1/graphs/{graph_id}/revisions/{revision_id}",
             get(get_nested_revision),
@@ -52,6 +61,24 @@ pub fn routes() -> Router<AppState> {
             "/v1/graph-revisions/{revision_id}/roleplay-compatibility",
             get(get_roleplay_compatibility),
         )
+}
+
+async fn create_roleplay_template(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<CreateRolePlayTemplateBody>, JsonRejection>,
+) -> ApiResult<(StatusCode, Json<GraphRevisionView>)> {
+    let body = json_body(body)?;
+    let revision = state
+        .graph_service
+        .create_roleplay_template(CreateRolePlayTemplateCommand {
+            name: body.name,
+            channel_id: body.channel_id,
+            preset_id: body.preset_id,
+            idempotency_key: required_header(&headers, IDEMPOTENCY_KEY)?,
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(revision)))
 }
 
 async fn list_roleplay_options(

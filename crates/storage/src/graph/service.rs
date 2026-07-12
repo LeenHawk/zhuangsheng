@@ -45,6 +45,15 @@ impl GraphService for SqliteStore {
             .map_err(Into::into)
     }
 
+    async fn create_roleplay_template(
+        &self,
+        command: CreateRolePlayTemplateCommand,
+    ) -> Result<GraphRevisionView, ApplicationError> {
+        SqliteStore::create_roleplay_template(self, command)
+            .await
+            .map_err(Into::into)
+    }
+
     async fn get_graph_revision(
         &self,
         revision_id: &str,

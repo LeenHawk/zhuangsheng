@@ -62,6 +62,15 @@ pub struct ApplyGraphCommand {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateRolePlayTemplateCommand {
+    pub name: String,
+    pub channel_id: String,
+    pub preset_id: String,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GraphRevisionView {
     pub id: String,
     pub graph_id: String,
@@ -89,6 +98,10 @@ pub trait GraphService: Send + Sync {
     async fn apply_graph(
         &self,
         command: ApplyGraphCommand,
+    ) -> Result<GraphRevisionView, ApplicationError>;
+    async fn create_roleplay_template(
+        &self,
+        command: CreateRolePlayTemplateCommand,
     ) -> Result<GraphRevisionView, ApplicationError>;
     async fn get_graph_revision(
         &self,

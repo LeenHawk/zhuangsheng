@@ -85,4 +85,17 @@ describe("HttpGraphClient", () => {
     expect(calls[1]?.init?.headers).toMatchObject({ "if-match": '"draftrev_2"', "idempotency-key": "apply-key" });
     expect(JSON.parse(calls[1]?.init?.body as string)).toEqual({ operationTaxonomyVersion: 1, adapterDecoderVersion: 1 });
   });
+
+  it("creates a user-mode role play template through the server facade", async () => {
+    let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      call = { input, init };
+      return new Response(JSON.stringify({ id: "graphrev_1", graphId: "graph_1", revisionNo: 1, operationTaxonomyVersion: 1, adapterDecoderVersion: 1, definition: {}, contentHash: "hash", createdAt: 1, warnings: [] }), { status: 201 });
+    });
+    await new HttpGraphClient("https://role.example").createRolePlayTemplate("Alice", "channel_1", "preset_1", { idempotencyKey: "template-key" });
+    const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
+    expect(request.input).toBe("https://role.example/v1/roleplay/templates");
+    expect(request.init.headers).toMatchObject({ "idempotency-key": "template-key" });
+    expect(JSON.parse(request.init.body as string)).toEqual({ name: "Alice", channelId: "channel_1", presetId: "preset_1" });
+  });
 });

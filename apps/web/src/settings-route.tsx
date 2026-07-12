@@ -9,6 +9,7 @@ export function SettingsRoute() {
     secrets={setup.secrets}
     channels={setup.channels}
     presets={setup.presets}
+    templates={setup.templates}
     loading={setup.loading}
     pending={setup.pending}
     error={setup.error}
@@ -16,5 +17,6 @@ export function SettingsRoute() {
     onStoreSecret={setup.storeSecret}
     onPublishChannel={setup.publishChannel}
     onPublishPreset={setup.publishRolePreset}
+    onCreateTemplate={setup.createTemplate}
   />;
 }

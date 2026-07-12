@@ -30,6 +30,7 @@ export interface PublishChannelInput {
   credentialSecretId: string | null;
   allowLoopbackHttp: boolean;
   allowUnauthenticated: boolean;
+  structuredOutput: boolean;
 }
 
 export interface ChannelRevisionView {

@@ -5,6 +5,47 @@ import { HttpApiClient } from "./http-client";
 describe("HttpApiClient conversation commands", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("creates a story with its versioned default run profile", async () => {
+    let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
+    vi.stubGlobal("crypto", { randomUUID: () => "conversation-key" });
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      call = { input, init };
+      return new Response(JSON.stringify({
+        id: "conversation_1",
+        title: "The Archive",
+        contextId: "context_1",
+        activeBranchId: "branch_1",
+        activeHeadCommitId: "commit_1",
+        runProfile: {
+          graphRevisionId: "graphrev_1",
+          replyOutputKey: "reply",
+          inputShape: "conversation_message_v1",
+          revisionNo: 1,
+        },
+        createdAt: 1,
+        updatedAt: 1,
+      }), { status: 201 });
+    });
+    const defaultRun = {
+      graphRevisionId: "graphrev_1",
+      replyOutputKey: "reply",
+      inputShape: "conversation_message_v1" as const,
+    };
+
+    await new HttpApiClient("https://roleplay.example").createConversation({
+      title: "The Archive",
+      defaultRun,
+    });
+
+    const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
+    expect(request.input).toBe("https://roleplay.example/v1/conversations");
+    expect(request.init.headers).toMatchObject({ "idempotency-key": "conversation-key" });
+    expect(JSON.parse(request.init.body as string)).toEqual({
+      title: "The Archive",
+      defaultRun,
+    });
+  });
+
   it("sends revision CAS and exact run specs to their canonical endpoints", async () => {
     const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     vi.stubGlobal("crypto", { randomUUID: () => "command-key" });
