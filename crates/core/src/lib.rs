@@ -2,6 +2,9 @@ pub mod application;
 pub mod artifact;
 pub mod canonical;
 pub mod compatibility;
+pub mod context_merge;
+#[cfg(test)]
+mod context_merge_tests;
 pub mod conversation;
 pub mod error;
 pub mod graph;
