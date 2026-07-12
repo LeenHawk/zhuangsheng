@@ -325,6 +325,9 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                 "provider requested a tool but the tool loop is not connected yet",
             ));
         }
-        finalize_output(execution.output.as_ref(), &decoded.response.items)
+        Ok(finalize_output(
+            execution.output.as_ref(),
+            &decoded.response.items,
+        ))
     }
 }

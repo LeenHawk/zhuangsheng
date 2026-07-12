@@ -1,0 +1,301 @@
+use std::{collections::HashSet, fmt};
+
+use serde::{
+    Deserialize, Deserializer,
+    de::{MapAccess, SeqAccess, Visitor},
+};
+use serde_json::Value;
+use thiserror::Error;
+
+use crate::{
+    canonical,
+    graph::{LlmFinalText, LlmOutputSpec},
+    schema,
+};
+
+use super::ir::{LlmContentPartIr, LlmTurnItemIr, MessageRole};
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{code}: {message}")]
+pub struct LlmOutputError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl LlmOutputError {
+    fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+pub fn finalize_llm_output(
+    output: Option<&LlmOutputSpec>,
+    last_model_items: &[LlmTurnItemIr],
+    all_model_items: &[LlmTurnItemIr],
+) -> Result<Value, LlmOutputError> {
+    match output {
+        Some(LlmOutputSpec::Json { schema, .. }) => {
+            let bytes = extract_json_bytes(last_model_items)?;
+            let value = parse_exact_json(&bytes)?;
+            schema::validate(schema, &value).map_err(|error| {
+                LlmOutputError::new("llm_output_schema_invalid", error.to_string())
+            })?;
+            Ok(value)
+        }
+        Some(LlmOutputSpec::Text {
+            final_text,
+            allow_empty,
+        }) => {
+            let items = if final_text.unwrap_or(LlmFinalText::LastAssistantTurn)
+                == LlmFinalText::AllAssistantText
+            {
+                all_model_items
+            } else {
+                last_model_items
+            };
+            text_output(items, *allow_empty)
+        }
+        None => text_output(last_model_items, false),
+    }
+}
+
+fn text_output(items: &[LlmTurnItemIr], allow_empty: bool) -> Result<Value, LlmOutputError> {
+    let mut output = String::new();
+    for item in items {
+        if let LlmTurnItemIr::Message {
+            role: MessageRole::Assistant,
+            content,
+            ..
+        } = item
+        {
+            for part in content {
+                if let LlmContentPartIr::Text { text } = part {
+                    output.push_str(text);
+                }
+            }
+        }
+    }
+    if output.is_empty() && !allow_empty {
+        return Err(LlmOutputError::new(
+            "llm_empty_output",
+            "LLM response contained no assistant text",
+        ));
+    }
+    Ok(Value::String(output))
+}
+
+fn extract_json_bytes(items: &[LlmTurnItemIr]) -> Result<String, LlmOutputError> {
+    let mut output = String::new();
+    let mut text_parts = 0usize;
+    for item in items {
+        let LlmTurnItemIr::Message {
+            role: MessageRole::Assistant,
+            content,
+            ..
+        } = item
+        else {
+            continue;
+        };
+        for part in content {
+            match part {
+                LlmContentPartIr::Text { text } => {
+                    text_parts += 1;
+                    output.push_str(text);
+                }
+                LlmContentPartIr::Image { .. } | LlmContentPartIr::File { .. } => {
+                    return Err(LlmOutputError::new(
+                        "llm_json_output_non_text",
+                        "JSON output messages cannot contain image or file parts",
+                    ));
+                }
+            }
+        }
+    }
+    if text_parts == 0 {
+        return Err(LlmOutputError::new(
+            "llm_json_output_missing",
+            "JSON output contains no assistant text",
+        ));
+    }
+    Ok(output)
+}
+
+fn parse_exact_json(input: &str) -> Result<Value, LlmOutputError> {
+    let mut deserializer = serde_json::Deserializer::from_str(input);
+    NoDuplicateValue::deserialize(&mut deserializer).map_err(|error| {
+        let message = error.to_string();
+        LlmOutputError::new(
+            if message.contains("duplicate object key") {
+                "llm_json_duplicate_key"
+            } else {
+                "llm_json_parse_failed"
+            },
+            message,
+        )
+    })?;
+    deserializer
+        .end()
+        .map_err(|error| LlmOutputError::new("llm_json_parse_failed", error.to_string()))?;
+    canonical::parse(input)
+        .map_err(|error| LlmOutputError::new("llm_json_parse_failed", error.to_string()))
+}
+
+struct NoDuplicateValue;
+
+impl<'de> Deserialize<'de> for NoDuplicateValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(NoDuplicateVisitor)
+    }
+}
+
+struct NoDuplicateVisitor;
+
+impl<'de> Visitor<'de> for NoDuplicateVisitor {
+    type Value = NoDuplicateValue;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a JSON value")
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_string<E>(self, _: String) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        while sequence.next_element::<NoDuplicateValue>()?.is_some() {}
+        Ok(NoDuplicateValue)
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut keys = HashSet::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if !keys.insert(key.clone()) {
+                return Err(serde::de::Error::custom(format!(
+                    "duplicate object key: {key}"
+                )));
+            }
+            map.next_value::<NoDuplicateValue>()?;
+        }
+        Ok(NoDuplicateValue)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use crate::{
+        graph::LlmOutputSpec,
+        llm::ir::{LlmContentPartIr, LlmTurnItemIr, MessageRole},
+        schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
+    };
+
+    use super::*;
+
+    #[test]
+    fn text_modes_use_exact_concatenation_and_allow_empty() {
+        let first = message("a", "one");
+        let last = message("b", "two");
+        let spec = LlmOutputSpec::Text {
+            final_text: Some(LlmFinalText::AllAssistantText),
+            allow_empty: false,
+        };
+        let all = [first, last];
+        assert_eq!(
+            finalize_llm_output(Some(&spec), std::slice::from_ref(&all[1]), &all).unwrap(),
+            json!("onetwo")
+        );
+        assert!(
+            finalize_llm_output(
+                Some(&LlmOutputSpec::Text {
+                    final_text: None,
+                    allow_empty: true
+                }),
+                &[],
+                &[],
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn json_rejects_duplicate_keys_and_validates_schema() {
+        let duplicate = message("json", r#"{"a":1,"a":2}"#);
+        let spec = LlmOutputSpec::Json {
+            schema: object_schema(),
+            strict: true,
+        };
+        assert_eq!(
+            finalize_llm_output(Some(&spec), &[duplicate], &[])
+                .unwrap_err()
+                .code,
+            "llm_json_duplicate_key"
+        );
+        let valid = message("json", r#"{"a":1}"#);
+        assert_eq!(
+            finalize_llm_output(Some(&spec), &[valid], &[]).unwrap(),
+            json!({"a":1})
+        );
+    }
+
+    fn message(id: &str, text: &str) -> LlmTurnItemIr {
+        LlmTurnItemIr::Message {
+            id: id.into(),
+            role: MessageRole::Assistant,
+            content: vec![LlmContentPartIr::Text { text: text.into() }],
+            provenance: None,
+            placeholder: false,
+        }
+    }
+
+    fn object_schema() -> JsonSchemaSpec {
+        JsonSchemaSpec {
+            schema_version: 1,
+            dialect: DIALECT_2020_12.into(),
+            validation_profile_version: 1,
+            format_policy_version: 1,
+            document: json!({"type":"object","required":["a"],"additionalProperties":false,"properties":{"a":{"type":"integer"}}}),
+            limits: JsonSchemaLimits::default(),
+        }
+    }
+}

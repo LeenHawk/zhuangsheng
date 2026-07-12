@@ -11,7 +11,7 @@ use zhuangsheng_core::{
         graph::{ApplyGraphCommand, CreateGraphCommand, UpdateGraphDraftCommand},
         preset::{CreateContextPresetCommand, PublishContextPresetVersionCommand},
     },
-    graph::GraphDraft,
+    graph::{DraftNodeKind, GraphDraft, LlmOutputSpec},
     llm::{
         ChannelCredential, ChannelModel, ChannelModelCatalog, ChannelTransportPolicy,
         ContentGenerationKind, LlmChannelRevision, LlmChannelRevisionSpec, ModelCapabilities,
@@ -24,6 +24,7 @@ use zhuangsheng_core::{
     },
     runtime::{RunContextCommand, RunOutputValueView, RunStatus, StartRunCommand},
     scheduler::Scheduler,
+    schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
 };
 use zhuangsheng_storage::SqliteStore;
 
@@ -32,7 +33,9 @@ use crate::{
     provider::{ProviderHttpError, ProviderHttpResponse, ProviderTransport},
 };
 
-struct FakeProvider;
+struct FakeProvider {
+    text: &'static str,
+}
 
 #[async_trait]
 impl ProviderTransport for FakeProvider {
@@ -54,7 +57,7 @@ impl ProviderTransport for FakeProvider {
                     "id":"message-1",
                     "role":"assistant",
                     "status":"completed",
-                    "content":[{"type":"output_text","text":"你好，旅行者。","annotations":[]}]
+                    "content":[{"type":"output_text","text":self.text,"annotations":[]}]
                 }],
                 "status":"completed",
                 "usage":{
@@ -72,7 +75,7 @@ impl ProviderTransport for FakeProvider {
 #[tokio::test]
 async fn scheduler_executes_first_llm_call_through_durable_effect() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let revision_id = create_llm_graph(&store).await;
+    let revision_id = create_llm_graph(&store, false).await;
     let run = store
         .start_run(StartRunCommand {
             graph_revision_id: revision_id,
@@ -85,7 +88,9 @@ async fn scheduler_executes_first_llm_call_through_durable_effect() {
         .unwrap();
     let executor = Arc::new(LocalLlmExecutor::with_provider(
         store.clone(),
-        Arc::new(FakeProvider),
+        Arc::new(FakeProvider {
+            text: "你好，旅行者。",
+        }),
     ));
     Scheduler::new(store.clone(), "llm-e2e-worker")
         .with_llm_executor(executor)
@@ -109,7 +114,44 @@ async fn scheduler_executes_first_llm_call_through_durable_effect() {
     );
 }
 
-async fn create_llm_graph(store: &SqliteStore) -> String {
+#[tokio::test]
+async fn scheduler_finalizes_strict_json_output() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    let revision_id = create_llm_graph(&store, true).await;
+    let run = store
+        .start_run(StartRunCommand {
+            graph_revision_id: revision_id,
+            input: json!({"message":"json"}),
+            context: RunContextCommand::Temporary,
+            deadline_at: None,
+            idempotency_key: "llm-json-run".into(),
+        })
+        .await
+        .unwrap();
+    let executor = Arc::new(LocalLlmExecutor::with_provider(
+        store.clone(),
+        Arc::new(FakeProvider {
+            text: r#"{"reply":"ok"}"#,
+        }),
+    ));
+    Scheduler::new(store.clone(), "llm-json-worker")
+        .with_llm_executor(executor)
+        .run_until_idle(now_ms(), 128)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_run(&run.id).await.unwrap().status,
+        RunStatus::Completed
+    );
+    let outputs = store.get_run_outputs(&run.id).await.unwrap();
+    assert!(matches!(
+        &outputs["reply"].values[0],
+        RunOutputValueView::InlineJson { value, .. }
+            if value == &json!({"reply":"ok"})
+    ));
+}
+
+async fn create_llm_graph(store: &SqliteStore, json_output: bool) -> String {
     let channel = store
         .create_channel(CreateChannelCommand {
             name: "Fake LLM".into(),
@@ -154,7 +196,7 @@ async fn create_llm_graph(store: &SqliteStore) -> String {
         .update_graph_draft(UpdateGraphDraftCommand {
             graph_id: graph.graph.id.clone(),
             expected_revision_token: current.revision_token,
-            document: graph_draft(&graph.graph.id, &channel.id, &preset.id),
+            document: graph_draft(&graph.graph.id, &channel.id, &preset.id, json_output),
             idempotency_key: "llm-e2e-draft".into(),
         })
         .await
@@ -223,15 +265,20 @@ fn channel_spec() -> LlmChannelRevisionSpec {
                 name: None,
                 context_window: Some(16_384),
                 max_output_tokens: Some(2_048),
-                capabilities: ModelCapabilities::default(),
+                capabilities: ModelCapabilities {
+                    streaming: None,
+                    tool_calling: None,
+                    structured_output: Some(true),
+                    vision_input: None,
+                },
             }],
         }],
         capabilities: Vec::new(),
     }
 }
 
-fn graph_draft(graph_id: &str, channel_id: &str, preset_id: &str) -> GraphDraft {
-    serde_json::from_value(json!({
+fn graph_draft(graph_id: &str, channel_id: &str, preset_id: &str, json_output: bool) -> GraphDraft {
+    let mut draft: GraphDraft = serde_json::from_value(json!({
         "graphId":graph_id,
         "nodes":[
             {"id":"input","kind":"input","runInputSelector":{"type":"whole_value"}},
@@ -253,7 +300,34 @@ fn graph_draft(graph_id: &str, channel_id: &str, preset_id: &str) -> GraphDraft 
         ],
         "outputContract":[{"key":"reply","collection":"single","required":true}]
     }))
-    .unwrap()
+    .unwrap();
+    if json_output {
+        let config = draft
+            .nodes
+            .iter_mut()
+            .find_map(|node| match &mut node.kind {
+                DraftNodeKind::Llm { config } => Some(config),
+                _ => None,
+            })
+            .unwrap();
+        config.output = Some(LlmOutputSpec::Json {
+            schema: JsonSchemaSpec {
+                schema_version: 1,
+                dialect: DIALECT_2020_12.into(),
+                validation_profile_version: 1,
+                format_policy_version: 1,
+                document: json!({
+                    "type":"object",
+                    "required":["reply"],
+                    "additionalProperties":false,
+                    "properties":{"reply":{"type":"string"}}
+                }),
+                limits: JsonSchemaLimits::default(),
+            },
+            strict: true,
+        });
+    }
+    draft
 }
 
 fn operation() -> OperationKey {

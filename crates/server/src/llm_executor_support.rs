@@ -1,14 +1,14 @@
-use serde_json::{Value, json};
+use serde_json::json;
 use ulid::Ulid;
 use zhuangsheng_core::{
-    application::ApplicationError,
     canonical,
     graph::{LlmNodeExecutionSnapshot, LlmOutputSpec},
     llm::{
         ActiveModelEffectCheckpoint, EffectAttemptFence, FinishModelCallCommand,
         LlmLogicalCallStatus, ModelCallEffectOutcome,
         context::{ContextAssemblyError, ContextAssemblyResult, ContextRole, ContextTokenCounter},
-        ir::{LlmContentPartIr, LlmTurnItemIr, MessageRole},
+        finalize_llm_output,
+        ir::{LlmContentPartIr, LlmTurnItemIr},
     },
     scheduler::{BuiltinResult, LlmAttemptExecution},
 };
@@ -48,44 +48,13 @@ pub(super) fn fixed_request_estimate(execution: &LlmNodeExecutionSnapshot) -> u6
 pub(super) fn finalize_output(
     output: Option<&LlmOutputSpec>,
     items: &[LlmTurnItemIr],
-) -> Result<LlmAttemptExecution, ApplicationError> {
-    let (allow_empty, json_mode) = match output {
-        Some(LlmOutputSpec::Text { allow_empty, .. }) => (*allow_empty, false),
-        Some(LlmOutputSpec::Json { .. }) => (false, true),
-        None => (false, false),
-    };
-    if json_mode {
-        return Ok(finalize_failure(
-            "llm_json_finalization_pending",
-            "JSON output finalization is not connected yet",
-        ));
+) -> LlmAttemptExecution {
+    match finalize_llm_output(output, items, items) {
+        Ok(value) => LlmAttemptExecution::Finalize(BuiltinResult::Completed {
+            outputs: [("default".into(), value)].into_iter().collect(),
+        }),
+        Err(error) => finalize_failure(error.code, &error.message),
     }
-    let mut text = String::new();
-    for item in items {
-        if let LlmTurnItemIr::Message {
-            role: MessageRole::Assistant,
-            content,
-            ..
-        } = item
-        {
-            for part in content {
-                if let LlmContentPartIr::Text { text: part } = part {
-                    text.push_str(part);
-                }
-            }
-        }
-    }
-    if text.is_empty() && !allow_empty {
-        return Ok(finalize_failure(
-            "llm_empty_output",
-            "LLM response contained no assistant text",
-        ));
-    }
-    Ok(LlmAttemptExecution::Finalize(BuiltinResult::Completed {
-        outputs: [("default".into(), Value::String(text))]
-            .into_iter()
-            .collect(),
-    }))
 }
 
 pub(super) fn assembly_failure(error: ContextAssemblyError) -> LlmAttemptExecution {

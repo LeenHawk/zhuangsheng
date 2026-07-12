@@ -6,6 +6,7 @@ mod count_ledger;
 mod error;
 pub mod ir;
 mod ledger;
+mod output;
 mod request_builder;
 mod request_builder_tools;
 mod secret;
@@ -20,6 +21,7 @@ pub use gproxy_protocol::{
     ContentGenerationKind, Operation, OperationGroup, OperationKey, OperationKind, Provider,
 };
 pub use ledger::*;
+pub use output::*;
 pub use request_builder::*;
 pub use secret::{SecretRef, SecretScheme};
 pub use tool_ledger::*;
