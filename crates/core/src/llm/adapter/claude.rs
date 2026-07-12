@@ -202,6 +202,7 @@ pub fn decode_claude_terminal(
                         role: MessageRole::Assistant,
                         content: vec![LlmContentPartIr::Text { text: text.into() }],
                         provenance: None,
+                        placeholder: false,
                     });
                 }
             }

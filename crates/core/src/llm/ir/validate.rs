@@ -126,7 +126,23 @@ fn validate_transcript<'a>(
             );
         }
         match item {
-            LlmTurnItemIr::Message { content, .. } => validate_content(content, true)?,
+            LlmTurnItemIr::Message {
+                content,
+                placeholder,
+                ..
+            } => {
+                if *placeholder {
+                    validate_content(content, false)?;
+                    if !content.is_empty() {
+                        return error(
+                            "invalid_message_placeholder",
+                            "adapter placeholders must have empty content",
+                        );
+                    }
+                } else {
+                    validate_content(content, true)?;
+                }
+            }
             LlmTurnItemIr::AssistantToolCall { call, .. } => {
                 bounded_id(&call.id, 128, "invalid_tool_call_id")?;
                 validate_tool_name(&call.name)?;

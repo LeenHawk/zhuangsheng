@@ -229,6 +229,7 @@ pub fn decode_gemini_terminal(
                     role: MessageRole::Assistant,
                     content: vec![LlmContentPartIr::Text { text: text.into() }],
                     provenance: None,
+                    placeholder: false,
                 });
             }
         } else if let Some(call) = part.get("functionCall") {

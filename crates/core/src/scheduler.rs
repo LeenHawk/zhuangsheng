@@ -52,6 +52,21 @@ pub enum BuiltinResult {
 }
 
 #[derive(Debug, Clone)]
+pub enum LlmAttemptExecution {
+    Finalize(BuiltinResult),
+    Handled,
+}
+
+#[async_trait]
+pub trait LlmAttemptExecutor: Send + Sync {
+    async fn execute_llm_attempt(
+        &self,
+        attempt: &ClaimedAttempt,
+        now_ms: i64,
+    ) -> Result<LlmAttemptExecution, ApplicationError>;
+}
+
+#[derive(Debug, Clone)]
 pub struct FinalizeAttemptCommand {
     pub wakeup_id: String,
     pub attempt_id: String,
@@ -99,6 +114,7 @@ pub trait SchedulerStore: Send + Sync {
 
 pub struct Scheduler {
     store: Arc<dyn SchedulerStore>,
+    llm_executor: Option<Arc<dyn LlmAttemptExecutor>>,
     worker_id: String,
     lease_ms: i64,
 }
@@ -107,9 +123,15 @@ impl Scheduler {
     pub fn new(store: Arc<dyn SchedulerStore>, worker_id: impl Into<String>) -> Self {
         Self {
             store,
+            llm_executor: None,
             worker_id: worker_id.into(),
             lease_ms: 30_000,
         }
+    }
+
+    pub fn with_llm_executor(mut self, executor: Arc<dyn LlmAttemptExecutor>) -> Self {
+        self.llm_executor = Some(executor);
+        self
     }
 
     pub async fn run_one(&self, now_ms: i64) -> Result<bool, ApplicationError> {
@@ -127,24 +149,27 @@ impl Scheduler {
             SchedulerWork::Noop => {}
             SchedulerWork::Attempt(attempt) => {
                 self.store.mark_attempt_running(&attempt, now_ms).await?;
-                let result = execute_builtin(&attempt);
-                self.store
-                    .finalize_attempt(
-                        FinalizeAttemptCommand {
-                            wakeup_id: attempt.wakeup_id.clone(),
-                            attempt_id: attempt.attempt_id.clone(),
-                            worker_id: attempt.worker_id.clone(),
-                            lease_fence: attempt.lease_fence,
-                            run_control_epoch: attempt.run_control_epoch,
-                            result_idempotency_key: format!(
-                                "result:{}:{}",
-                                attempt.attempt_id, attempt.lease_fence
-                            ),
-                            result,
-                        },
-                        now_ms,
-                    )
-                    .await?;
+                if let LlmAttemptExecution::Finalize(result) =
+                    self.execute_attempt(&attempt, now_ms).await?
+                {
+                    self.store
+                        .finalize_attempt(
+                            FinalizeAttemptCommand {
+                                wakeup_id: attempt.wakeup_id.clone(),
+                                attempt_id: attempt.attempt_id.clone(),
+                                worker_id: attempt.worker_id.clone(),
+                                lease_fence: attempt.lease_fence,
+                                run_control_epoch: attempt.run_control_epoch,
+                                result_idempotency_key: format!(
+                                    "result:{}:{}",
+                                    attempt.attempt_id, attempt.lease_fence
+                                ),
+                                result,
+                            },
+                            now_ms,
+                        )
+                        .await?;
+                }
             }
             SchedulerWork::Activate {
                 wakeup_id,
@@ -172,6 +197,20 @@ impl Scheduler {
             steps += 1;
         }
         Ok(steps)
+    }
+
+    async fn execute_attempt(
+        &self,
+        attempt: &ClaimedAttempt,
+        now_ms: i64,
+    ) -> Result<LlmAttemptExecution, ApplicationError> {
+        if matches!(attempt.node.kind, DraftNodeKind::Llm { .. })
+            && attempt.execution_snapshot.is_some()
+            && let Some(executor) = &self.llm_executor
+        {
+            return executor.execute_llm_attempt(attempt, now_ms).await;
+        }
+        Ok(LlmAttemptExecution::Finalize(execute_builtin(attempt)))
     }
 }
 

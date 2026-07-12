@@ -284,6 +284,14 @@ fn validate_source_position(item: &ContextItem) -> LlmConfigResult<()> {
             "assistant prefill must come from trusted literal or template configuration",
         ));
     }
+    if matches!(item.position, ContextPosition::AssistantPrefill)
+        && item.requested_role != ContextRole::Assistant
+    {
+        return Err(LlmConfigError::new(
+            "invalid_assistant_prefill_role",
+            "assistant prefill must request the assistant role",
+        ));
+    }
     Ok(())
 }
 

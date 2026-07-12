@@ -76,6 +76,8 @@ pub enum LlmTurnItemIr {
         role: MessageRole,
         content: Vec<LlmContentPartIr>,
         provenance: Option<ContextProvenanceIr>,
+        #[serde(default)]
+        placeholder: bool,
     },
     AssistantToolCall {
         id: String,

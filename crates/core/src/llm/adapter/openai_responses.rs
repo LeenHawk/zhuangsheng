@@ -328,6 +328,7 @@ fn decode_message(
             role: MessageRole::Assistant,
             content: parts,
             provenance: None,
+            placeholder: false,
         });
     }
     Ok(())

@@ -235,6 +235,7 @@ pub fn decode_openai_chat_terminal(
             role: MessageRole::Assistant,
             content: vec![LlmContentPartIr::Text { text: text.into() }],
             provenance: None,
+            placeholder: false,
         });
     }
     if let Some(tool_calls) = message.get("tool_calls").and_then(Value::as_array) {

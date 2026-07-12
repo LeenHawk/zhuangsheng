@@ -292,6 +292,7 @@ fn base_request() -> LlmRequestIr {
             role: MessageRole::User,
             content: vec![LlmContentPartIr::Text { text: "hi".into() }],
             provenance: None,
+            placeholder: false,
         }],
         tools: Vec::new(),
         hosted_tools: Vec::new(),

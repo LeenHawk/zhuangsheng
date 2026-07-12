@@ -348,6 +348,7 @@ mod tests {
                     text: "hello".into(),
                 }],
                 provenance: None,
+                placeholder: false,
             }],
             usage: None,
             finish_reason: Some(LlmFinishReason::Completed),
