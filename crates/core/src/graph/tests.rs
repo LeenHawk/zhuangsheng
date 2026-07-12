@@ -209,3 +209,35 @@ fn aggregator_materializes_output_and_validates_shape_and_limits() {
             .any(|issue| issue.code == "invalid_aggregator_limits")
     );
 }
+
+#[test]
+fn expand_materializes_output_and_validates_shape_and_limit() {
+    let draft: GraphDraft = serde_json::from_value(json!({
+        "graphId":"graph-expand",
+        "nodes":[
+            {"id":"input","kind":"input"},
+            {"id":"expand","kind":"expand","maxItems":4},
+            {"id":"output","kind":"output","outputKey":"items"}
+        ],
+        "edges":[
+            {"from":{"nodeId":"input","output":"default"},"to":{"nodeId":"expand","input":"default"}},
+            {"from":{"nodeId":"expand","output":"default"},"to":{"nodeId":"output","input":"default"}}
+        ],
+        "outputContract":[{"key":"items","collection":"append","required":true}]
+    })).unwrap();
+    let applied = apply_graph(draft.clone(), 1, 1).unwrap();
+    assert_eq!(applied.definition.nodes[1].outputs[0].name, "default");
+    let mut invalid = draft;
+    let DraftNodeKind::Expand { max_items } = &mut invalid.nodes[1].kind else {
+        unreachable!()
+    };
+    *max_items = 0;
+    let DomainError::GraphValidation(issues) = apply_graph(invalid, 1, 1).unwrap_err() else {
+        panic!("expected graph validation")
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == "invalid_expand_limit")
+    );
+}

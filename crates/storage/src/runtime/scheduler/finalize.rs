@@ -20,6 +20,7 @@ use super::{
     attempt_state::{AttemptState, load_attempt, validate_fence},
     emit::{commit_run_output, emit_edges, ensure_edge_capacity, prepare_outputs},
     events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run, finish_wakeup},
+    expand_finalize,
     reconcile::{ReconcileAttempt, ReconcileOutcome, reconcile_if_stale},
     router::{persist_decision, persist_error},
 };
@@ -46,6 +47,21 @@ impl SqliteStore {
             .iter()
             .find(|node| node.id == state.node_id)
             .ok_or_else(|| StorageError::Integrity("attempt node missing from revision".into()))?;
+        if let BuiltinResult::Expanded { output, values } = &command.result {
+            expand_finalize::finalize(
+                &transaction,
+                &state,
+                &command,
+                node,
+                &revision.definition,
+                output,
+                values,
+                now,
+            )
+            .await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
         if matches!(
             &command.result,
             BuiltinResult::RouterDecision { .. } | BuiltinResult::RouterFailed { .. }
@@ -133,6 +149,7 @@ impl SqliteStore {
                 return Ok(());
             }
             BuiltinResult::Completed { outputs } => (outputs, None),
+            BuiltinResult::Expanded { .. } => unreachable!("handled above"),
             BuiltinResult::RouterDecision { decision } => {
                 router_outputs = decision
                     .selected_ports
@@ -318,7 +335,7 @@ impl SqliteStore {
     }
 }
 
-async fn settle_interrupt_after_attempt<C: ConnectionTrait>(
+pub(super) async fn settle_interrupt_after_attempt<C: ConnectionTrait>(
     connection: &C,
     run_id: &str,
     now: i64,
@@ -359,7 +376,7 @@ fn is_contract_error(error: &StorageError) -> bool {
     )
 }
 
-async fn complete_rows<C: ConnectionTrait>(
+pub(super) async fn complete_rows<C: ConnectionTrait>(
     connection: &C,
     state: &AttemptState,
     command: &FinalizeAttemptCommand,
@@ -388,7 +405,7 @@ async fn complete_rows<C: ConnectionTrait>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn fail_attempt<C: ConnectionTrait>(
+pub(super) async fn fail_attempt<C: ConnectionTrait>(
     connection: &C,
     state: &AttemptState,
     command: &FinalizeAttemptCommand,

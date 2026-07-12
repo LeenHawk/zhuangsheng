@@ -7,6 +7,7 @@ mod attempt_state;
 mod claim;
 mod emit;
 mod events;
+mod expand_finalize;
 mod finalize;
 mod join_by_key;
 mod join_by_key_buffer;

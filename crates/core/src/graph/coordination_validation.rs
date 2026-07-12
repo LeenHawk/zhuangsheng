@@ -68,6 +68,14 @@ pub(super) fn validate_coordination(
                 push(issues, "invalid_aggregator_limits", node, None);
             }
         }
+        DraftNodeKind::Expand { max_items } => {
+            if node.inputs.len() != 1 || node.outputs.len() != 1 {
+                push(issues, "invalid_expand_shape", node, None);
+            }
+            if *max_items == 0 || *max_items > limits.max_pending_queue_values {
+                push(issues, "invalid_expand_limit", node, None);
+            }
+        }
         _ => {}
     }
 }

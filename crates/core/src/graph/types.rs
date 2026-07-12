@@ -77,6 +77,9 @@ pub enum DraftNodeKind {
     Aggregator {
         count: u64,
     },
+    Expand {
+        max_items: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

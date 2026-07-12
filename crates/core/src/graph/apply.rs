@@ -133,6 +133,7 @@ fn normalize_node(node: DraftGraphNode, issues: &mut Vec<ValidationIssue>) -> Gr
                     | DraftNodeKind::Merge { .. }
                     | DraftNodeKind::JoinByKey { .. }
                     | DraftNodeKind::Aggregator { .. }
+                    | DraftNodeKind::Expand { .. }
             )
         {
             outputs.push(default_output());

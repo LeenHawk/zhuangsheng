@@ -61,6 +61,7 @@ pub struct ClaimedContextSnapshot {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum BuiltinResult {
     Completed { outputs: BTreeMap<String, Value> },
+    Expanded { output: String, values: Vec<Value> },
     Failed { code: String, safe_message: String },
     RouterDecision { decision: RouterDecision },
     RouterFailed { error: RouterDecisionError },
@@ -324,6 +325,40 @@ fn execute_builtin(attempt: &ClaimedAttempt) -> BuiltinResult {
             code: "aggregator_storage_execution_required".into(),
             safe_message: "Aggregator must execute through durable storage coordination".into(),
         },
+        DraftNodeKind::Expand { max_items } => {
+            let Some(value) = attempt.inputs.values().next() else {
+                return BuiltinResult::Failed {
+                    code: "expand_input_missing".into(),
+                    safe_message: "Expand activation has no selected input".into(),
+                };
+            };
+            let Some(items) = value.as_array() else {
+                return BuiltinResult::Failed {
+                    code: "expand_input_not_array".into(),
+                    safe_message: "Expand input must be an array".into(),
+                };
+            };
+            if items.len() as u64 > *max_items {
+                return BuiltinResult::Failed {
+                    code: "expand_item_limit_exceeded".into(),
+                    safe_message: "Expand input exceeds its item limit".into(),
+                };
+            }
+            let Some(output) = attempt.node.outputs.first() else {
+                return BuiltinResult::Failed {
+                    code: "expand_output_missing".into(),
+                    safe_message: "Expand node has no output".into(),
+                };
+            };
+            BuiltinResult::Expanded {
+                output: output.name.clone(),
+                values: items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| serde_json::json!({"index":index,"item":item}))
+                    .collect(),
+            }
+        }
     }
 }
 
