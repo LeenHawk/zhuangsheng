@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Eye, RefreshCw } from "lucide-react";
 
-import type { CandidateStatus, ConversationTimelineView } from "@zhuangsheng/api-client";
+import type { CandidateProjectionResolution, CandidateStatus, ConversationTimelineView } from "@zhuangsheng/api-client";
 import { Badge, Button, Card } from "@zhuangsheng/ui";
 
 import { shortId } from "./story-format";
@@ -13,6 +13,12 @@ interface StoryCandidatesProps {
   error: string | null;
   onRegenerate: (turnId: string, userCommitId: string) => Promise<void>;
   onSelect: (turnId: string, runId: string) => Promise<void>;
+  onResolveProjection: (
+    turnId: string,
+    runId: string,
+    branchId: string,
+    resolution: CandidateProjectionResolution,
+  ) => Promise<void>;
   onInspectRun: (runId: string) => void;
 }
 
@@ -66,6 +72,22 @@ export function StoryCandidates(props: StoryCandidatesProps) {
                       <Badge tone={selected ? (latest ? "info" : "neutral") : tone}>{selected ? (latest ? "当前采用" : "曾采用") : label}</Badge>
                     </div>
                     {candidate.projectionError && <p className="mt-2 text-xs text-warning">{candidate.projectionError.safeMessage}</p>}
+                    {candidate.status === "projection_conflicted" && (
+                      <div className="mt-3 grid gap-2">
+                        <Button size="compact" variant="secondary" disabled={props.pending} onClick={() => void safely(() => props.onResolveProjection(
+                          turn.id,
+                          candidate.runId,
+                          candidate.branchId,
+                          { type: "append_after_current", reason: "user reviewed and kept the advanced branch" },
+                        ))}>附加回复到当前分支</Button>
+                        <Button size="compact" variant="ghost" disabled={props.pending} onClick={() => void safely(() => props.onResolveProjection(
+                          turn.id,
+                          candidate.runId,
+                          candidate.branchId,
+                          { type: "abandon_projection", reason: "user chose to abandon the conflicted reply" },
+                        ))}>放弃此冲突回复</Button>
+                      </div>
+                    )}
                     <Button className="mt-3 w-full" size="compact" variant="ghost" onClick={() => props.onInspectRun(candidate.runId)}><Eye className="size-3.5" />检查运行</Button>
                     {canSelect && !confirming && (
                       <Button

@@ -1,6 +1,7 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 
 import type {
+  CandidateProjectionResolution,
   ConversationRunProfile,
   ConversationRunSpec,
   ConversationTimelineView,
@@ -10,7 +11,7 @@ import type {
 
 import { client, messageFor } from "./api";
 
-type PendingAction = "profile" | "turn" | "regenerate" | "selection" | null;
+type PendingAction = "profile" | "turn" | "regenerate" | "selection" | "projection" | null;
 
 interface StoryActionsInput {
   conversationId: string;
@@ -121,6 +122,32 @@ export function useStoryActions(input: StoryActionsInput) {
     }
   };
 
+  const resolveCandidateProjection = async (
+    turnId: string,
+    runId: string,
+    branchId: string,
+    resolution: CandidateProjectionResolution,
+  ) => {
+    if (!input.story || !input.timeline) throw new Error("故事时间线尚未就绪。");
+    setPendingAction("projection");
+    setCandidateError(null);
+    try {
+      const branches = await client.contexts.listBranches(input.story.contextId);
+      const branch = branches.find((item) => item.branchId === branchId && item.status === "active");
+      if (!branch) throw new Error("候选分支已变化，请刷新后重试。");
+      await client.resolveCandidateProjection(turnId, runId, {
+        expectedCurrentBranchHead: branch.headCommitId,
+        resolution,
+      });
+      input.setTimeline(await client.getTimeline(input.conversationId));
+    } catch (cause) {
+      setCandidateError(messageFor(cause));
+      throw cause;
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   return {
     pendingAction,
     profileError,
@@ -130,6 +157,7 @@ export function useStoryActions(input: StoryActionsInput) {
     submitMessage,
     regenerateCandidate,
     selectCandidate,
+    resolveCandidateProjection,
   };
 }
 

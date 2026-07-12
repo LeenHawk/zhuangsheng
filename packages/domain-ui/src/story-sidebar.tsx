@@ -30,10 +30,11 @@ export function StorySidebar(props: StoryDetailProps) {
       <StoryCandidates
         timeline={timeline}
         canRegenerate={props.story?.runProfile != null}
-        pending={props.pendingAction === "regenerate" || props.pendingAction === "selection"}
+        pending={props.pendingAction === "regenerate" || props.pendingAction === "selection" || props.pendingAction === "projection"}
         error={props.candidateError}
         onRegenerate={props.onRegenerateCandidate}
         onSelect={props.onSelectCandidate}
+        onResolveProjection={props.onResolveCandidateProjection}
         onInspectRun={props.onInspectRun}
       />
     </aside>

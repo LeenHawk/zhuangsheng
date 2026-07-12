@@ -2,6 +2,7 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import type {
   ConversationRunSpec,
+  CandidateProjectionResolution,
   ConversationTimelineView,
   ConversationView,
   RolePlayGraphOptionView,
@@ -26,7 +27,7 @@ export interface StoryDetailProps {
   graphOptions: RolePlayGraphOptionView[];
   loading: boolean;
   optionsLoading: boolean;
-  pendingAction: "profile" | "turn" | "regenerate" | "selection" | null;
+  pendingAction: "profile" | "turn" | "regenerate" | "selection" | "projection" | null;
   error: string | null;
   optionsError: string | null;
   profileError: string | null;
@@ -46,6 +47,12 @@ export interface StoryDetailProps {
   onSubmitMessage: (text: string) => Promise<void>;
   onRegenerateCandidate: (turnId: string, userCommitId: string) => Promise<void>;
   onSelectCandidate: (turnId: string, runId: string) => Promise<void>;
+  onResolveCandidateProjection: (
+    turnId: string,
+    runId: string,
+    branchId: string,
+    resolution: CandidateProjectionResolution,
+  ) => Promise<void>;
   onSubmitApproval: (wait: WaitView, decisions: ToolApprovalDecisionInput[]) => Promise<void>;
   onSubmitMemoryProposals: (wait: WaitView, decisions: MemoryProposalDecisionInput[]) => Promise<void>;
   onSubmitSecretPassword: (

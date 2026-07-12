@@ -68,6 +68,7 @@ describe("StoryDetail", () => {
       onSubmitMessage,
       onRegenerateCandidate: async () => undefined,
       onSelectCandidate: async () => undefined,
+      onResolveCandidateProjection: async () => undefined,
       onSubmitApproval: async () => undefined,
       onSubmitMemoryProposals: async () => undefined,
       onSubmitSecretPassword: async () => undefined,
@@ -104,6 +105,7 @@ describe("StoryDetail", () => {
   it("confirms historical branch selection and keeps regenerate on the latest turn", async () => {
     const onRegenerateCandidate = vi.fn(async () => undefined);
     const onSelectCandidate = vi.fn(async () => undefined);
+    const onResolveCandidateProjection = vi.fn(async () => undefined);
     render(<StoryDetail
       story={{
         ...story,
@@ -152,6 +154,12 @@ describe("StoryDetail", () => {
             baseCommitId: "commit_user_2", replyOutputKey: "reply", status: "ready",
             assistantMessageId: "message_c", candidateCommitId: "commit_selected",
             projectionError: null, createdAt: 5,
+          }, {
+            turnId: "turn_2", runId: "run_4", branchId: "branch_4",
+            baseCommitId: "commit_user_2", replyOutputKey: "reply", status: "projection_conflicted",
+            assistantMessageId: null, candidateCommitId: null,
+            projectionError: { code: "candidate_head_mismatch", safeMessage: "故事分支已经前移" },
+            createdAt: 6,
           }],
         }],
       }}
@@ -185,6 +193,7 @@ describe("StoryDetail", () => {
       onSubmitMessage={async () => undefined}
       onRegenerateCandidate={onRegenerateCandidate}
       onSelectCandidate={onSelectCandidate}
+      onResolveCandidateProjection={onResolveCandidateProjection}
       onSubmitApproval={async () => undefined}
       onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
@@ -200,6 +209,13 @@ describe("StoryDetail", () => {
     await waitFor(() => expect(onSelectCandidate).toHaveBeenCalledWith("turn_1", "run_2"));
     fireEvent.click(screen.getByRole("button", { name: "再生成一个" }));
     await waitFor(() => expect(onRegenerateCandidate).toHaveBeenCalledWith("turn_2", "commit_user_2"));
+    fireEvent.click(screen.getByRole("button", { name: "附加回复到当前分支" }));
+    await waitFor(() => expect(onResolveCandidateProjection).toHaveBeenCalledWith(
+      "turn_2",
+      "run_4",
+      "branch_4",
+      { type: "append_after_current", reason: "user reviewed and kept the advanced branch" },
+    ));
     expect(screen.getByText("未提交实时预览")).toBeInTheDocument();
     expect(screen.getByText("月光落在档案封面上。")).toBeInTheDocument();
     expect(screen.getByText("正在恢复连接")).toBeInTheDocument();
