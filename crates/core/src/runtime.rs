@@ -301,4 +301,8 @@ pub trait RuntimeService: Send + Sync {
         &self,
         command: SubmitWaitResponseCommand,
     ) -> Result<WaitDeliveryView, ApplicationError>;
+    async fn resolve_effect_unknown(
+        &self,
+        command: crate::llm::ResolveEffectUnknownCommand,
+    ) -> Result<crate::llm::EffectResolutionView, ApplicationError>;
 }

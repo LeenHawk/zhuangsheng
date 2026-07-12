@@ -9,6 +9,7 @@ import type {
   SecretStoreStatusView,
   ToolApprovalDecisionInput,
   WaitView,
+  EffectResolutionKind,
 } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
 
@@ -49,6 +50,11 @@ export interface StoryDetailProps {
     wait: WaitView,
     mode: "initialize" | "unlock",
     password: string,
+  ) => Promise<void>;
+  onResolveEffect: (
+    wait: WaitView,
+    kind: EffectResolutionKind,
+    reason: string,
   ) => Promise<void>;
   onReloadWaits: () => void;
   onInspectRun: (runId: string) => void;
@@ -99,6 +105,7 @@ export function StoryDetail(props: StoryDetailProps) {
           actionErrors={props.waitActionErrors}
           onSubmitApproval={props.onSubmitApproval}
           onSubmitSecretPassword={props.onSubmitSecretPassword}
+          onResolveEffect={props.onResolveEffect}
           onReload={props.onReloadWaits}
         />
         <StoryComposer

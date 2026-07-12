@@ -180,13 +180,19 @@ POST   /v1/waits/{waitId}/responses
 POST   /v1/effects/{effectId}/resolution
 POST   /v1/contexts/{contextId}/branches
 POST   /v1/contexts/{contextId}/merges
-GET    /v1/artifacts/{artifactId}
+GET    /v1/artifacts/{artifactId}/content
 GET    /v1/values/{valueRef}
 ```
 
 所有 mutation（run/control/wait/effect/fork/merge/Conversation/proposal/artifact/config）都使用 `Idempotency-Key` 或 body 中等价字段。`If-Match` 可以承载 run control epoch、draft token 或 branch/head commit；adapter 将其转换成 core command 字段。
 
 成功创建 run 返回 `202 Accepted`。领域错误统一 envelope：
+
+Effect resolution 的 HTTP body 固定为
+`{ expectedEffectAttemptId, expectedRunControlEpoch, kind, decision, resultObjectId?, evidenceObjectId? }`；
+`resolutionId` 由服务端预分配，不属于 request digest。同一个 `Idempotency-Key` 重放时，即使 adapter
+重新预分配了候选 ID，也必须返回原 resolution，不能产生 digest conflict。HTTP principal 在 adapter
+边界映射为 actor，客户端不能伪造 `actorKind/actorId`。
 
 ```ts
 type ApiError = {
@@ -269,16 +275,19 @@ GET    /v1/contexts/{contextId}/branches
 GET    /v1/contexts/{contextId}/commits
 GET    /v1/contexts/{contextId}/diff?from={commitId}&to={commitId}
 
-GET    /v1/memory/proposals
-POST   /v1/memory/proposals/{proposalId}/approve
-POST   /v1/memory/proposals/{proposalId}/reject
-POST   /v1/memory/proposals/{proposalId}/apply
+GET    /v1/memory-proposals
+POST   /v1/memory-proposals
+POST   /v1/memory-proposals/{proposalId}/decision
+POST   /v1/memory-proposals/{proposalId}/apply
+GET    /v1/memories/{memoryId}
+POST   /v1/memory-search
 
 POST   /v1/artifacts/staging
 GET    /v1/artifacts/staging/{stagingId}
 POST   /v1/artifacts/staging/{stagingId}/commit
 GET    /v1/artifacts
-GET    /v1/artifacts/{artifactId}/metadata
+GET    /v1/artifacts/{artifactId}
+GET    /v1/artifacts/{artifactId}/content
 GET    /v1/secrets
 PUT    /v1/secrets/{secretId}
 GET    /v1/secret-store/status

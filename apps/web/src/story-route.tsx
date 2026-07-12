@@ -88,6 +88,7 @@ export function StoryRoute() {
       onSelectCandidate={actions.selectCandidate}
       onSubmitApproval={waits.submitApproval}
       onSubmitSecretPassword={waits.submitSecretPassword}
+      onResolveEffect={waits.resolveEffect}
       onReloadWaits={waits.reloadWaits}
       onInspectRun={(runId) => navigate(`/expert/runs/${runId}`)}
     />

@@ -111,4 +111,13 @@ impl RuntimeService for SqliteStore {
             .await
             .map_err(Into::into)
     }
+
+    async fn resolve_effect_unknown(
+        &self,
+        command: zhuangsheng_core::llm::ResolveEffectUnknownCommand,
+    ) -> Result<zhuangsheng_core::llm::EffectResolutionView, ApplicationError> {
+        SqliteStore::resolve_effect_unknown(self, command, now_ms())
+            .await
+            .map_err(Into::into)
+    }
 }

@@ -73,4 +73,11 @@ impl SchedulerStore for SqliteStore {
             .await
             .map_err(Into::into)
     }
+
+    async fn checkpoint_run(&self, run_id: &str, now_ms: i64) -> Result<(), ApplicationError> {
+        self.create_runtime_checkpoint(run_id, now_ms)
+            .await
+            .map(|_| ())
+            .map_err(Into::into)
+    }
 }

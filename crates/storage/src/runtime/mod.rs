@@ -1,3 +1,6 @@
+mod checkpoint;
+mod checkpoint_rows;
+mod checkpoint_snapshot;
 mod context;
 mod control;
 mod persist;

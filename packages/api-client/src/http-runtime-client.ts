@@ -1,9 +1,11 @@
 import { decodeOpenWaits, decodeWaitDelivery } from "./decode-waits";
+import { decodeEffectResolution } from "./decode-effect";
 import { assertJson, decodeRun, decodeRunList, decodeRunOutputs } from "./decode-runs";
 import { DecodeError } from "./decode-error";
 import { requestJson } from "./http-json";
 import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
 import type { SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
+import type { EffectResolutionView, ResolveEffectUnknownInput } from "./effect-types";
 import type {
   RunControlInput,
   RunListView,
@@ -83,6 +85,24 @@ export class HttpRuntimeClient {
       { signal },
     );
     return decodeOpenWaits(value, runId);
+  }
+
+  async resolveEffectUnknown(
+    effectId: string,
+    input: ResolveEffectUnknownInput,
+    signal?: AbortSignal,
+  ): Promise<EffectResolutionView> {
+    const { idempotencyKey, ...body } = input;
+    return decodeEffectResolution(await requestJson(
+      this.baseUrl,
+      `/v1/effects/${encodeURIComponent(effectId)}/resolution`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
+        body: JSON.stringify(body),
+        signal,
+      },
+    ));
   }
 
   async submitToolApproval(

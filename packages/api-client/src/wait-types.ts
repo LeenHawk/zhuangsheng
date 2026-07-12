@@ -17,6 +17,15 @@ export interface ToolApprovalCallView {
 export type WaitRequestView =
   | { kind: "tool_approval"; modelCallId: string; calls: ToolApprovalCallView[] }
   | { kind: "secret_store_unlocked"; reason: string; channelId: string }
+  | {
+      kind: "effect_resolution";
+      effectId: string;
+      effectAttemptId: string;
+      ownerKind: "model_call" | "tool_call";
+      ownerId: string;
+      classification: "pure" | "idempotent" | "non_idempotent";
+      allowedResolutions: EffectResolutionKind[];
+    }
   | { kind: "unsupported" };
 
 export interface WaitBlockerView {
@@ -64,3 +73,4 @@ export interface WaitDeliveryView {
   deniedToolCallIds: string[];
   replayed: boolean;
 }
+import type { EffectResolutionKind } from "./effect-types";

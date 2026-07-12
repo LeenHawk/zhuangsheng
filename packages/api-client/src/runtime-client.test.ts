@@ -60,4 +60,34 @@ describe("runtime action clients", () => {
     expect(calls[0]?.init?.headers).toEqual({ "content-type": "application/json" });
     expect(calls[1]?.init?.headers).toMatchObject({ "idempotency-key": "unlock_1" });
   });
+
+  it("resolves an unknown effect through the dedicated encoded command route", async () => {
+    let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      call = { input, init };
+      return Response.json({
+        resolutionId: "resolution_1",
+        effectId: "effect/1",
+        effectAttemptId: "attempt_1",
+        waitId: "wait_1",
+        kind: "abort_run",
+        replayed: false,
+      });
+    });
+
+    await new HttpRuntimeClient("https://roleplay.example").resolveEffectUnknown("effect/1", {
+      expectedEffectAttemptId: "attempt_1",
+      expectedRunControlEpoch: 2,
+      kind: "abort_run",
+      decision: { reason: "operator chose isolation" },
+      resultObjectId: null,
+      evidenceObjectId: null,
+      idempotencyKey: "resolution-key",
+    });
+
+    const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
+    expect(request.input).toBe("https://roleplay.example/v1/effects/effect%2F1/resolution");
+    expect(request.init.headers).toMatchObject({ "idempotency-key": "resolution-key" });
+    expect(JSON.parse(request.init.body as string)).not.toHaveProperty("idempotencyKey");
+  });
 });

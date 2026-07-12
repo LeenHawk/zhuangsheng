@@ -5,6 +5,7 @@ pub mod context;
 pub mod context_merge;
 pub mod conversation;
 pub mod conversation_candidate;
+pub mod effect;
 pub mod error;
 pub mod graph;
 pub mod graph_roleplay;

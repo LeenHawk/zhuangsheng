@@ -20,6 +20,7 @@ describe("StoryWaitActions", () => {
       actionErrors={{}}
       onSubmitApproval={onSubmitApproval}
       onSubmitSecretPassword={async () => undefined}
+      onResolveEffect={async () => undefined}
       onReload={() => undefined}
     />);
 
@@ -46,6 +47,7 @@ describe("StoryWaitActions", () => {
       actionErrors={{}}
       onSubmitApproval={async () => undefined}
       onSubmitSecretPassword={onSubmitSecretPassword}
+      onResolveEffect={async () => undefined}
       onReload={() => undefined}
     />);
 
@@ -57,6 +59,35 @@ describe("StoryWaitActions", () => {
       wait,
       "unlock",
       "correct horse battery staple",
+    ));
+  });
+
+  it("requires an audited decision before resolving an unknown effect", async () => {
+    const onResolveEffect = vi.fn(async () => undefined);
+    const wait = effectWait();
+    render(<StoryWaitActions
+      waits={[wait]}
+      handled={[]}
+      secretStatus={null}
+      pendingWaitId={null}
+      loadError={null}
+      actionErrors={{}}
+      onSubmitApproval={async () => undefined}
+      onSubmitSecretPassword={async () => undefined}
+      onResolveEffect={onResolveEffect}
+      onReload={() => undefined}
+    />);
+
+    expect(screen.getByRole("button", { name: "确认未执行，安全重试" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("处理依据"), {
+      target: { value: "provider 查询确认没有创建请求" },
+    });
+    fireEvent.click(screen.getByLabelText(/我理解此决定/));
+    fireEvent.click(screen.getByRole("button", { name: "确认未执行，安全重试" }));
+    await waitFor(() => expect(onResolveEffect).toHaveBeenCalledWith(
+      wait,
+      "confirm_failed_retry_safe",
+      "provider 查询确认没有创建请求",
     ));
   });
 });
@@ -92,6 +123,23 @@ const secretWait = (): WaitView => ({
     reason: "provider_credential_required",
     channelId: "channel_1",
   },
+});
+
+const effectWait = (): WaitView => ({
+  ...baseWait(),
+  kind: "effect_resolution",
+  request: {
+    kind: "effect_resolution",
+    effectId: "effect_1",
+    effectAttemptId: "effectattempt_1",
+    ownerKind: "model_call",
+    ownerId: "modelcall_1",
+    classification: "idempotent",
+    allowedResolutions: ["confirm_succeeded", "confirm_failed_retry_safe", "abort_run"],
+  },
+  blockers: [{
+    kind: "effect", id: "effect_1", order: 0, status: "open", decisionRef: null,
+  }],
 });
 
 const baseWait = (): WaitView => ({

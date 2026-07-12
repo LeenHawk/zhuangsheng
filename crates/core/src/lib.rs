@@ -12,6 +12,7 @@ pub mod llm;
 pub mod memory;
 pub mod router;
 pub mod runtime;
+pub mod runtime_checkpoint;
 pub mod scheduler;
 pub mod schema;
 pub mod selector;

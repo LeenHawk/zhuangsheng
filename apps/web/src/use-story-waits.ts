@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createIdempotencyKey,
+  type EffectResolutionKind,
   type SecretStoreStatusView,
   type ToolApprovalDecisionInput,
   type WaitView,
@@ -23,6 +24,7 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const deliveryIds = useRef<Record<string, string>>({});
   const secretCommandIds = useRef<Record<string, string>>({});
+  const effectCommandIds = useRef<Record<string, string>>({});
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     if (runIds.length === 0) {
@@ -85,6 +87,34 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
     });
   };
 
+  const resolveEffect = async (
+    wait: WaitView,
+    kind: EffectResolutionKind,
+    reason: string,
+  ) => {
+    if (wait.request.kind !== "effect_resolution") return;
+    const request = wait.request;
+    const commandKey = `${request.effectId}:${request.effectAttemptId}:${kind}`;
+    const idempotencyKey = effectCommandIds.current[commandKey] ?? createIdempotencyKey();
+    effectCommandIds.current[commandKey] = idempotencyKey;
+    await act(wait, async () => {
+      const run = await client.runtime.getRun(wait.runId);
+      await client.runtime.resolveEffectUnknown(request.effectId, {
+        expectedEffectAttemptId: request.effectAttemptId,
+        expectedRunControlEpoch: run.controlEpoch,
+        kind,
+        decision: { reason },
+        resultObjectId: null,
+        evidenceObjectId: null,
+        idempotencyKey,
+      });
+      rememberHandled(wait, kind === "abort_run"
+        ? "已隔离未知结果并终止运行"
+        : "已确认外部操作未执行，运行将安全重试");
+      await reload();
+    });
+  };
+
   const rememberHandled = (wait: WaitView, summary: string) => {
     setHandledWaits((current) => [
       ...current.filter((item) => item.waitId !== wait.id),
@@ -114,6 +144,7 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
     actionErrors,
     submitApproval,
     submitSecretPassword,
+    resolveEffect,
     reloadWaits: () => void reload(),
   };
 }

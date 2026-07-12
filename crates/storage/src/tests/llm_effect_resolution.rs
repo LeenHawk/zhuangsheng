@@ -130,7 +130,13 @@ async fn retry_safe_resolution_preserves_unknown_fact_and_resumes() {
         .unwrap();
     assert!(!resolved.replayed);
     let replayed = store
-        .resolve_effect_unknown(command, setup.now + 4)
+        .resolve_effect_unknown(
+            ResolveEffectUnknownCommand {
+                resolution_id: "a-new-preallocated-resolution-id".into(),
+                ..command
+            },
+            setup.now + 4,
+        )
         .await
         .unwrap();
     assert!(replayed.replayed);

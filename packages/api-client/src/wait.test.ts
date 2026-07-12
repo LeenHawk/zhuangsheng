@@ -41,6 +41,35 @@ describe("wait and secret decoders", () => {
     });
   });
 
+  it("binds effect-resolution details to the exact effect blocker", () => {
+    const wait = {
+      ...baseWait(),
+      kind: "effect_resolution",
+      request: {
+        schemaVersion: 1,
+        kind: "effect_resolution",
+        effectId: "effect_1",
+        effectAttemptId: "effectattempt_1",
+        ownerKind: "model_call",
+        ownerId: "modelcall_1",
+        classification: "idempotent",
+        allowedResolutions: ["confirm_succeeded", "confirm_failed_retry_safe", "abort_run"],
+      },
+      blockers: [{
+        kind: "effect", id: "effect_1", order: 0, status: "open", decisionRef: null,
+      }],
+    };
+    const request = decodeOpenWaits([wait], "run_1")[0]?.request;
+    expect(request).toMatchObject({
+      kind: "effect_resolution",
+      effectId: "effect_1",
+      effectAttemptId: "effectattempt_1",
+      classification: "idempotent",
+    });
+    wait.blockers[0]!.id = "other_effect";
+    expect(() => decodeOpenWaits([wait], "run_1")).toThrow(DecodeError);
+  });
+
   it("enforces initialized and locked status invariants", () => {
     expect(decodeSecretStoreStatus({
       initialized: true,

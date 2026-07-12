@@ -79,7 +79,6 @@ pub(super) fn validate_command(command: &ResolveEffectUnknownCommand) -> Storage
 
 pub(super) fn command_digest(command: &ResolveEffectUnknownCommand) -> StorageResult<String> {
     Ok(canonical::hash(&json!({
-        "resolutionId": command.resolution_id,
         "effectId": command.effect_id,
         "expectedEffectAttemptId": command.expected_effect_attempt_id,
         "expectedRunControlEpoch": command.expected_run_control_epoch,

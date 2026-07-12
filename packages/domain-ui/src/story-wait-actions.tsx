@@ -1,6 +1,7 @@
 import { CheckCircle2, CircleAlert } from "lucide-react";
 
 import type {
+  EffectResolutionKind,
   SecretStoreStatusView,
   ToolApprovalDecisionInput,
   WaitView,
@@ -10,6 +11,7 @@ import { Button, Card } from "@zhuangsheng/ui";
 import type { HandledWaitSummary } from "./story-detail";
 import { SecretUnlockCard } from "./secret-unlock-card";
 import { ToolApprovalCard } from "./tool-approval-card";
+import { EffectResolutionCard } from "./effect-resolution-card";
 
 interface StoryWaitActionsProps {
   waits: WaitView[];
@@ -20,6 +22,7 @@ interface StoryWaitActionsProps {
   actionErrors: Record<string, string>;
   onSubmitApproval: (wait: WaitView, decisions: ToolApprovalDecisionInput[]) => Promise<void>;
   onSubmitSecretPassword: (wait: WaitView, mode: "initialize" | "unlock", password: string) => Promise<void>;
+  onResolveEffect: (wait: WaitView, kind: EffectResolutionKind, reason: string) => Promise<void>;
   onReload: () => void;
 }
 
@@ -38,6 +41,9 @@ export function StoryWaitActions(props: StoryWaitActionsProps) {
         }
         if (wait.request.kind === "secret_store_unlocked") {
           return <SecretUnlockCard key={wait.id} {...common} status={props.secretStatus} onSubmit={props.onSubmitSecretPassword} />;
+        }
+        if (wait.request.kind === "effect_resolution") {
+          return <EffectResolutionCard key={wait.id} {...common} onSubmit={props.onResolveEffect} />;
         }
         return (
           <Card key={wait.id} className="border-warning/30 p-5">

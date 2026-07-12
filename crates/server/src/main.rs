@@ -36,6 +36,13 @@ async fn main() -> anyhow::Result<()> {
         env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://zhuangsheng.db?mode=rwc".into());
     let bind_address = env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let store = Arc::new(SqliteStore::connect(database_url).await?);
+    let recovered = store.recover_runtime_runs().await?;
+    if !recovered.is_empty() {
+        tracing::info!(
+            runs = recovered.len(),
+            "reconciled durable runtime checkpoints"
+        );
+    }
     let graph_service: Arc<dyn GraphService> = store.clone();
     let artifact_service: Arc<dyn ArtifactStagingService> = store.clone();
     let channel_service: Arc<dyn ChannelService> = store.clone();

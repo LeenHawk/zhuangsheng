@@ -23,6 +23,7 @@ mod conversation;
 mod conversation_profile;
 mod conversation_projection_resolution;
 mod conversation_turn;
+mod effect_resolution;
 mod model_discovery;
 mod roleplay_compatibility;
 mod roleplay_journey;

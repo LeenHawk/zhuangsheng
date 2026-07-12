@@ -126,6 +126,7 @@ pub trait SchedulerStore: Send + Sync {
         run_id: &str,
         now_ms: i64,
     ) -> Result<(), ApplicationError>;
+    async fn checkpoint_run(&self, run_id: &str, now_ms: i64) -> Result<(), ApplicationError>;
 }
 
 pub struct Scheduler {
@@ -161,9 +162,10 @@ impl Scheduler {
         else {
             return Ok(timer_work > 0);
         };
-        match work {
-            SchedulerWork::Noop => {}
+        let checkpoint_run_id = match work {
+            SchedulerWork::Noop => None,
             SchedulerWork::Attempt(attempt) => {
+                let run_id = attempt.run_id.clone();
                 self.store.mark_attempt_running(&attempt, now_ms).await?;
                 if let LlmAttemptExecution::Finalize(result) =
                     self.execute_attempt(&attempt, now_ms).await?
@@ -186,6 +188,7 @@ impl Scheduler {
                         )
                         .await?;
                 }
+                Some(run_id)
             }
             SchedulerWork::Activate {
                 wakeup_id,
@@ -195,10 +198,15 @@ impl Scheduler {
                 self.store
                     .activate_if_ready(&wakeup_id, &run_id, &node_id, now_ms)
                     .await?;
+                Some(run_id)
             }
             SchedulerWork::Settle { wakeup_id, run_id } => {
                 self.store.settle_run(&wakeup_id, &run_id, now_ms).await?;
+                Some(run_id)
             }
+        };
+        if let Some(run_id) = checkpoint_run_id {
+            self.store.checkpoint_run(&run_id, now_ms).await?;
         }
         Ok(true)
     }

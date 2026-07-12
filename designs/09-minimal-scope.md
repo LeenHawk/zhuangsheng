@@ -61,7 +61,7 @@ applied graph revision
 - 多轮 tool loop、多个 tool call、顺序稳定回填和 loop checkpoint
 - Tool Registry、显式 grant、hosted tool binding、approval 和副作用分类
 - ContextPreset revision、snapshot、受信角色/provenance、确定性预算与安全 preview
-- provider count，失败时 `gproxy-tokenize` fallback
+- provider count；失败时使用许可证兼容、版本固定的 local tokenizer，否则明确标记为 `estimate`
 - text output；opt-in JSON output + schema validation
 
 ### Storage、Events 与 Adapter

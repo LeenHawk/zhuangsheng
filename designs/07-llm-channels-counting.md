@@ -173,8 +173,8 @@ type TokenCount = number // 当前完整 input request 的 token 数
 
 ```text
 当前 operation/model 的 provider count API
-  -> unsupported/temporary failure: gproxy-tokenize::count
-  -> tokenizer fallback/estimate
+  -> unsupported/temporary failure: 许可证兼容、版本固定的 local tokenizer（若已配置）
+  -> 明确标记的 estimate
 ```
 
 预算对象必须尽量 wire-equivalent，包括 instructions/messages、tool schemas、response schema、multimodal metadata 和 shape 固有开销。Provider count 如果需要 credential，仍由 provider client 注入。
@@ -215,7 +215,7 @@ Context Assembly 阶段一不会在 overflow 时偷偷发起 model compact。调
 
 ```text
 zhuangsheng -> gproxy-protocol
-zhuangsheng -> gproxy-tokenize（本地 fallback，可选 feature）
+zhuangsheng ..> 许可证兼容的 local tokenizer（未来可选 feature）
 
 zhuangsheng -X-> gproxy proxy/channel/pipeline/transform
 ```

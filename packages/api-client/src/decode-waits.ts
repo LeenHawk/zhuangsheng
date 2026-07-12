@@ -1,5 +1,6 @@
 import { DecodeError } from "./decode-error";
 import { boolean, nullableString, number, record, string, stringArray } from "./decode-helpers";
+import { decodeEffectResolutionKind } from "./decode-effect";
 import type {
   ToolApprovalCallView,
   WaitBlockerView,
@@ -105,6 +106,34 @@ const decodeRequest = (
       kind: item.kind,
       reason: string(item.reason, `${path}.reason`),
       channelId: string(item.channelId, `${path}.channelId`),
+    };
+  }
+  if (waitKind === "effect_resolution" && item.kind === "effect_resolution") {
+    const effectBlockers = blockers.filter((blocker) => blocker.kind === "effect");
+    const effectId = string(item.effectId, `${path}.effectId`);
+    if (effectBlockers.length !== 1 || effectBlockers[0]?.id !== effectId) {
+      throw new DecodeError(`${path}.effectId`);
+    }
+    const ownerKind = string(item.ownerKind, `${path}.ownerKind`);
+    if (ownerKind !== "model_call" && ownerKind !== "tool_call") {
+      throw new DecodeError(`${path}.ownerKind`);
+    }
+    const classification = string(item.classification, `${path}.classification`);
+    if (classification !== "pure" && classification !== "idempotent" && classification !== "non_idempotent") {
+      throw new DecodeError(`${path}.classification`);
+    }
+    if (!Array.isArray(item.allowedResolutions)) {
+      throw new DecodeError(`${path}.allowedResolutions`);
+    }
+    return {
+      kind: item.kind,
+      effectId,
+      effectAttemptId: string(item.effectAttemptId, `${path}.effectAttemptId`),
+      ownerKind,
+      ownerId: string(item.ownerId, `${path}.ownerId`),
+      classification,
+      allowedResolutions: item.allowedResolutions.map((resolution, index) =>
+        decodeEffectResolutionKind(resolution, `${path}.allowedResolutions[${index}]`)),
     };
   }
   return { kind: "unsupported" };
