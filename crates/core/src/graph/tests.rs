@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use crate::{DomainError, graph::*};
 
 fn valid() -> GraphDraft {
@@ -68,4 +70,56 @@ fn rejects_unconnected_output() {
         apply_graph(draft, 1, 1),
         Err(DomainError::GraphValidation(_))
     ));
+}
+
+#[test]
+fn merge_any_requires_two_inputs_and_materializes_one_output() {
+    let draft: GraphDraft = serde_json::from_value(json!({
+        "graphId":"graph-merge",
+        "nodes":[
+            {"id":"left","kind":"input"},
+            {"id":"right","kind":"input"},
+            {
+                "id":"merge",
+                "kind":"merge",
+                "mode":"any",
+                "inputs":[{"name":"left"},{"name":"right"}]
+            },
+            {"id":"output","kind":"output","outputKey":"items"}
+        ],
+        "edges":[
+            {"from":{"nodeId":"left","output":"default"},"to":{"nodeId":"merge","input":"left"}},
+            {"from":{"nodeId":"right","output":"default"},"to":{"nodeId":"merge","input":"right"}},
+            {"from":{"nodeId":"merge","output":"default"},"to":{"nodeId":"output","input":"default"}}
+        ],
+        "outputContract":[{"key":"items","collection":"append","required":true}]
+    }))
+    .unwrap();
+    let applied = apply_graph(draft.clone(), 1, 1).unwrap();
+    let merge = applied
+        .definition
+        .nodes
+        .iter()
+        .find(|node| node.id == "merge")
+        .unwrap();
+    assert_eq!(merge.inputs.len(), 2);
+    assert_eq!(merge.outputs[0].name, "default");
+
+    let mut invalid = draft;
+    invalid
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == "merge")
+        .unwrap()
+        .inputs
+        .pop();
+    invalid.edges.retain(|edge| edge.to.input != "right");
+    let DomainError::GraphValidation(issues) = apply_graph(invalid, 1, 1).unwrap_err() else {
+        panic!("expected graph validation")
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == "invalid_merge_shape")
+    );
 }

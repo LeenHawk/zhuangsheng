@@ -264,6 +264,23 @@ fn execute_builtin(attempt: &ClaimedAttempt) -> BuiltinResult {
                 Err(error) => BuiltinResult::RouterFailed { error },
             }
         }
+        DraftNodeKind::Merge { .. } => {
+            let Some(value) = attempt.inputs.values().next().cloned() else {
+                return BuiltinResult::Failed {
+                    code: "merge_input_missing".into(),
+                    safe_message: "Merge activation has no selected input".into(),
+                };
+            };
+            let Some(output) = attempt.node.outputs.first() else {
+                return BuiltinResult::Failed {
+                    code: "merge_output_missing".into(),
+                    safe_message: "Merge node has no output".into(),
+                };
+            };
+            BuiltinResult::Completed {
+                outputs: [(output.name.clone(), value)].into(),
+            }
+        }
     }
 }
 

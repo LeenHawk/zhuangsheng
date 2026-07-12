@@ -64,6 +64,15 @@ pub enum DraftNodeKind {
         memory: Option<RouterMemoryBinding>,
         limits: Option<RouterLimits>,
     },
+    Merge {
+        mode: MergeMode,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeMode {
+    Any,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

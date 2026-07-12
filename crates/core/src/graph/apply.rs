@@ -125,7 +125,12 @@ fn normalize_node(node: DraftGraphNode, issues: &mut Vec<ValidationIssue>) -> Gr
         if inputs.is_empty() {
             inputs.push(default_input());
         }
-        if outputs.is_empty() && matches!(node.kind, DraftNodeKind::Llm { .. }) {
+        if outputs.is_empty()
+            && matches!(
+                node.kind,
+                DraftNodeKind::Llm { .. } | DraftNodeKind::Merge { .. }
+            )
+        {
             outputs.push(default_output());
         } else if outputs.is_empty() {
             issues.push(issue(
@@ -185,9 +190,18 @@ fn validate_nodes(
         validate_execution_policy(node, issues);
         unique_ports(node, issues);
         validate_router(node, limits, issues);
+        validate_merge(node, issues);
     }
     if entries == 0 {
         issues.push(issue("graph_has_no_input_node", "/nodes"));
+    }
+}
+
+fn validate_merge(node: &GraphNode, issues: &mut Vec<ValidationIssue>) {
+    if matches!(&node.kind, DraftNodeKind::Merge { .. })
+        && (node.inputs.len() < 2 || node.outputs.len() != 1)
+    {
+        issues.push(issue("invalid_merge_shape", format!("/nodes/{}", node.id)));
     }
 }
 

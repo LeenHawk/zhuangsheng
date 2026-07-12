@@ -33,6 +33,7 @@ struct QueueHead {
     id: String,
     port: String,
     value_object_id: String,
+    enqueue_seq: i64,
 }
 
 impl SqliteStore {
@@ -49,7 +50,7 @@ impl SqliteStore {
             return Ok(());
         }
         let run = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT graph_revision_id FROM graph_runs WHERE id = ? AND status = 'running'",
                 vec![run_id.into()],
             ))
@@ -99,19 +100,19 @@ impl SqliteStore {
         let attempt_id = new_id("attempt");
         let inputs_id = build_inputs(&transaction, node, &heads, &instance_id, now).await?;
         let activation_seq = allocate_activation_seq(&transaction, run_id, node_id).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO node_instances (id, run_id, node_id, activation_seq, status, graph_revision_id, inputs_object_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'ready', ?, ?, ?, ?)",
             vec![instance_id.clone().into(), run_id.into(), node_id.into(), activation_seq.into(), revision_id.into(), inputs_id.clone().into(), now.into(), now.into()],
         )).await?;
         create_control_snapshot(&transaction, run_id, node, &instance_id, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) SELECT ?, ?, 1, 0, 'start', 'queued', control_epoch, 0, ?, execution_manifest_object_id FROM graph_runs WHERE id = ?",
             vec![attempt_id.clone().into(), instance_id.clone().into(), format!("attempt:{instance_id}:1").into(), run_id.into()],
         )).await?;
         resolve_router_reads(&transaction, run_id, &attempt_id, node, now).await?;
         resolve_llm_reads(&transaction, run_id, &attempt_id, node, now).await?;
         for head in &heads {
-            let consumed = transaction.execute(sql(
+            let consumed = transaction.execute_raw(sql(
                 "UPDATE edge_queue_values SET consumed_by_instance_id = ?, consumed_at = ? WHERE id = ? AND consumed_at IS NULL",
                 vec![instance_id.clone().into(), now.into(), head.id.clone().into()],
             )).await?;
@@ -127,8 +128,28 @@ impl SqliteStore {
                 payload: json!({"schemaVersion":1,"queueValueId":head.id,"inputPort":head.port}),
                 now,
             }).await?;
+            if matches!(&node.kind, DraftNodeKind::Merge { .. }) {
+                append_event(
+                    &transaction,
+                    Event {
+                        run_id,
+                        event_type: "coordination.merge_selected",
+                        importance: "critical",
+                        node_instance_id: Some(&instance_id),
+                        attempt_id: Some(&attempt_id),
+                        payload: json!({
+                            "schemaVersion":1,
+                            "selectedPort":head.port,
+                            "queueValueId":head.id,
+                            "enqueueSeq":head.enqueue_seq
+                        }),
+                        now,
+                    },
+                )
+                .await?;
+            }
         }
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE run_execution_counters SET total_activations = total_activations + 1, total_attempts = total_attempts + 1, pending_queue_values = pending_queue_values - ? WHERE run_id = ?",
             vec![(heads.len() as i64).into(), run_id.into()],
         )).await?;
@@ -182,16 +203,28 @@ async fn queue_heads<C: ConnectionTrait>(
             .iter()
             .find(|edge| edge.to.node_id == node.id && edge.to.input == input.name)
             .ok_or_else(|| StorageError::Integrity("node input edge missing".into()))?;
-        let row = connection.query_one(sql(
-            "SELECT id, value_object_id FROM edge_queue_values WHERE run_id = ? AND edge_id = ? AND consumed_at IS NULL ORDER BY enqueue_seq LIMIT 1",
+        let row = connection.query_one_raw(sql(
+            "SELECT id, value_object_id, enqueue_seq FROM edge_queue_values WHERE run_id = ? AND edge_id = ? AND consumed_at IS NULL ORDER BY enqueue_seq LIMIT 1",
             vec![run_id.into(), edge.id.clone().into()],
         )).await?;
-        let Some(row) = row else { return Ok(None) };
+        let Some(row) = row else {
+            if matches!(&node.kind, DraftNodeKind::Merge { .. }) {
+                continue;
+            }
+            return Ok(None);
+        };
         heads.push(QueueHead {
             id: row.try_get("", "id")?,
             port: input.name.clone(),
             value_object_id: row.try_get("", "value_object_id")?,
+            enqueue_seq: row.try_get("", "enqueue_seq")?,
         });
+    }
+    if matches!(&node.kind, DraftNodeKind::Merge { .. }) {
+        let Some(head) = heads.into_iter().min_by_key(|head| head.enqueue_seq) else {
+            return Ok(None);
+        };
+        return Ok(Some(vec![head]));
     }
     Ok(Some(heads))
 }
@@ -204,7 +237,12 @@ async fn build_inputs<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<String> {
     let mut ports = Map::new();
-    for (input, head) in node.inputs.iter().zip(heads) {
+    for head in heads {
+        let input = node
+            .inputs
+            .iter()
+            .find(|input| input.name == head.port)
+            .ok_or_else(|| StorageError::Integrity("selected input port missing".into()))?;
         let raw: Value = load_object_json(connection, &head.value_object_id).await?;
         let selected = selector::select(&input.binding.selector, &raw, 100_000)
             .map_err(StorageError::InputContract)?;
@@ -252,7 +290,7 @@ async fn claimed_wakeup<C: ConnectionTrait>(
     id: &str,
     run: &str,
 ) -> StorageResult<bool> {
-    Ok(connection.query_one(sql(
+    Ok(connection.query_one_raw(sql(
         "SELECT 1 AS present FROM scheduler_wakeups WHERE id = ? AND run_id = ? AND status = 'claimed'",
         vec![id.into(), run.into()],
     )).await?.is_some())
@@ -265,7 +303,7 @@ async fn finish_and_settle<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT caused_by_seq FROM scheduler_wakeups WHERE id = ?",
             vec![wakeup_id.into()],
         ))
@@ -290,7 +328,7 @@ async fn has_active<C: ConnectionTrait>(
     run: &str,
     node: &str,
 ) -> StorageResult<bool> {
-    Ok(connection.query_one(sql(
+    Ok(connection.query_one_raw(sql(
         "SELECT 1 AS present FROM node_instances WHERE run_id = ? AND node_id = ? AND status IN ('ready','running','waiting')",
         vec![run.into(), node.into()],
     )).await?.is_some())
@@ -301,12 +339,12 @@ async fn allocate_activation_seq<C: ConnectionTrait>(
     run: &str,
     node: &str,
 ) -> StorageResult<i64> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT next_activation_seq FROM node_scheduling_cursors WHERE run_id = ? AND node_id = ?",
         vec![run.into(), node.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("node scheduling cursor missing".into()))?;
     let seq: i64 = row.try_get("", "next_activation_seq")?;
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE node_scheduling_cursors SET next_activation_seq = next_activation_seq + 1 WHERE run_id = ? AND node_id = ? AND next_activation_seq = ?",
         vec![run.into(), node.into(), seq.into()],
     )).await?;
@@ -322,7 +360,7 @@ async fn limits_exceeded<C: ConnectionTrait>(
     limits: &zhuangsheng_core::graph::RunLimits,
 ) -> StorageResult<bool> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT total_activations, total_attempts FROM run_execution_counters WHERE run_id = ?",
             vec![run.into()],
         ))
