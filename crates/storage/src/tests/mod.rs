@@ -3,6 +3,7 @@ mod artifact_maintenance;
 mod artifact_origin;
 mod artifact_staging;
 mod config;
+mod content_object_gc;
 mod context_fork;
 mod context_merge;
 mod context_merge_append;

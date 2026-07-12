@@ -5,6 +5,7 @@ pub mod conversation;
 mod error;
 pub mod graph;
 pub mod llm;
+pub mod maintenance;
 pub mod memory;
 pub mod migration;
 pub mod runtime;

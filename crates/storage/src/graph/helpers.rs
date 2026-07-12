@@ -108,23 +108,40 @@ pub async fn put_inline_object<C: ConnectionTrait>(
     let content_hash = canonical::hash_bytes(bytes);
     if let Some(row) = connection
         .query_one_raw(sql(
-            "SELECT id, lifecycle, byte_size, inline_bytes FROM content_objects WHERE content_hash = ?",
+            "SELECT id, lifecycle, lifecycle_generation, byte_size, inline_bytes FROM content_objects WHERE content_hash = ?",
             vec![content_hash.clone().into()],
         ))
         .await?
     {
         let lifecycle: String = row.try_get("", "lifecycle")?;
+        let generation: i64 = row.try_get("", "lifecycle_generation")?;
         let stored_size: i64 = row.try_get("", "byte_size")?;
         let stored_bytes: Option<Vec<u8>> = row.try_get("", "inline_bytes")?;
-        if lifecycle != "live" {
-            return Err(StorageError::Conflict("content_object_not_live"));
-        }
-        if stored_size != bytes.len() as i64 || stored_bytes.as_deref() != Some(bytes) {
+        let id: String = row.try_get("", "id")?;
+        if stored_size != bytes.len() as i64 {
             return Err(StorageError::Integrity(
                 "content object hash collision or corruption".into(),
             ));
         }
-        return Ok(row.try_get("", "id")?);
+        if lifecycle == "deleted" {
+            let rehydrated = connection.execute_raw(sql(
+                "UPDATE content_objects SET lifecycle = 'live', lifecycle_generation = lifecycle_generation + 1, delete_fence = NULL, inline_bytes = ?, deleted_at = NULL WHERE id = ? AND lifecycle = 'deleted' AND lifecycle_generation = ? AND content_hash = ? AND byte_size = ?",
+                vec![bytes.to_vec().into(), id.clone().into(), generation.into(), content_hash.into(), stored_size.into()],
+            )).await?;
+            if rehydrated.rows_affected() != 1 {
+                return Err(StorageError::Conflict("content_object_rehydrate"));
+            }
+            return Ok(id);
+        }
+        if lifecycle != "live" {
+            return Err(StorageError::Conflict("content_object_not_live"));
+        }
+        if stored_bytes.as_deref() != Some(bytes) {
+            return Err(StorageError::Integrity(
+                "content object hash collision or corruption".into(),
+            ));
+        }
+        return Ok(id);
     }
     let id = new_id("object");
     connection

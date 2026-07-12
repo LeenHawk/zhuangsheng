@@ -204,6 +204,8 @@ GC roots 至少包括：
 
 Inline bytes 可在 fenced 数据库事务中清除，外部文件在事务外按 fence 删除。Deleted tombstone 在有界 repair retention 内保留；若后续重新上传相同 hash，必须校验全部 bytes 并以新 lifecycle generation 原子 rehydrate 后才能创建 owner ref。Staging 和 internal-sensitive object 使用各自的等价 lifecycle/fence，不绕过该规则。
 
+阶段一 SQLite maintenance 先实现最保守的 orphan sweep：只扫描超过宽限期、`lifecycle=live` 且没有 `content_object_refs` 的 inline object，并通过 SQLite FK metadata 再检查所有直接引用 `content_objects` 的列。发现“有 FK root 但缺 owner ref”时保留对象并告警，不猜测 owner 或删除；owner ref insert/update 由数据库 trigger 拒绝指向 deleting/deleted object。确认无 root 后在同一短事务内以 lifecycle generation 和随机 delete fence 完成 `live -> deleting -> deleted`，清空 inline bytes但保留 hash/size tombstone；相同完整 bytes 再次写入时以 CAS 增加 generation 并 rehydrate，而不是复用未经验证的空 tombstone。
+
 ## 阶段一边界
 
 实现：SHA-256 整对象寻址、SQLite inline/filesystem store、commit parents、branch-aware projection、JSON StatePatch、VersionSnapshot、保守 mark-and-sweep。

@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let llm_executor =
         Arc::new(LocalLlmExecutor::new(store.clone())?.with_stream_events(stream_events.clone()));
     tokio::spawn(run_artifact_maintenance(store.clone()));
+    tokio::spawn(run_content_object_maintenance(store.clone()));
     tokio::spawn(run_conversation_projector(store.clone()));
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(
@@ -68,6 +69,26 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
     Ok(())
+}
+
+async fn run_content_object_maintenance(store: Arc<SqliteStore>) {
+    const ORPHAN_GRACE_MS: i64 = 24 * 60 * 60 * 1_000;
+    loop {
+        match store
+            .maintain_content_objects(now_ms(), ORPHAN_GRACE_MS, 100)
+            .await
+        {
+            Ok(report) if report.rooted_without_owner_ref > 0 => {
+                tracing::warn!(
+                    count = report.rooted_without_owner_ref,
+                    "content objects have database roots but no owner refs"
+                );
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "content object maintenance failed"),
+        }
+        tokio::time::sleep(Duration::from_secs(10 * 60)).await;
+    }
 }
 
 async fn run_artifact_maintenance(store: Arc<SqliteStore>) {
