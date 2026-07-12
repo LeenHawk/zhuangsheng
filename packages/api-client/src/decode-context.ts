@@ -6,12 +6,13 @@ import type {
   ContextBranchView,
   ContextCommitView,
   ContextDiffView,
+  MergeContextView,
 } from "./context-types";
 
 const branchStatuses = new Set<ContextBranchStatus>(["active", "merged", "abandoned"]);
 const actorKinds = new Set<ContextActorKind>(["user", "system", "node", "tool", "application"]);
 
-const branch = (value: unknown, path: string): ContextBranchView => {
+export const decodeContextBranch = (value: unknown, path = "contextBranch"): ContextBranchView => {
   const item = record(value, path);
   const status = string(item.status, `${path}.status`) as ContextBranchStatus;
   if (!branchStatuses.has(status)) throw new DecodeError(`${path}.status`);
@@ -51,7 +52,7 @@ const commit = (value: unknown, path: string): ContextCommitView => {
 
 export const decodeContextBranches = (value: unknown): ContextBranchView[] => {
   if (!Array.isArray(value)) throw new DecodeError("contextBranches");
-  return value.map((item, index) => branch(item, `contextBranches[${index}]`));
+  return value.map((item, index) => decodeContextBranch(item, `contextBranches[${index}]`));
 };
 
 export const decodeContextCommits = (value: unknown): ContextCommitView[] => {
@@ -76,5 +77,40 @@ export const decodeContextDiff = (value: unknown): ContextDiffView => {
         after: jsonValue(change.after, `${changePath}.after`),
       };
     }),
+  };
+};
+
+export const decodeMergeContext = (value: unknown): MergeContextView => {
+  const path = "contextMerge";
+  const item = record(value, path);
+  const status = string(item.status, `${path}.status`);
+  if (status !== "conflicted" && status !== "merged") throw new DecodeError(`${path}.status`);
+  if (!Array.isArray(item.conflicts)) throw new DecodeError(`${path}.conflicts`);
+  const conflicts = item.conflicts.map((raw, index) => {
+    const conflictPath = `${path}.conflicts[${index}]`;
+    const conflict = record(raw, conflictPath);
+    return {
+      conflictId: string(conflict.conflictId, `${conflictPath}.conflictId`),
+      path: string(conflict.path, `${conflictPath}.path`),
+      base: jsonValue(conflict.base, `${conflictPath}.base`),
+      source: jsonValue(conflict.source, `${conflictPath}.source`),
+      target: jsonValue(conflict.target, `${conflictPath}.target`),
+    };
+  });
+  const mergeCommitId = nullableString(item.mergeCommitId, `${path}.mergeCommitId`);
+  if ((status === "merged" && (mergeCommitId === null || conflicts.length > 0))
+    || (status === "conflicted" && (mergeCommitId !== null || conflicts.length === 0))) {
+    throw new DecodeError(`${path}.status`);
+  }
+  return {
+    contextId: string(item.contextId, `${path}.contextId`),
+    sourceBranchId: string(item.sourceBranchId, `${path}.sourceBranchId`),
+    targetBranchId: string(item.targetBranchId, `${path}.targetBranchId`),
+    baseCommitId: string(item.baseCommitId, `${path}.baseCommitId`),
+    sourceHeadCommitId: string(item.sourceHeadCommitId, `${path}.sourceHeadCommitId`),
+    targetHeadCommitId: string(item.targetHeadCommitId, `${path}.targetHeadCommitId`),
+    status,
+    conflicts,
+    mergeCommitId,
   };
 };

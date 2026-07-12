@@ -180,4 +180,42 @@ describe("HttpApiClient conversation commands", () => {
     expect(requested).toBe("https://roleplay.example/v1/turns/turn%2F1/candidates");
     expect(turn.candidates[0]?.status).toBe("ready");
   });
+
+  it("resolves a conflicted candidate projection through the encoded operator route", async () => {
+    let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      call = { input, init };
+      return Response.json({
+        turnId: "turn/1",
+        runId: "run/1",
+        branchId: "branch_1",
+        branchHeadCommitId: "commit_2",
+        status: "ready",
+        assistantMessageId: "message_2",
+        candidateCommitId: "commit_2",
+        resolvedAt: 3,
+      });
+    });
+
+    const result = await new HttpApiClient("https://roleplay.example").resolveCandidateProjection(
+      "turn/1",
+      "run/1",
+      {
+        expectedCurrentBranchHead: "commit_1",
+        resolution: { type: "append_after_current", reason: "reviewed intervening diff" },
+      },
+      { idempotencyKey: "projection-key" },
+    );
+
+    const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
+    expect(request.input).toBe(
+      "https://roleplay.example/v1/turns/turn%2F1/candidates/run%2F1/projection-resolution",
+    );
+    expect(request.init.headers).toMatchObject({ "idempotency-key": "projection-key" });
+    expect(JSON.parse(request.init.body as string)).toEqual({
+      expectedCurrentBranchHead: "commit_1",
+      resolution: { type: "append_after_current", reason: "reviewed intervening diff" },
+    });
+    expect(result.candidateCommitId).toBe("commit_2");
+  });
 });

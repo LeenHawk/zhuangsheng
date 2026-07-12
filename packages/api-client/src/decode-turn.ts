@@ -1,6 +1,7 @@
 import { DecodeError } from "./decode-error";
 import { nullableString, number, record, string } from "./decode-helpers";
 import type {
+  CandidateProjectionResolutionView,
   CandidateStatus,
   ConversationCandidateView,
   ConversationTurnView,
@@ -65,4 +66,31 @@ export const decodeCandidateStatus = (value: unknown, path: string): CandidateSt
   const status = string(value, path) as CandidateStatus;
   if (!candidateStatuses.has(status)) throw new DecodeError(path);
   return status;
+};
+
+export const decodeCandidateProjectionResolution = (
+  value: unknown,
+): CandidateProjectionResolutionView => {
+  const path = "candidateProjectionResolution";
+  const item = record(value, path);
+  const status = decodeCandidateStatus(item.status, `${path}.status`);
+  if (status !== "ready" && status !== "projection_abandoned") {
+    throw new DecodeError(`${path}.status`);
+  }
+  const assistantMessageId = nullableString(item.assistantMessageId, `${path}.assistantMessageId`);
+  const candidateCommitId = nullableString(item.candidateCommitId, `${path}.candidateCommitId`);
+  if ((status === "ready" && (assistantMessageId === null || candidateCommitId === null))
+    || (status === "projection_abandoned" && (assistantMessageId !== null || candidateCommitId !== null))) {
+    throw new DecodeError(`${path}.status`);
+  }
+  return {
+    turnId: string(item.turnId, `${path}.turnId`),
+    runId: string(item.runId, `${path}.runId`),
+    branchId: string(item.branchId, `${path}.branchId`),
+    branchHeadCommitId: string(item.branchHeadCommitId, `${path}.branchHeadCommitId`),
+    status,
+    assistantMessageId,
+    candidateCommitId,
+    resolvedAt: number(item.resolvedAt, `${path}.resolvedAt`),
+  };
 };

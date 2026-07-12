@@ -179,4 +179,25 @@ describe("HttpGraphClient", () => {
     );
     expect(result.model.modelName).toBe("Model One");
   });
+
+  it("reads the server-owned role play compatibility projection", async () => {
+    let requested: RequestInfo | URL | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested = input;
+      return Response.json({
+        mode: "partial",
+        profileVersion: 1,
+        editableFields: ["model"],
+        lockedReasons: ["custom_context"],
+      });
+    });
+
+    const result = await new HttpGraphClient("https://role.example")
+      .getRolePlayCompatibility("graphrev/1");
+
+    expect(requested).toBe(
+      "https://role.example/v1/graph-revisions/graphrev%2F1/roleplay-compatibility",
+    );
+    expect(result.mode).toBe("partial");
+  });
 });

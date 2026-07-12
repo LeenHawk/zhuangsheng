@@ -7,8 +7,9 @@ import {
   decodeSubmitTurnAck,
   decodeTimeline,
 } from "./decode";
+import { DecodeError } from "./decode-error";
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
-import { decodeTurnCandidates } from "./decode-turn";
+import { decodeCandidateProjectionResolution, decodeTurnCandidates } from "./decode-turn";
 import { requestJson } from "./http-json";
 import { HttpGraphClient } from "./http-graph-client";
 import { HttpConfigClient } from "./http-config-client";
@@ -20,6 +21,7 @@ import { HttpContextClient } from "./http-context-client";
 import { createIdempotencyKey } from "./idempotency";
 import type {
   ConversationListView,
+  CandidateProjectionResolutionView,
   ConversationRunProfile,
   ConversationRunSpec,
   ConversationSelectionView,
@@ -28,6 +30,7 @@ import type {
   ConversationView,
   LlmContentPart,
   RegenerateConversationCandidateAck,
+  ResolveCandidateProjectionInput,
   RolePlayGraphOptionView,
   SubmitConversationTurnAck,
 } from "./types";
@@ -56,6 +59,11 @@ export interface RegenerateConversationCandidateInput {
 export interface SelectConversationCandidateInput {
   selectedRunId: string;
   expectedConversationHeadCommitId: string;
+}
+
+export interface ConversationCommandOptions {
+  idempotencyKey?: string;
+  signal?: AbortSignal;
 }
 
 export class HttpApiClient {
@@ -157,6 +165,30 @@ export class HttpApiClient {
       headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
       body: JSON.stringify(input),
     }));
+  }
+
+  async resolveCandidateProjection(
+    turnId: string,
+    runId: string,
+    input: ResolveCandidateProjectionInput,
+    options: ConversationCommandOptions = {},
+  ): Promise<CandidateProjectionResolutionView> {
+    const result = decodeCandidateProjectionResolution(await this.request(
+      `/v1/turns/${encodeURIComponent(turnId)}/candidates/${encodeURIComponent(runId)}/projection-resolution`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": options.idempotencyKey ?? createIdempotencyKey(),
+        },
+        body: JSON.stringify(input),
+        signal: options.signal,
+      },
+    ));
+    if (result.turnId !== turnId || result.runId !== runId) {
+      throw new DecodeError("candidateProjectionResolution");
+    }
+    return result;
   }
 
   private async request(path: string, init: RequestInit): Promise<unknown> {

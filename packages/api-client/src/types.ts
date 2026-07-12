@@ -137,6 +137,26 @@ export interface ConversationSelectionView {
   selectedAt: number;
 }
 
+export type CandidateProjectionResolution =
+  | { type: "append_after_current"; reason: string }
+  | { type: "abandon_projection"; reason: string };
+
+export interface ResolveCandidateProjectionInput {
+  expectedCurrentBranchHead: string;
+  resolution: CandidateProjectionResolution;
+}
+
+export interface CandidateProjectionResolutionView {
+  turnId: string;
+  runId: string;
+  branchId: string;
+  branchHeadCommitId: string;
+  status: "ready" | "projection_abandoned";
+  assistantMessageId: string | null;
+  candidateCommitId: string | null;
+  resolvedAt: number;
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;

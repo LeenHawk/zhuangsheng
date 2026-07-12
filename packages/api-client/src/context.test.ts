@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DecodeError } from "./decode-error";
-import { decodeContextBranches, decodeContextCommits, decodeContextDiff } from "./decode-context";
+import {
+  decodeContextBranches,
+  decodeContextCommits,
+  decodeContextDiff,
+  decodeMergeContext,
+} from "./decode-context";
 import { HttpContextClient } from "./http-context-client";
 
 const branch = {
@@ -50,6 +55,20 @@ describe("context query decoders", () => {
       after: [1, { kept: true }],
     });
   });
+
+  it("enforces merge status, conflict, and commit invariants", () => {
+    expect(() => decodeMergeContext({
+      contextId: "context_1",
+      sourceBranchId: "source",
+      targetBranchId: "target",
+      baseCommitId: "base",
+      sourceHeadCommitId: "source_head",
+      targetHeadCommitId: "target_head",
+      status: "merged",
+      conflicts: [],
+      mergeCommitId: null,
+    })).toThrow(DecodeError);
+  });
 });
 
 describe("HttpContextClient", () => {
@@ -78,5 +97,53 @@ describe("HttpContextClient", () => {
       "https://runtime.example/v1/contexts/context%2F1/commits",
       "https://runtime.example/v1/contexts/context%2F1/diff?from=commit%2F1&to=commit+2",
     ]);
+  });
+
+  it("forks and merges with explicit CAS and stable idempotency keys", async () => {
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      const payload = calls.length === 1 ? {
+        ...branch,
+        headCommitId: "commit_1",
+      } : {
+        contextId: "context/1",
+        sourceBranchId: "branch/source",
+        targetBranchId: "branch target",
+        baseCommitId: "commit_base",
+        sourceHeadCommitId: "commit_source",
+        targetHeadCommitId: "commit_target",
+        status: "merged",
+        conflicts: [],
+        mergeCommitId: "commit_merge",
+      };
+      return Response.json(payload);
+    });
+    const client = new HttpContextClient("https://runtime.example");
+
+    await client.fork("context/1", {
+      sourceBranchId: "branch_root",
+      fromCommitId: "commit_1",
+      expectedSourceHead: "commit_1",
+    }, { idempotencyKey: "fork-key" });
+    await client.merge("context/1", {
+      sourceBranchId: "branch/source",
+      targetBranchId: "branch target",
+      expectedSourceHead: "commit_source",
+      expectedTargetHead: "commit_target",
+      sourceDisposition: "mark_merged",
+    }, { idempotencyKey: "merge-key" });
+
+    expect(calls.map((call) => call.input)).toEqual([
+      "https://runtime.example/v1/contexts/context%2F1/branches",
+      "https://runtime.example/v1/contexts/context%2F1/merges",
+    ]);
+    expect(calls.map((call) => (call.init?.headers as Record<string, string>)["idempotency-key"]))
+      .toEqual(["fork-key", "merge-key"]);
+    expect(JSON.parse(calls[1]?.init?.body as string)).toMatchObject({
+      expectedSourceHead: "commit_source",
+      expectedTargetHead: "commit_target",
+      selections: [],
+    });
   });
 });

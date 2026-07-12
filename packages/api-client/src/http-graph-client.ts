@@ -1,7 +1,8 @@
 import { decodeCreateGraph, decodeGraphDraft, decodeGraphList, decodeGraphRevision } from "./decode-graphs";
 import { DecodeError } from "./decode-error";
-import { decodeRolePlaySettings } from "./decode-roleplay";
+import { decodeRolePlayCompatibility, decodeRolePlaySettings } from "./decode-roleplay";
 import type { CreateGraphResult, GraphDraftView, GraphRevisionView, GraphSummary, JsonObject } from "./graph-types";
+import type { RolePlayCompatibilityView } from "./types";
 import type { RolePlaySettingsView } from "./roleplay-types";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
@@ -87,6 +88,16 @@ export class HttpGraphClient {
   ): Promise<RolePlaySettingsView> {
     return decodeRolePlaySettings(await this.request(
       `/v1/graph-revisions/${encodeURIComponent(revisionId)}/roleplay-settings`,
+      { signal },
+    ));
+  }
+
+  async getRolePlayCompatibility(
+    revisionId: string,
+    signal?: AbortSignal,
+  ): Promise<RolePlayCompatibilityView> {
+    return decodeRolePlayCompatibility(await this.request(
+      `/v1/graph-revisions/${encodeURIComponent(revisionId)}/roleplay-compatibility`,
       { signal },
     ));
   }
