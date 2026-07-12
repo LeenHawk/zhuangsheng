@@ -1,3 +1,5 @@
+mod artifact_commit;
+mod artifact_origin;
 mod artifact_staging;
 mod config;
 mod context_patch;

@@ -3,10 +3,11 @@ use zhuangsheng_core::{
     application::{
         ApplicationError,
         artifact::{
-            ArtifactStagingService, CompleteArtifactStagingCommand, CreateArtifactStagingCommand,
+            ArtifactStagingService, CommitArtifactStagingCommand, CompleteArtifactStagingCommand,
+            CreateArtifactStagingCommand,
         },
     },
-    artifact::ArtifactStagingView,
+    artifact::{ArtifactStagingView, ArtifactView},
 };
 
 use crate::{SqliteStore, graph::helpers::now_ms};
@@ -36,6 +37,21 @@ impl ArtifactStagingService for SqliteStore {
         staging_id: &str,
     ) -> Result<ArtifactStagingView, ApplicationError> {
         self.get_artifact_staging_view(staging_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn commit_artifact_staging(
+        &self,
+        command: CommitArtifactStagingCommand,
+    ) -> Result<ArtifactView, ApplicationError> {
+        self.commit_artifact_staging_at(command, now_ms())
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn get_artifact(&self, artifact_id: &str) -> Result<ArtifactView, ApplicationError> {
+        self.get_artifact_view(artifact_id)
             .await
             .map_err(Into::into)
     }

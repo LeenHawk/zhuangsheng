@@ -6,7 +6,7 @@ use crate::{StorageError, StorageResult, graph::helpers::sql};
 pub(super) async fn validate_owner<C: ConnectionTrait>(
     connection: &C,
     command: &CreateArtifactStagingCommand,
-) -> StorageResult<()> {
+) -> StorageResult<Option<String>> {
     if let Some(context_id) = &command.context_id {
         let row = connection
             .query_one_raw(sql(
@@ -23,7 +23,7 @@ pub(super) async fn validate_owner<C: ConnectionTrait>(
         }
     }
     let Some(attempt_id) = &command.node_attempt_id else {
-        return Ok(());
+        return Ok(command.context_id.clone());
     };
     let row = connection.query_one_raw(sql(
         "SELECT a.node_instance_id, a.status AS attempt_status, r.context_id FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE a.id = ?",
@@ -42,7 +42,7 @@ pub(super) async fn validate_owner<C: ConnectionTrait>(
         return Err(StorageError::Conflict("artifact_context_binding"));
     }
     let Some(tool_call_id) = &command.tool_call_id else {
-        return Ok(());
+        return Ok(Some(context_id));
     };
     let tool = connection
         .query_one_raw(sql(
@@ -57,5 +57,5 @@ pub(super) async fn validate_owner<C: ConnectionTrait>(
     if tool.try_get::<String>("", "node_instance_id")? != node_instance_id {
         return Err(StorageError::Conflict("artifact_tool_binding"));
     }
-    Ok(())
+    Ok(Some(context_id))
 }

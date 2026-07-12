@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::artifact::{ArtifactMetadataDraft, ArtifactStagingView};
+use crate::artifact::{ArtifactMetadataDraft, ArtifactStagingView, ArtifactView};
 
 use super::ApplicationError;
 
@@ -22,6 +22,14 @@ pub struct CompleteArtifactStagingCommand {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitArtifactStagingCommand {
+    pub staging_id: String,
+    pub expected_lifecycle_generation: u64,
+    pub idempotency_key: String,
+}
+
 #[async_trait]
 pub trait ArtifactStagingService: Send + Sync {
     async fn create_artifact_staging(
@@ -36,4 +44,9 @@ pub trait ArtifactStagingService: Send + Sync {
         &self,
         staging_id: &str,
     ) -> Result<ArtifactStagingView, ApplicationError>;
+    async fn commit_artifact_staging(
+        &self,
+        command: CommitArtifactStagingCommand,
+    ) -> Result<ArtifactView, ApplicationError>;
+    async fn get_artifact(&self, artifact_id: &str) -> Result<ArtifactView, ApplicationError>;
 }

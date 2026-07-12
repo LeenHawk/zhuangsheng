@@ -30,6 +30,35 @@ pub struct ArtifactMetadataDraft {
     pub retention: ArtifactRetention,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactStatus {
+    Active,
+    Deleted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactMetadata {
+    pub artifact_id: String,
+    pub content: ArtifactRef,
+    pub name: Option<String>,
+    pub classification: ArtifactClassification,
+    pub status: ArtifactStatus,
+    pub origin_run_id: Option<String>,
+    pub origin_node_instance_id: Option<String>,
+    pub origin_tool_call_id: Option<String>,
+    pub retention: ArtifactRetention,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactView {
+    pub metadata: ArtifactMetadata,
+    pub metadata_head_commit_id: String,
+}
+
 impl ArtifactMetadataDraft {
     pub fn validate(&self, now: i64) -> Result<(), &'static str> {
         if self.name.as_ref().is_some_and(|name| {

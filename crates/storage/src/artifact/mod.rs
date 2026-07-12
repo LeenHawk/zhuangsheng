@@ -1,3 +1,6 @@
+mod commit;
+mod commit_source;
+mod read;
 mod rows;
 mod staging;
 mod staging_owner;

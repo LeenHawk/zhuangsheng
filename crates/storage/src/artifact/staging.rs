@@ -38,11 +38,11 @@ impl SqliteStore {
         };
         let staging_id = new_id("staging");
         let transaction = self.db.begin().await?;
-        validate_owner(&transaction, &command).await?;
+        let context_id = validate_owner(&transaction, &command).await?;
         let metadata_object_id = put_inline_object(&transaction, &metadata, now).await?;
         transaction.execute_raw(sql(
             "INSERT INTO artifact_staging (id, context_id, node_attempt_id, tool_call_id, expected_media_type, metadata_draft_object_id, metadata_draft_digest, status, lifecycle_generation, lease_until, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'uploading', 0, ?, ?, ?, ?)",
-            vec![staging_id.clone().into(), command.context_id.into(), command.node_attempt_id.into(), command.tool_call_id.into(), command.declared_media_type.into(), metadata_object_id.clone().into(), metadata_digest.into(), now.saturating_add(WRITER_LEASE_MS).min(expires_at).into(), expires_at.into(), now.into(), now.into()],
+            vec![staging_id.clone().into(), context_id.into(), command.node_attempt_id.into(), command.tool_call_id.into(), command.declared_media_type.into(), metadata_object_id.clone().into(), metadata_digest.into(), now.saturating_add(WRITER_LEASE_MS).min(expires_at).into(), expires_at.into(), now.into(), now.into()],
         )).await?;
         add_ref(
             &transaction,
