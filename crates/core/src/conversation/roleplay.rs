@@ -146,6 +146,19 @@ fn analyze_context(
         "style",
     ];
     for item in &spec.items {
+        if item.id == "input"
+            && matches!(item.requested_role, crate::llm::context::ContextRole::User)
+            && matches!(
+                item.position,
+                crate::llm::context::ContextPosition::UserInput
+            )
+            && matches!(
+                &item.source,
+                crate::llm::context::ContextSource::Input { path } if path == "/content"
+            )
+        {
+            continue;
+        }
         let profile = item.id.split([':', '/']).next().unwrap_or(&item.id);
         if KNOWN.contains(&profile) {
             editable.insert(format!("context.{profile}"));

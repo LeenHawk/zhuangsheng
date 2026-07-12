@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createIdempotencyKey, type ChannelView, type ContextPresetView, type GenerationProviderKind, type RolePlayGraphOptionView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
+import { createIdempotencyKey, type ChannelView, type ContextPresetView, type GenerationProviderKind, type JsonObject, type RolePlayGraphOptionView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
 
@@ -130,8 +130,17 @@ export function useInitialSetup() {
   return { status, secrets, channels, presets, templates, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset, createTemplate };
 }
 
-export function buildRolePresetSpec(input: RolePresetInput) {
+export function buildRolePresetSpec(input: RolePresetInput): JsonObject {
   const sections: Array<[string, string]> = [["角色", input.characterName], ["身份", input.identity], ["性格与目标", input.personality], ["说话风格", input.speakingStyle], ["内容边界", input.boundaries]];
   const text = sections.filter(([, value]) => value.trim()).map(([label, value]) => `${label}：${value.trim()}`).join("\n");
-  return { mode: "chat", items: [{ id: "character", name: input.characterName, enabled: true, requestedRole: "system", source: { type: "literal", text }, position: { type: "start" }, order: 0, priority: 100, insertionDepth: 0, budget: { required: true }, overflow: null }], budget: null, postProcess: [], preview: { content: "metadata_only", count: "local" } };
+  return {
+    mode: "chat",
+    items: [
+      { id: "character", name: input.characterName, enabled: true, requestedRole: "system", source: { type: "literal", text }, position: { type: "start" }, order: 0, priority: 100, insertionDepth: 0, budget: { required: true }, overflow: null },
+      { id: "input", name: "Current user message", enabled: true, requestedRole: "user", source: { type: "input", path: "/content" }, position: { type: "user_input" }, order: 0, priority: 100, insertionDepth: 0, budget: { required: true }, overflow: null },
+    ],
+    budget: null,
+    postProcess: [],
+    preview: { content: "metadata_only", count: "local" },
+  };
 }

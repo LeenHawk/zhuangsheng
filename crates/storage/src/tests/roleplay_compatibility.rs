@@ -105,11 +105,15 @@ async fn roleplay_options_project_compatible_and_locked_graphs() {
         RolePlayCompatibilityView::ExpertOnly { .. }
     ));
 
+    let mut custom_input = context_spec("custom-directive", false);
+    custom_input.items[0].source = ContextSource::Input {
+        path: "/other".into(),
+    };
     store
         .publish_context_preset_version(PublishContextPresetVersionCommand {
             preset_id: preset.id,
             expected_head_version_id: Some(preset_v1.id),
-            spec: context_spec("custom-directive", false),
+            spec: custom_input,
             idempotency_key: "roleplay-preset-v2".into(),
         })
         .await

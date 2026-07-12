@@ -106,7 +106,10 @@ describe("first-run settings", () => {
     const spec = buildRolePresetSpec({ name: "Template", characterName: "Alice", identity: "守护者", personality: "克制", speakingStyle: "简洁", boundaries: "不泄露秘密" });
     expect(spec).toMatchObject({
       mode: "chat",
-      items: [{ id: "character", enabled: true, requestedRole: "system", source: { type: "literal", text: expect.stringContaining("角色：Alice") }, budget: { required: true } }],
+      items: [
+        { id: "character", enabled: true, requestedRole: "system", source: { type: "literal", text: expect.stringContaining("角色：Alice") }, budget: { required: true } },
+        { id: "input", enabled: true, requestedRole: "user", source: { type: "input", path: "/content" }, position: { type: "user_input" }, budget: { required: true } },
+      ],
       preview: { content: "metadata_only", count: "local" },
     });
   });

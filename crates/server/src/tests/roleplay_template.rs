@@ -58,11 +58,18 @@ async fn user_mode_template_builds_an_applied_compatible_graph_idempotently() {
         request(
             "POST",
             &format!("/v1/context-presets/{preset_id}/revisions"),
-            json!({"expectedHeadVersionId":null,"spec":{"mode":"chat","items":[{
-                "id":"character","enabled":true,"requestedRole":"system",
-                "source":{"type":"literal","text":"You are Alice."},
-                "position":{"type":"start"},"budget":{"required":true}
-            }]}}),
+            json!({"expectedHeadVersionId":null,"spec":{"mode":"chat","items":[
+                {
+                    "id":"character","enabled":true,"requestedRole":"system",
+                    "source":{"type":"literal","text":"You are Alice."},
+                    "position":{"type":"start"},"budget":{"required":true}
+                },
+                {
+                    "id":"input","enabled":true,"requestedRole":"user",
+                    "source":{"type":"input","path":"/content"},
+                    "position":{"type":"user_input"},"budget":{"required":true}
+                }
+            ]}}),
             &[("idempotency-key", "template-preset-publish".into())],
         ),
         StatusCode::CREATED,
