@@ -69,6 +69,8 @@ const reduceDurable = (
         nodeInstanceId: event.nodeInstanceId,
         attemptId: event.attemptId,
         graphNodeId: graphNodeId(event.payload),
+        graphEdgeId: payloadString(event.payload, "edgeId"),
+        queueValueId: payloadString(event.payload, "queueValueId"),
         importance: event.importance,
       },
     ],
@@ -90,8 +92,12 @@ const reduceDurable = (
 };
 
 const graphNodeId = (payload: unknown): string | null => {
+  return payloadString(payload, "nodeId");
+};
+
+const payloadString = (payload: unknown, field: string): string | null => {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
-  const value = (payload as Record<string, unknown>).nodeId;
+  const value = (payload as Record<string, unknown>)[field];
   return typeof value === "string" ? value : null;
 };
 

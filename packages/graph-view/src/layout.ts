@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 
-import type { GraphStructureProjection, RunGraphNodeOverlay } from "@zhuangsheng/api-client";
+import type { GraphStructureProjection, RunGraphEdgeOverlay, RunGraphNodeOverlay } from "@zhuangsheng/api-client";
 
 export interface StudioNodeData extends Record<string, unknown> {
   label: string;
@@ -16,6 +16,7 @@ export type StudioNode = Node<StudioNodeData, "studio">;
 export function graphElements(
   graph: GraphStructureProjection,
   nodeOverlay: Record<string, RunGraphNodeOverlay> = {},
+  edgeOverlay: Record<string, RunGraphEdgeOverlay> = {},
 ): { nodes: StudioNode[]; edges: Edge[] } {
   const nodes = graph.nodes.map((node, index): StudioNode => ({
     id: node.id,
@@ -30,13 +31,21 @@ export function graphElements(
       overlay: nodeOverlay[node.id] ?? null,
     },
   }));
-  const edges = graph.edges.map((edge): Edge => ({
-    id: edge.id,
-    source: edge.source,
-    sourceHandle: `out:${edge.sourcePort}`,
-    target: edge.target,
-    targetHandle: `in:${edge.targetPort}`,
-    label: `${edge.sourcePort} → ${edge.targetPort}`,
-  }));
+  const edges = graph.edges.map((edge): Edge => {
+    const overlay = edgeOverlay[edge.id];
+    const pending = overlay ? overlay.enqueuedCount - overlay.consumedCount - overlay.strandedCount : 0;
+    return {
+      id: edge.id,
+      source: edge.source,
+      sourceHandle: `out:${edge.sourcePort}`,
+      target: edge.target,
+      targetHandle: `in:${edge.targetPort}`,
+      label: overlay
+        ? `${edge.sourcePort} → ${edge.targetPort} · ${overlay.enqueuedCount}/${overlay.consumedCount}/${overlay.strandedCount}`
+        : `${edge.sourcePort} → ${edge.targetPort}`,
+      animated: pending > 0,
+      style: overlay?.strandedCount ? { stroke: "hsl(var(--danger))" } : undefined,
+    };
+  });
   return { nodes, edges };
 }

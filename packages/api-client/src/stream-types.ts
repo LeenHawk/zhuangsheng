@@ -69,6 +69,8 @@ export interface RunTraceEvent {
   nodeInstanceId: string | null;
   attemptId: string | null;
   graphNodeId: string | null;
+  graphEdgeId: string | null;
+  queueValueId: string | null;
   importance: string;
 }
 
@@ -84,6 +86,13 @@ export interface RunGraphNodeOverlay {
   status: RunGraphNodeStatus;
   activationCount: number;
   attemptCount: number;
+  lastDurableSeq: number;
+}
+
+export interface RunGraphEdgeOverlay {
+  enqueuedCount: number;
+  consumedCount: number;
+  strandedCount: number;
   lastDurableSeq: number;
 }
 

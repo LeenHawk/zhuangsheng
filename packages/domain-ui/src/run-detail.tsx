@@ -10,7 +10,7 @@ import type {
   WaitView,
 } from "@zhuangsheng/api-client";
 import { projectGraphStructure } from "@zhuangsheng/api-client";
-import { selectRunGraphNodeOverlay } from "@zhuangsheng/api-client";
+import { selectRunGraphEdgeOverlay, selectRunGraphNodeOverlay } from "@zhuangsheng/api-client";
 import { GraphCanvas } from "@zhuangsheng/graph-view";
 import { Button, Card } from "@zhuangsheng/ui";
 
@@ -71,6 +71,7 @@ function RevisionGraph({
   projection: RunStreamProjection;
 }) {
   const overlay = useMemo(() => selectRunGraphNodeOverlay(projection), [projection]);
+  const edgeOverlay = useMemo(() => selectRunGraphEdgeOverlay(projection), [projection]);
   let graph: GraphStructureProjection;
   try {
     graph = projectGraphStructure(revision.definition);
@@ -83,7 +84,7 @@ function RevisionGraph({
         <h2 className="font-semibold text-primary">Fixed graph revision</h2>
         <span className="font-mono text-muted">{revision.id} · {revision.contentHash}</span>
       </div>
-      <GraphCanvas graph={graph} nodeOverlay={overlay} />
+      <GraphCanvas graph={graph} nodeOverlay={overlay} edgeOverlay={edgeOverlay} />
     </Card>
   );
 }

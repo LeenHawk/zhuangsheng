@@ -1,4 +1,4 @@
-import type { RunGraphNodeOverlay, RunStreamProjection } from "./stream-types";
+import type { RunGraphEdgeOverlay, RunGraphNodeOverlay, RunStreamProjection } from "./stream-types";
 
 export const selectRunGraphNodeOverlay = (
   state: RunStreamProjection,
@@ -16,6 +16,31 @@ export const selectRunGraphNodeOverlay = (
       status: nodeStatus(event.type) ?? current.status,
       activationCount: current.activationCount + (event.type === "node.scheduled" ? 1 : 0),
       attemptCount: current.attemptCount + (event.type === "node.started" ? 1 : 0),
+      lastDurableSeq: event.durableSeq,
+    };
+  }
+  return overlay;
+};
+
+export const selectRunGraphEdgeOverlay = (
+  state: RunStreamProjection,
+): Record<string, RunGraphEdgeOverlay> => {
+  const overlay: Record<string, RunGraphEdgeOverlay> = {};
+  const queueEdges: Record<string, string> = {};
+  for (const event of state.recentEvents) {
+    if (event.graphEdgeId && event.queueValueId) queueEdges[event.queueValueId] = event.graphEdgeId;
+    const edgeId = event.graphEdgeId ?? (event.queueValueId ? queueEdges[event.queueValueId] : null);
+    if (!edgeId || !event.type.startsWith("edge.value.")) continue;
+    const current = overlay[edgeId] ?? {
+      enqueuedCount: 0,
+      consumedCount: 0,
+      strandedCount: 0,
+      lastDurableSeq: 0,
+    };
+    overlay[edgeId] = {
+      enqueuedCount: current.enqueuedCount + (event.type === "edge.value.enqueued" ? 1 : 0),
+      consumedCount: current.consumedCount + (event.type === "edge.value.consumed" ? 1 : 0),
+      strandedCount: current.strandedCount + (event.type === "edge.value.stranded" ? 1 : 0),
       lastDurableSeq: event.durableSeq,
     };
   }

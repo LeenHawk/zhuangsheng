@@ -8,7 +8,7 @@ import {
   reduceRunStream,
   selectLiveText,
 } from "./run-stream-reducer";
-import { selectRunGraphNodeOverlay } from "./run-graph-overlay";
+import { selectRunGraphEdgeOverlay, selectRunGraphNodeOverlay } from "./run-graph-overlay";
 import { decodeRunStreamFrame } from "./stream-decode";
 import { RunStreamProtocolError } from "./stream-error";
 import type { DurableRunEvent, RunStreamMessage, RunStreamProjection } from "./stream-types";
@@ -65,6 +65,19 @@ describe("run stream decoding and reduction", () => {
     });
     expect(projection.recentEvents[0]).not.toHaveProperty("payload");
   });
+
+  it("maps edge queue facts by queue identity into bounded traffic counts", () => {
+    let projection = createRunStreamProjection("run_1");
+    projection = reduceRunStream(projection, durable(1, "edge.value.enqueued", undefined, {
+      edgeId: "edge_1", queueValueId: "queue_1",
+    }));
+    projection = reduceRunStream(projection, durable(2, "edge.value.consumed", undefined, {
+      queueValueId: "queue_1",
+    }));
+    expect(selectRunGraphEdgeOverlay(projection)).toEqual({
+      edge_1: { enqueuedCount: 1, consumedCount: 1, strandedCount: 0, lastDurableSeq: 2 },
+    });
+  });
 });
 
 describe("followRunEvents", () => {
@@ -101,7 +114,12 @@ describe("followRunEvents", () => {
   });
 });
 
-const durable = (durableSeq: number, type: string, nodeId?: string): RunStreamMessage => ({
+const durable = (
+  durableSeq: number,
+  type: string,
+  nodeId?: string,
+  payload: Record<string, unknown> = {},
+): RunStreamMessage => ({
   kind: "durable",
   event: {
     id: `event_${durableSeq}`,
@@ -113,7 +131,7 @@ const durable = (durableSeq: number, type: string, nodeId?: string): RunStreamMe
     nodeInstanceId: null,
     attemptId: null,
     importance: "critical",
-    payload: { schemaVersion: 1, ...(nodeId ? { nodeId } : {}) },
+    payload: { schemaVersion: 1, ...(nodeId ? { nodeId } : {}), ...payload },
   } satisfies DurableRunEvent,
 });
 

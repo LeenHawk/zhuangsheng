@@ -10,7 +10,9 @@ describe("graphElements", () => {
         { id: "b", name: "Reply", kind: "llm", isEntry: false, inputs: [{ name: "prompt" }], outputs: [] },
       ],
       edges: [{ id: "edge_1", source: "a", sourcePort: "value", target: "b", targetPort: "prompt" }],
-    }, { b: { status: "running", activationCount: 1, attemptCount: 1, lastDurableSeq: 4 } });
+    }, { b: { status: "running", activationCount: 1, attemptCount: 1, lastDurableSeq: 4 } }, {
+      edge_1: { enqueuedCount: 2, consumedCount: 1, strandedCount: 0, lastDurableSeq: 5 },
+    });
     expect(result.nodes[0]?.data.label).toBe("a");
     expect(result.edges[0]).toMatchObject({
       source: "a",
@@ -19,5 +21,6 @@ describe("graphElements", () => {
       targetHandle: "in:prompt",
     });
     expect(result.nodes[1]?.data.overlay?.status).toBe("running");
+    expect(result.edges[0]).toMatchObject({ animated: true, label: "value → prompt · 2/1/0" });
   });
 });
