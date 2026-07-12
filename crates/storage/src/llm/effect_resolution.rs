@@ -37,7 +37,7 @@ impl SqliteStore {
             return Ok(replayed);
         }
         if transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT 1 AS present FROM effect_resolutions WHERE effect_attempt_id = ?",
                 vec![command.expected_effect_attempt_id.clone().into()],
             ))
@@ -51,7 +51,7 @@ impl SqliteStore {
         let decision_object_id =
             put_inline_object(&transaction, &canonical::to_vec(&command.decision)?, now).await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effect_resolutions (id, effect_id, effect_attempt_id, resolution_kind, command_idempotency_key, request_digest, decision_object_id, result_object_id, evidence_object_id, actor_kind, actor_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 vec![
                     command.resolution_id.clone().into(),
@@ -128,7 +128,7 @@ async fn apply_projection<C: ConnectionTrait>(
         EffectResolutionKind::AbortRun => ("abandoned_unknown", "abandoned_unknown", Some(now)),
     };
     let effect = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE effects SET status = ?, result_object_id = ?, completed_at = ? WHERE id = ? AND status = 'outcome_unknown'",
             vec![
                 effect_status.into(),
@@ -141,7 +141,7 @@ async fn apply_projection<C: ConnectionTrait>(
     let owner = match &context.owner {
         ResolutionOwner::Model(id) => {
             connection
-                .execute(sql(
+                .execute_raw(sql(
                     "UPDATE model_calls SET status = ?, response_object_id = ? WHERE id = ? AND status = 'outcome_unknown'",
                     vec![
                         model_status.into(),
@@ -153,7 +153,7 @@ async fn apply_projection<C: ConnectionTrait>(
         }
         ResolutionOwner::Tool(id) => {
             connection
-                .execute(sql(
+                .execute_raw(sql(
                     "UPDATE tool_calls SET status = ?, output_object_id = ? WHERE id = ? AND status = 'outcome_unknown'",
                     vec![
                         model_status.into(),
@@ -177,7 +177,7 @@ async fn update_checkpoint<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![context.node_instance_id.clone().into()],
         ))

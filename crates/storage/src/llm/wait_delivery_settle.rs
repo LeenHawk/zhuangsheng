@@ -92,7 +92,7 @@ async fn prepare_effect<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let retry_json = canonical::to_string(&plan.retry_policy)?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO effects (id, node_instance_id, tool_call_id, effect_kind, classification, operation_key, idempotency_key, retry_policy_json, status, created_at) SELECT ?, node_instance_id, id, 'custom_tool', ?, ?, ?, ?, 'pending', ? FROM tool_calls WHERE id = ?",
         vec![
             plan.effect_id.clone().into(),
@@ -104,7 +104,7 @@ async fn prepare_effect<C: ConnectionTrait>(
             plan.tool_call_id.clone().into(),
         ],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, 1, 'prepared', ?)",
         vec![
             plan.effect_attempt_id.clone().into(),
@@ -113,7 +113,7 @@ async fn prepare_effect<C: ConnectionTrait>(
             plan.arguments_ref.clone().into(),
         ],
     )).await?;
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE tool_calls SET status = 'prepared' WHERE id = ? AND status IN ('validated','awaiting_approval')",
         vec![plan.tool_call_id.clone().into()],
     )).await?.rows_affected() != 1 {
@@ -152,7 +152,7 @@ async fn deny_call<C: ConnectionTrait>(
         "toolCallId": plan.tool_call_id,
     }))?;
     let error_ref = put_inline_object(connection, &error, now).await?;
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE tool_calls SET status = 'denied', error_object_id = ?, finished_at = ? WHERE id = ? AND status = 'awaiting_approval'",
         vec![error_ref.clone().into(), now.into(), plan.tool_call_id.clone().into()],
     )).await?.rows_affected() != 1 {
@@ -183,7 +183,7 @@ async fn cancel_unstarted_call<C: ConnectionTrait>(
     plan: &ToolApprovalCallPlan,
     checkpoint: &mut LlmLoopCheckpoint,
 ) -> StorageResult<()> {
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE tool_calls SET status = 'cancelled_before_start' WHERE id = ? AND status IN ('validated','awaiting_approval')",
         vec![plan.tool_call_id.clone().into()],
     )).await?.rows_affected() != 1 {
@@ -226,7 +226,7 @@ async fn resolve_wait_owner<C: ConnectionTrait>(
     context: &WaitContext,
     now: i64,
 ) -> StorageResult<()> {
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'ready', updated_at = ? WHERE id = ? AND status = 'waiting'",
         vec![now.into(), context.node_instance_id.clone().into()],
     )).await?.rows_affected() != 1 {

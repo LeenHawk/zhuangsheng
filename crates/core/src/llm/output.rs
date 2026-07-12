@@ -22,6 +22,13 @@ pub struct LlmOutputError {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LlmOutputRepairMaterial {
+    pub extracted_bytes_digest: String,
+    pub error_code: String,
+    pub instruction: String,
+}
+
 impl LlmOutputError {
     fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
@@ -59,6 +66,35 @@ pub fn finalize_llm_output(
             text_output(items, *allow_empty)
         }
         None => text_output(last_model_items, false),
+    }
+}
+
+pub fn build_llm_output_repair_material(
+    error: &LlmOutputError,
+    last_model_items: &[LlmTurnItemIr],
+) -> LlmOutputRepairMaterial {
+    let mut extracted = String::new();
+    for item in last_model_items {
+        if let LlmTurnItemIr::Message {
+            role: MessageRole::Assistant,
+            content,
+            ..
+        } = item
+        {
+            for part in content {
+                if let LlmContentPartIr::Text { text } = part {
+                    extracted.push_str(text);
+                }
+            }
+        }
+    }
+    LlmOutputRepairMaterial {
+        extracted_bytes_digest: canonical::hash_bytes(extracted.as_bytes()),
+        error_code: error.code.into(),
+        instruction: format!(
+            "The previous assistant response failed the required JSON output contract ({code}). Return exactly one JSON value matching the configured schema. Do not use Markdown fences, commentary, or any text outside the JSON value.",
+            code = error.code,
+        ),
     }
 }
 
@@ -276,6 +312,20 @@ mod tests {
             finalize_llm_output(Some(&spec), &[valid], &[]).unwrap(),
             json!({"a":1})
         );
+    }
+
+    #[test]
+    fn repair_material_records_a_digest_without_echoing_invalid_output() {
+        let item = message("json", "private invalid output");
+        let error = LlmOutputError::new("llm_json_parse_failed", "parse details");
+        let material = build_llm_output_repair_material(&error, &[item]);
+        assert_eq!(
+            material.extracted_bytes_digest,
+            canonical::hash_bytes(b"private invalid output")
+        );
+        assert_eq!(material.error_code, "llm_json_parse_failed");
+        assert!(!material.instruction.contains("private invalid output"));
+        assert!(!material.instruction.contains("parse details"));
     }
 
     fn message(id: &str, text: &str) -> LlmTurnItemIr {

@@ -49,7 +49,7 @@ struct OpenSecretWait {
 }
 
 async fn load_open_waits<C: ConnectionTrait>(connection: &C) -> StorageResult<Vec<OpenSecretWait>> {
-    connection.query_all(sql(
+    connection.query_all_raw(sql(
         "SELECT w.id AS wait_id, w.run_id, w.node_instance_id, w.node_attempt_id, w.continuation_object_id, r.status AS run_status, r.control_epoch, ni.node_id, ni.status AS instance_status, ni.execution_snapshot_object_id, a.status AS attempt_status FROM node_waits w JOIN graph_runs r ON r.id = w.run_id JOIN node_instances ni ON ni.id = w.node_instance_id JOIN node_attempts a ON a.id = w.node_attempt_id WHERE w.kind = 'secret_store_unlocked' AND w.status = 'open' ORDER BY w.created_at, w.id",
         vec![],
     )).await?.into_iter().map(|row| {
@@ -120,30 +120,30 @@ async fn resolve_one<C: ConnectionTrait>(
         "sessionId":session_id,
     });
     let response_ref = put_inline_object(connection, &canonical::to_vec(&response)?, now).await?;
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE node_waits SET status = 'resolved', response_object_id = ?, accepted_delivery_id = ?, resolved_at = ? WHERE id = ? AND status = 'open'",
         vec![response_ref.clone().into(), delivery_id.clone().into(), now.into(), wait.wait_id.clone().into()],
     )).await?.rows_affected() != 1 {
         return Err(StorageError::Conflict("secret_wait_resolution"));
     }
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO wait_deliveries (wait_id, delivery_id, payload_digest, result_object_id, created_at) VALUES (?, ?, ?, ?, ?)",
         vec![wait.wait_id.clone().into(), delivery_id.clone().into(), canonical::hash(&response)?.into(), response_ref.clone().into(), now.into()],
     )).await?;
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'ready', updated_at = ? WHERE id = ? AND status = 'waiting'",
         vec![now.into(), wait.node_instance_id.clone().into()],
     )).await?.rows_affected() != 1 {
         return Err(StorageError::Conflict("secret_wait_owner_status"));
     }
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE run_execution_counters SET open_waits = open_waits - 1 WHERE run_id = ? AND open_waits > 0",
         vec![wait.run_id.clone().into()],
     )).await?.rows_affected() != 1 {
         return Err(StorageError::Integrity("secret wait counter underflow".into()));
     }
     if wait.run_status == "waiting" {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "UPDATE graph_runs SET status = 'running', updated_at = ? WHERE id = ? AND status = 'waiting'",
             vec![now.into(), wait.run_id.clone().into()],
         )).await?;

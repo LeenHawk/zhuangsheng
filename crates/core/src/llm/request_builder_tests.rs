@@ -98,12 +98,16 @@ fn descriptor_approval_cannot_be_disabled_by_the_grant() {
 #[test]
 fn hosted_tool_requires_explicit_preapproval_and_safe_scalar_config() {
     let mut fixture = fixture();
+    fixture.execution.output = Some(LlmOutputSpec::Text {
+        final_text: None,
+        allow_empty: false,
+    });
     fixture.execution.hosted_tools.push(HostedToolBinding {
         binding_id: "web-search".into(),
         operation_key: operation(),
         hosted_kind: "web_search".into(),
-        model_facing_config: BTreeMap::from([("mode".into(), json!("fast"))]),
-        resource_scopes: vec!["https://example.test".into()],
+        model_facing_config: BTreeMap::from([("search_context_size".into(), json!("low"))]),
+        resource_scopes: vec!["internet:public".into()],
         effect: ToolEffectSpec {
             classification: EffectClassification::Pure,
             operation_key: "hosted.web_search".into(),

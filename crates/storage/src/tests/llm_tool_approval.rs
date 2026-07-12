@@ -59,7 +59,7 @@ async fn approval_batch_waits_without_effects_and_approve_prepares_all_siblings(
 
     let rows = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT tc.id, tc.status, e.id AS effect_id, ea.id AS attempt_id, ea.invoking_node_attempt_id FROM tool_calls tc JOIN effects e ON e.tool_call_id = tc.id JOIN effect_attempts ea ON ea.effect_id = e.id ORDER BY tc.call_index",
             vec![],
         ))
@@ -79,7 +79,7 @@ async fn approval_batch_waits_without_effects_and_approve_prepares_all_siblings(
     );
     let wait = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT w.status, w.accepted_delivery_id, wb.status AS blocker_status, ni.status AS instance_status, c.open_waits FROM node_waits w JOIN wait_blockers wb ON wb.wait_id = w.id JOIN node_instances ni ON ni.id = w.node_instance_id JOIN run_execution_counters c ON c.run_id = w.run_id WHERE w.id = 'approval-wait-1'",
             vec![],
         ))
@@ -126,7 +126,7 @@ async fn rejected_call_is_denied_while_unblocked_sibling_is_prepared() {
     assert_eq!(resolved.denied_tool_call_ids, vec!["tool-call-1"]);
     let rows = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT id, status, error_object_id FROM tool_calls ORDER BY call_index",
             vec![],
         ))
@@ -142,7 +142,7 @@ async fn rejected_call_is_denied_while_unblocked_sibling_is_prepared() {
     assert_eq!(rows[1].try_get::<String>("", "status").unwrap(), "prepared");
     let effects: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM effects WHERE tool_call_id IS NOT NULL",
             vec![],
         ))
@@ -164,7 +164,7 @@ async fn terminal_run_aborts_approval_blocker_without_fabricating_effect() {
         .unwrap();
     let run_id: String = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT run_id FROM node_instances WHERE id = ?",
             vec![setup.claimed.node_instance_id.clone().into()],
         ))
@@ -184,7 +184,7 @@ async fn terminal_run_aborts_approval_blocker_without_fabricating_effect() {
         .unwrap();
     let statuses: Vec<String> = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT status FROM tool_calls ORDER BY call_index",
             vec![],
         ))
@@ -199,7 +199,7 @@ async fn terminal_run_aborts_approval_blocker_without_fabricating_effect() {
     );
     let blocker = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT status, decision_object_id FROM wait_blockers WHERE wait_id = 'approval-wait-1'",
             vec![],
         ))
@@ -215,7 +215,7 @@ async fn terminal_run_aborts_approval_blocker_without_fabricating_effect() {
     );
     let tool_effects: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM effects WHERE tool_call_id IS NOT NULL",
             vec![],
         ))
@@ -251,7 +251,7 @@ async fn identical_digest_blockers_require_distinct_complete_decisions() {
     assert!(matches!(incomplete, StorageError::InvalidArgument(_)));
     let open: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM wait_blockers WHERE wait_id = 'approval-wait-1' AND status = 'open'",
             vec![],
         ))
@@ -277,7 +277,7 @@ async fn identical_digest_blockers_require_distinct_complete_decisions() {
     assert_eq!(resolved.prepared_tool_call_ids.len(), 2);
     let satisfied: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM wait_blockers WHERE wait_id = 'approval-wait-1' AND status = 'satisfied'",
             vec![],
         ))
@@ -292,7 +292,7 @@ async fn identical_digest_blockers_require_distinct_complete_decisions() {
 async fn assert_open_projection(store: &SqliteStore) {
     let rows = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT status FROM tool_calls ORDER BY call_index",
             vec![],
         ))
@@ -308,7 +308,7 @@ async fn assert_open_projection(store: &SqliteStore) {
     );
     let effects: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM effects WHERE tool_call_id IS NOT NULL",
             vec![],
         ))
@@ -320,7 +320,7 @@ async fn assert_open_projection(store: &SqliteStore) {
     assert_eq!(effects, 0);
     let wait = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT w.status, wb.blocker_id, wb.status AS blocker_status FROM node_waits w JOIN wait_blockers wb ON wb.wait_id = w.id WHERE w.id = 'approval-wait-1'",
             vec![],
         ))
@@ -338,7 +338,7 @@ async fn assert_open_projection(store: &SqliteStore) {
     );
     let run_id: String = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT run_id FROM node_waits WHERE id = 'approval-wait-1'",
             vec![],
         ))

@@ -18,7 +18,7 @@ use super::{
 impl SqliteStore {
     pub(crate) async fn process_due_timers(&self, now: i64) -> StorageResult<u64> {
         let transaction = self.db.begin().await?;
-        let row = transaction.query_one(sql(
+        let row = transaction.query_one_raw(sql(
             "SELECT id, run_id, node_instance_id, node_attempt_id, kind, payload_object_id FROM runtime_timers WHERE status = 'pending' AND due_at <= ? ORDER BY due_at, id LIMIT 1",
             vec![now.into()],
         )).await?;
@@ -80,7 +80,7 @@ async fn fire_attempt_deadline<C: ConnectionTrait>(
     attempt_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT a.status, a.attempt_no, a.retry_ordinal, a.invocation_kind, ni.id AS node_instance_id, ni.run_id, ni.node_id, ni.graph_revision_id, r.status AS run_status FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE a.id = ?",
         vec![attempt_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("attempt deadline owner missing".into()))?;
@@ -114,14 +114,14 @@ async fn fire_attempt_deadline<C: ConnectionTrait>(
         "retryClass":"policy"
     }))?;
     let error_id = put_inline_object(connection, &error, now).await?;
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE node_attempts SET status = 'timed_out', error_object_id = ?, worker_id = NULL, lease_until = NULL, finished_at = ? WHERE id = ? AND status IN ('leased','running')",
         vec![error_id.clone().into(), now.into(), attempt_id.into()],
     )).await?;
     if updated.rows_affected() != 1 {
         return Ok(());
     }
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE run_id = ? AND node_id = ? AND kind = 'attempt_ready' AND status = 'claimed'",
         vec![run_id.clone().into(), node_id.clone().into()],
     )).await?;
@@ -170,7 +170,7 @@ async fn fire_attempt_deadline<C: ConnectionTrait>(
             now,
         )
         .await?;
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "UPDATE node_instances SET status = 'waiting', updated_at = ? WHERE id = ? AND status IN ('ready','running')",
             vec![now.into(), instance_id.clone().into()],
         )).await?;
@@ -180,7 +180,7 @@ async fn fire_attempt_deadline<C: ConnectionTrait>(
             mark_run_waiting_if_idle(connection, &run_id, now).await?;
         }
     } else {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "UPDATE node_instances SET status = 'failed', updated_at = ? WHERE id = ? AND status IN ('ready','running')",
             vec![now.into(), instance_id.into()],
         )).await?;
@@ -220,7 +220,7 @@ async fn schedule_retry<C: ConnectionTrait>(
     }))?;
     let payload_id = put_inline_object(connection, &payload, now).await?;
     let timer_id = new_id("timer");
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO runtime_timers (id, run_id, node_instance_id, node_attempt_id, kind, due_at, dedupe_key, status, payload_object_id, created_at) VALUES (?, ?, ?, ?, 'retry', ?, ?, 'pending', ?, ?)",
         vec![timer_id.clone().into(), run_id.into(), instance_id.into(), attempt_id.into(), due_at.into(), format!("retry:{instance_id}:{retry_ordinal}").into(), payload_id.clone().into(), now.into()],
     )).await?;
@@ -257,13 +257,13 @@ async fn fire_retry<C: ConnectionTrait>(
     payload_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let status = connection.query_one(sql(
+    let status = connection.query_one_raw(sql(
         "SELECT status, control_epoch, execution_manifest_object_id FROM graph_runs WHERE id = ?",
         vec![run_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("retry run missing".into()))?;
     let run_status: String = status.try_get("", "status")?;
     if matches!(run_status.as_str(), "interrupted" | "interrupting") {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "UPDATE runtime_timers SET status = 'ready', fired_at = ? WHERE id = ? AND status = 'pending'",
             vec![now.into(), timer_id.into()],
         )).await?;
@@ -283,7 +283,7 @@ async fn fire_retry<C: ConnectionTrait>(
         .and_then(Value::as_i64)
         .ok_or_else(|| StorageError::Integrity("retry ordinal missing".into()))?;
     let source = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT node_attempt_id FROM runtime_timers WHERE id = ?",
             vec![timer_id.into()],
         ))
@@ -294,7 +294,7 @@ async fn fire_retry<C: ConnectionTrait>(
         return Ok(());
     }
     let node = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT node_id FROM node_instances WHERE id = ? AND run_id = ? AND status = 'waiting'",
             vec![instance_id.into(), run_id.into()],
         ))
@@ -302,7 +302,7 @@ async fn fire_retry<C: ConnectionTrait>(
         .ok_or_else(|| StorageError::Integrity("retry node instance not waiting".into()))?;
     let node_id: String = node.try_get("", "node_id")?;
     let attempt_id = new_id("attempt");
-    let inserted = connection.execute(sql(
+    let inserted = connection.execute_raw(sql(
         "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) SELECT ?, ?, ?, ?, 'retry', 'queued', control_epoch, 0, ?, execution_manifest_object_id FROM graph_runs WHERE id = ? AND status IN ('running','waiting')",
         vec![attempt_id.clone().into(), instance_id.into(), attempt_no.into(), retry_ordinal.into(), format!("attempt:{instance_id}:{attempt_no}").into(), run_id.into()],
     )).await?;
@@ -310,15 +310,15 @@ async fn fire_retry<C: ConnectionTrait>(
         return Err(StorageError::Conflict("retry_run_status"));
     }
     copy_attempt_reads(connection, &source_attempt_id, &attempt_id, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'ready', updated_at = ? WHERE id = ? AND status = 'waiting'",
         vec![now.into(), instance_id.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE run_execution_counters SET total_attempts = total_attempts + 1 WHERE run_id = ?",
         vec![run_id.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE graph_runs SET status = 'running', updated_at = ? WHERE id = ? AND status = 'waiting'",
         vec![now.into(), run_id.into()],
     )).await?;
@@ -353,12 +353,12 @@ async fn finish_interrupt_if_drained<C: ConnectionTrait>(
     run_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let draining = connection.query_one(sql(
+    let draining = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM node_attempts WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('leased','running') LIMIT 1",
         vec![run_id.into()],
     )).await?.is_some();
     if !draining {
-        let updated = connection.execute(sql(
+        let updated = connection.execute_raw(sql(
             "UPDATE graph_runs SET status = 'interrupted', drain_epoch = NULL, updated_at = ? WHERE id = ? AND status = 'interrupting'",
             vec![now.into(), run_id.into()],
         )).await?;
@@ -386,16 +386,16 @@ async fn mark_run_waiting_if_idle<C: ConnectionTrait>(
     run_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let active = connection.query_one(sql(
+    let active = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM node_instances WHERE run_id = ? AND status IN ('ready','running') LIMIT 1",
         vec![run_id.into()],
     )).await?.is_some();
-    let wakeup = connection.query_one(sql(
+    let wakeup = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM scheduler_wakeups WHERE run_id = ? AND status IN ('pending','claimed') LIMIT 1",
         vec![run_id.into()],
     )).await?.is_some();
     if !active && !wakeup {
-        let updated = connection.execute(sql(
+        let updated = connection.execute_raw(sql(
             "UPDATE graph_runs SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'",
             vec![now.into(), run_id.into()],
         )).await?;
@@ -423,14 +423,14 @@ async fn mark_fired<C: ConnectionTrait>(
     timer_id: &str,
     now: i64,
 ) -> StorageResult<bool> {
-    Ok(connection.execute(sql(
+    Ok(connection.execute_raw(sql(
         "UPDATE runtime_timers SET status = 'fired', fired_at = ? WHERE id = ? AND status = 'pending'",
         vec![now.into(), timer_id.into()],
     )).await?.rows_affected() == 1)
 }
 
 async fn cancel_timer<C: ConnectionTrait>(connection: &C, timer_id: &str) -> StorageResult<()> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE runtime_timers SET status = 'cancelled' WHERE id = ? AND status IN ('pending','ready')",
         vec![timer_id.into()],
     )).await?;

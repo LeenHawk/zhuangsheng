@@ -60,7 +60,7 @@ impl SqliteStore {
             transaction.commit().await?;
             return Ok(result);
         }
-        if transaction.query_one(sql(
+        if transaction.query_one_raw(sql(
             "SELECT 1 AS present FROM tool_registry_entries WHERE tool_id = ? AND tool_version = ?",
             vec![command.descriptor.tool_id.clone().into(), command.descriptor.version.clone().into()],
         )).await?.is_some() {
@@ -81,7 +81,7 @@ impl SqliteStore {
         )
         .await?;
         let bundle_id = persist_schema_bundle(&transaction, &owner_id, &compilations, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO tool_registry_entries (tool_id, tool_version, descriptor_json, schema_bundle_object_id, descriptor_digest, implementation_digest, executor_key, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![
                 command.descriptor.tool_id.clone().into(), command.descriptor.version.clone().into(),
@@ -133,7 +133,7 @@ impl SqliteStore {
             now,
         )
         .await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE tool_registry_entries SET enabled = ?, updated_at = ? WHERE tool_id = ? AND tool_version = ?",
             vec![i64::from(command.enabled).into(), now.into(), command.tool_id.clone().into(), command.version.clone().into()],
         )).await?;
@@ -156,7 +156,7 @@ impl SqliteStore {
     }
 
     pub async fn list_tool_descriptors(&self) -> StorageResult<Vec<ToolDescriptorView>> {
-        let rows = self.db.query_all(sql(
+        let rows = self.db.query_all_raw(sql(
             "SELECT tool_id, tool_version FROM tool_registry_entries WHERE enabled = 1 ORDER BY tool_id, tool_version",
             vec![],
         )).await?;
@@ -196,7 +196,7 @@ async fn persist_schema_bundle<C: ConnectionTrait>(
             (&source, format!("canonical_schema:{index}")),
             (&payload, format!("compiled_schema:{index}")),
         ] {
-            connection.execute(sql(
+            connection.execute_raw(sql(
                 "INSERT OR IGNORE INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'tool_registry_entry', ?, ?, ?)",
                 vec![object_id.clone().into(), owner_id.into(), role.into(), now.into()],
             )).await?;
@@ -217,7 +217,7 @@ async fn persist_schema_bundle<C: ConnectionTrait>(
         compilations: stored,
     })?;
     let bundle_id = put_inline_object(connection, &bundle, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT OR IGNORE INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'tool_registry_entry', ?, 'schema_bundle', ?)",
         vec![bundle_id.clone().into(), owner_id.into(), now.into()],
     )).await?;

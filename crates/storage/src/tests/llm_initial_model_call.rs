@@ -2,7 +2,7 @@ use sea_orm::ConnectionTrait;
 use zhuangsheng_core::{
     graph::EffectClassification,
     llm::{
-        EffectRetryPolicy, PrepareInitialModelCallCommand,
+        EffectAttemptFence, EffectRetryPolicy, PrepareInitialModelCallCommand,
         ir::{LlmContentPartIr, LlmTurnItemIr, MessageRole},
     },
 };
@@ -68,6 +68,12 @@ fn command(
         effect_attempt_id: "effect-attempt-initial".into(),
         node_instance_id: claimed.node_instance_id.clone(),
         originating_attempt_id: claimed.attempt_id.clone(),
+        fence: EffectAttemptFence {
+            invoking_node_attempt_id: claimed.attempt_id.clone(),
+            worker_id: claimed.worker_id.clone(),
+            lease_fence: claimed.lease_fence,
+            run_control_epoch: claimed.run_control_epoch,
+        },
         channel_id: snapshot.channel.channel_id.clone(),
         operation: snapshot.operation.clone(),
         request_bytes: br#"{"model":"roleplay-model"}"#.to_vec(),
@@ -103,7 +109,7 @@ async fn row_count(store: &crate::SqliteStore, table: &str) -> i64 {
     };
     store
         .db
-        .query_one(sql(query, Vec::new()))
+        .query_one_raw(sql(query, Vec::new()))
         .await
         .unwrap()
         .unwrap()

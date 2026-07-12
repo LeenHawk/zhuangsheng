@@ -139,7 +139,7 @@ async fn validate_model_owner<C: ConnectionTrait>(
     command: &ExecuteMemorySearchToolBatchCommand,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT node_instance_id, status FROM model_calls WHERE id = ?",
             vec![command.model_call_id.clone().into()],
         ))
@@ -215,7 +215,7 @@ async fn count_calls<C: ConnectionTrait>(
         _ => return Err(StorageError::Integrity("unknown tool count scope".into())),
     };
     let count: i64 = connection
-        .query_one(sql(statement, vec![value.into()]))
+        .query_one_raw(sql(statement, vec![value.into()]))
         .await?
         .expect("count query returns a row")
         .try_get("", "count")?;

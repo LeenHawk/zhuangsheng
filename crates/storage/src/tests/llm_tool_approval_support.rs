@@ -61,7 +61,7 @@ async fn prepare_model_tool_batch_for_claimed(
     let now = now_ms();
     let snapshot_ref: String = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -142,7 +142,7 @@ async fn prepare_model_tool_batch_for_claimed(
         .unwrap();
     let model_response_ref: String = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT response_object_id FROM model_calls WHERE id = 'model-call-1'",
             vec![],
         ))
@@ -360,7 +360,7 @@ pub(super) async fn load_checkpoint(
 ) -> LlmLoopCheckpoint {
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.into()],
         ))

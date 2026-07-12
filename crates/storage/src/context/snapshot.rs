@@ -44,11 +44,11 @@ impl SqliteStore {
         let bytes = canonical::to_vec(&envelope)?;
         let checksum = canonical::hash_bytes(&bytes);
         let object_id = put_inline_object(&transaction, &bytes, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO version_snapshots (commit_id, snapshot_object_id, schema_version, checksum, retention_until, pinned, created_at) VALUES (?, ?, 1, ?, ?, ?, ?)",
             vec![command.commit_id.clone().into(), object_id.clone().into(), checksum.clone().into(), command.retention_until.into(), i64::from(command.pinned).into(), now.into()],
         )).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'version_snapshot', ?, 'snapshot', ?)",
             vec![object_id.into(), command.commit_id.clone().into(), now.into()],
         )).await?;
@@ -64,7 +64,7 @@ pub(crate) async fn load_snapshot<C: ConnectionTrait>(
     connection: &C,
     commit_id: &str,
 ) -> StorageResult<Option<VersionSnapshotView>> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT commit_id, snapshot_object_id, checksum, schema_version, retention_until, pinned, created_at FROM version_snapshots WHERE commit_id = ?",
         vec![commit_id.into()],
     )).await?;

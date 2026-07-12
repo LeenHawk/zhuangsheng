@@ -50,7 +50,7 @@ pub(super) async fn resolve_router_reads<C: ConnectionTrait>(
         return Ok(());
     }
     let run = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT context_id, branch_id FROM graph_runs WHERE id = ?",
             vec![run_id.into()],
         ))
@@ -136,12 +136,12 @@ pub(super) async fn resolve_router_reads<C: ConnectionTrait>(
         }
         let object_id = put_inline_object(connection, &canonical::to_vec(&result)?, now).await?;
         for selection in resolved.selections {
-            connection.execute(sql(
+            connection.execute_raw(sql(
                 "INSERT INTO node_read_set (id, node_attempt_id, aggregate_kind, aggregate_id, lineage_key, commit_id, binding_id, selection_ordinal, selected_content_hash, consistency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 vec![new_id("readset").into(), attempt_id.into(), selection.aggregate_kind.into(), selection.aggregate_id.into(), selection.lineage_key.into(), selection.commit_id.into(), read.id.clone().into(), selection.selection_ordinal.into(), selection.content_hash.into(), consistency(read.consistency).into()],
             )).await?;
         }
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO node_bound_read_results (node_attempt_id, binding_id, envelope_object_id, result_digest, scope_snapshot_token, truncated) VALUES (?, ?, ?, ?, ?, ?)",
             vec![attempt_id.into(), read.id.clone().into(), object_id.clone().into(), digest.into(), resolved.scope_snapshot_token.into(), i64::from(resolved.truncated).into()],
         )).await?;
@@ -172,7 +172,7 @@ pub(super) async fn load_router_memory<C: ConnectionTrait>(
     };
     let mut values = BTreeMap::new();
     for read in &memory.reads {
-        let row = connection.query_one(sql(
+        let row = connection.query_one_raw(sql(
             "SELECT envelope_object_id, result_digest FROM node_bound_read_results WHERE node_attempt_id = ? AND binding_id = ?",
             vec![attempt_id.into(), read.id.clone().into()],
         )).await?.ok_or_else(|| StorageError::Integrity("bound Router read result missing".into()))?;
@@ -208,7 +208,7 @@ pub(crate) async fn copy_attempt_reads<C: ConnectionTrait>(
     target_attempt_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let entries = connection.query_all(sql(
+    let entries = connection.query_all_raw(sql(
         "SELECT aggregate_kind, aggregate_id, lineage_key, commit_id, binding_id, selection_ordinal, selected_content_hash, consistency FROM node_read_set WHERE node_attempt_id = ? ORDER BY binding_id, selection_ordinal",
         vec![source_attempt_id.into()],
     )).await?;
@@ -221,12 +221,12 @@ pub(crate) async fn copy_attempt_reads<C: ConnectionTrait>(
         let ordinal: Option<i64> = entry.try_get("", "selection_ordinal")?;
         let content_hash: Option<String> = entry.try_get("", "selected_content_hash")?;
         let consistency: String = entry.try_get("", "consistency")?;
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO node_read_set (id, node_attempt_id, aggregate_kind, aggregate_id, lineage_key, commit_id, binding_id, selection_ordinal, selected_content_hash, consistency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![new_id("readset").into(), target_attempt_id.into(), aggregate_kind.into(), aggregate_id.into(), lineage_key.into(), commit_id.into(), binding_id.into(), ordinal.into(), content_hash.into(), consistency.into()],
         )).await?;
     }
-    let results = connection.query_all(sql(
+    let results = connection.query_all_raw(sql(
         "SELECT binding_id, envelope_object_id, result_digest, scope_snapshot_token, truncated FROM node_bound_read_results WHERE node_attempt_id = ? ORDER BY binding_id",
         vec![source_attempt_id.into()],
     )).await?;
@@ -236,7 +236,7 @@ pub(crate) async fn copy_attempt_reads<C: ConnectionTrait>(
         let digest: String = result.try_get("", "result_digest")?;
         let token: Option<String> = result.try_get("", "scope_snapshot_token")?;
         let truncated: i64 = result.try_get("", "truncated")?;
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO node_bound_read_results (node_attempt_id, binding_id, envelope_object_id, result_digest, scope_snapshot_token, truncated) VALUES (?, ?, ?, ?, ?, ?)",
             vec![target_attempt_id.into(), binding_id.clone().into(), object_id.clone().into(), digest.into(), token.into(), truncated.into()],
         )).await?;

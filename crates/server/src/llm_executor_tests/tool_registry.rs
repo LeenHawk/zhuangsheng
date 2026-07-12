@@ -10,7 +10,10 @@ use zhuangsheng_core::{
     graph::{ArtifactGrant, EffectClassification, ToolApprovalPolicy, ToolEffectSpec, ToolGrant},
     llm::{LlmChannelRevision, ToolDescriptor, ToolLimits, adapter::WireGenerationRequest},
     runtime::WaitKind,
-    runtime::{RunContextCommand, RunStatus, StartRunCommand},
+    runtime::{
+        RunContextCommand, RunStatus, StartRunCommand, SubmitWaitResponseCommand,
+        ToolApprovalDecision, ToolApprovalDecisionKind, WaitResponsePayload,
+    },
     scheduler::Scheduler,
     schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
 };
@@ -19,6 +22,7 @@ use zhuangsheng_storage::SqliteStore;
 use crate::{
     llm_executor::LocalLlmExecutor,
     provider::{ProviderHttpError, ProviderHttpResponse, ProviderTransport},
+    tool_executor::BUILTIN_ECHO_IMPLEMENTATION_DIGEST,
 };
 
 use super::{create_llm_graph, now_ms, provider_response};
@@ -113,7 +117,12 @@ impl ProviderTransport for ApprovalToolProvider {
                     "status":"completed"
                 }],
                 "status":"completed",
-                "usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}
+                "usage":{
+                    "input_tokens":10,
+                    "output_tokens":5,
+                    "total_tokens":15,
+                    "output_tokens_details":{"reasoning_tokens":0}
+                }
             }))
             .unwrap(),
         })
@@ -169,7 +178,194 @@ async fn provider_tool_call_opens_one_durable_approval_batch() {
     assert!(waits[0].request["calls"][0].get("arguments").is_none());
 }
 
-fn descriptor() -> ToolDescriptor {
+pub(super) struct EchoLoopProvider {
+    pub(super) calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl ProviderTransport for EchoLoopProvider {
+    async fn send(
+        &self,
+        _channel: &LlmChannelRevision,
+        wire: &WireGenerationRequest,
+        _credential: Option<&SecretValue>,
+    ) -> Result<ProviderHttpResponse, ProviderHttpError> {
+        let call_no = self.calls.fetch_add(1, Ordering::SeqCst);
+        if call_no == 0 {
+            return Ok(tool_call_response());
+        }
+        let body: serde_json::Value = serde_json::from_slice(wire.body()).unwrap();
+        let output = body["input"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["type"] == "function_call_output")
+            .expect("second request must contain the durable tool result");
+        assert_eq!(output["call_id"], "provider-call-1");
+        assert_eq!(output["output"], "hello");
+        Ok(provider_response("Echo 完成。"))
+    }
+}
+
+#[tokio::test]
+async fn custom_tool_result_is_persisted_before_the_next_model_call() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    store
+        .publish_tool(PublishToolCommand {
+            descriptor: descriptor(),
+            implementation_digest: BUILTIN_ECHO_IMPLEMENTATION_DIGEST.into(),
+            executor_key: "builtin.echo".into(),
+            enabled: true,
+            idempotency_key: "server-publish-executable-echo".into(),
+        })
+        .await
+        .unwrap();
+    let revision_id = create_llm_graph(&store, false, None, Some(grant())).await;
+    let run = store
+        .start_run(StartRunCommand {
+            graph_revision_id: revision_id,
+            input: json!({"message":"echo hello"}),
+            context: RunContextCommand::Temporary,
+            deadline_at: None,
+            idempotency_key: "server-tool-loop-run".into(),
+        })
+        .await
+        .unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let executor = Arc::new(LocalLlmExecutor::with_provider(
+        store.clone(),
+        Arc::new(EchoLoopProvider {
+            calls: calls.clone(),
+        }),
+    ));
+    Scheduler::new(store.clone(), "tool-loop-worker")
+        .with_llm_executor(executor)
+        .run_until_idle(now_ms(), 128)
+        .await
+        .unwrap();
+    let status = store.get_run(&run.id).await.unwrap().status;
+    let events = store.list_run_events(&run.id, 0, 500).await.unwrap();
+    assert_eq!(status, RunStatus::Completed, "events: {events:?}");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "llm.tool.completed")
+    );
+}
+
+#[tokio::test]
+async fn approved_tool_batch_resumes_without_repeating_the_first_model_call() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    store
+        .publish_tool(PublishToolCommand {
+            descriptor: descriptor(),
+            implementation_digest: BUILTIN_ECHO_IMPLEMENTATION_DIGEST.into(),
+            executor_key: "builtin.echo".into(),
+            enabled: true,
+            idempotency_key: "server-publish-resumable-echo".into(),
+        })
+        .await
+        .unwrap();
+    let mut approved_grant = grant();
+    approved_grant.approval = Some(ToolApprovalPolicy::Always);
+    let revision_id = create_llm_graph(&store, false, None, Some(approved_grant)).await;
+    let run = store
+        .start_run(StartRunCommand {
+            graph_revision_id: revision_id,
+            input: json!({"message":"approve echo"}),
+            context: RunContextCommand::Temporary,
+            deadline_at: None,
+            idempotency_key: "server-tool-resume-run".into(),
+        })
+        .await
+        .unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let executor = Arc::new(LocalLlmExecutor::with_provider(
+        store.clone(),
+        Arc::new(EchoLoopProvider {
+            calls: calls.clone(),
+        }),
+    ));
+    Scheduler::new(store.clone(), "tool-resume-worker")
+        .with_llm_executor(executor.clone())
+        .run_until_idle(now_ms(), 128)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_run(&run.id).await.unwrap().status,
+        RunStatus::Waiting
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let wait = store.list_open_waits(&run.id).await.unwrap().remove(0);
+    let tool_call_id = wait.request["calls"][0]["toolCallId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let call_digest = wait.request["calls"][0]["callDigest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    store
+        .submit_wait_response(
+            SubmitWaitResponseCommand {
+                wait_id: wait.id,
+                delivery_id: "server-tool-resume-approval".into(),
+                actor_kind: "human".into(),
+                actor_id: Some("test-user".into()),
+                payload: WaitResponsePayload::ToolApproval {
+                    decisions: vec![ToolApprovalDecision {
+                        tool_call_id,
+                        call_digest,
+                        decision: ToolApprovalDecisionKind::Approve,
+                        reason: Some("approved in test".into()),
+                    }],
+                },
+            },
+            now_ms() + 1,
+        )
+        .await
+        .unwrap();
+    Scheduler::new(store.clone(), "tool-resume-worker")
+        .with_llm_executor(executor)
+        .run_until_idle(now_ms() + 2, 128)
+        .await
+        .unwrap();
+    let status = store.get_run(&run.id).await.unwrap().status;
+    let events = store.list_run_events(&run.id, 0, 500).await.unwrap();
+    assert_eq!(status, RunStatus::Completed, "events: {events:?}");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+pub(super) fn tool_call_response() -> ProviderHttpResponse {
+    ProviderHttpResponse {
+        status: 200,
+        provider_request_id: Some("tool-loop-request".into()),
+        body: serde_json::to_vec(&json!({
+            "id":"response-tool-loop",
+            "created_at":1,
+            "object":"response",
+            "output":[{
+                "type":"function_call",
+                "id":"function-call-1",
+                "call_id":"provider-call-1",
+                "name":"echo_alias",
+                "arguments":"{\"text\":\"hello\"}",
+                "status":"completed"
+            }],
+            "status":"completed",
+            "usage":{
+                "input_tokens":10,
+                "output_tokens":5,
+                "total_tokens":15,
+                "output_tokens_details":{"reasoning_tokens":0}
+            }
+        }))
+        .unwrap(),
+    }
+}
+
+pub(super) fn descriptor() -> ToolDescriptor {
     ToolDescriptor {
         tool_id: "echo-tool".into(),
         version: "1".into(),
@@ -205,7 +401,7 @@ fn descriptor() -> ToolDescriptor {
     }
 }
 
-fn grant() -> ToolGrant {
+pub(super) fn grant() -> ToolGrant {
     ToolGrant {
         binding_id: "echo-binding".into(),
         tool_id: "echo-tool".into(),

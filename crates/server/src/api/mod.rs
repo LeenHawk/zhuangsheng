@@ -16,6 +16,8 @@ use zhuangsheng_core::application::{
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
+use crate::StreamEventHub;
+
 #[derive(Clone)]
 pub struct AppState {
     pub graph_service: Arc<dyn GraphService>,
@@ -26,4 +28,5 @@ pub struct AppState {
     pub runtime_service: Arc<dyn RuntimeService>,
     pub secret_service: Arc<dyn SecretStoreService>,
     pub tool_registry_service: Arc<dyn zhuangsheng_core::application::tool::ToolRegistryService>,
+    pub stream_events: StreamEventHub,
 }

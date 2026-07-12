@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::llm::{
     LlmOperationExecutionPin,
-    ir::{LlmApiError, LlmStreamEventIr, LlmTurnItemIr, ToolCallIr},
+    ir::{HostedToolPhase, LlmApiError, LlmStreamEventIr, LlmTurnItemIr, ToolCallIr},
 };
 
 use super::{
@@ -130,7 +130,8 @@ impl OpenAiResponsesStreamDecoder {
             }
             "response.output_item.done" => {
                 self.require_started()?;
-                if value.pointer("/item/type").and_then(Value::as_str) == Some("function_call") {
+                let item_kind = value.pointer("/item/type").and_then(Value::as_str);
+                if item_kind == Some("function_call") {
                     let index = output_index(&value)?;
                     self.require_output_index(index)?;
                     let item = value.get("item").ok_or_else(|| {
@@ -140,6 +141,16 @@ impl OpenAiResponsesStreamDecoder {
                         )
                     })?;
                     batch.events.push(self.tool_completed(index, item)?);
+                } else if item_kind == Some("web_search_call") {
+                    let index = output_index(&value)?;
+                    self.require_output_index(index)?;
+                    let item = value.get("item").ok_or_else(|| {
+                        ShapeAdapterError::new(
+                            "responses_stream_item_missing",
+                            "completed hosted output item is missing",
+                        )
+                    })?;
+                    batch.events.push(self.hosted_completed(index, item)?);
                 }
             }
             "response.completed" | "response.incomplete" => {
@@ -298,6 +309,37 @@ impl OpenAiResponsesStreamDecoder {
                     name: name.into(),
                     arguments,
                 },
+            },
+        })
+    }
+
+    fn hosted_completed(
+        &mut self,
+        index: u64,
+        item: &Value,
+    ) -> Result<LlmStreamEventIr, ShapeAdapterError> {
+        let status = required_string(item, "status", "responses_hosted_status_missing")?;
+        let phase = match status {
+            "completed" => HostedToolPhase::Completed,
+            "failed" => HostedToolPhase::Failed,
+            "in_progress" | "searching" => HostedToolPhase::Running,
+            _ => {
+                return Err(ShapeAdapterError::new(
+                    "responses_hosted_status_invalid",
+                    "hosted tool status is unsupported",
+                ));
+            }
+        };
+        Ok(LlmStreamEventIr::HostedToolEvent {
+            call_id: self.model_call_id.clone(),
+            seq: self.take_seq(),
+            item: LlmTurnItemIr::HostedTool {
+                id: self.item_id("hosted", index),
+                binding_id: "web_search_call".into(),
+                kind: "web_search_call".into(),
+                phase,
+                display_content: Vec::new(),
+                opaque_item_ref: None,
             },
         })
     }

@@ -136,7 +136,7 @@ pub(super) async fn load_count_attempt<C: ConnectionTrait>(
     fence: &EffectAttemptFence,
 ) -> StorageResult<FencedCountCall> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.status AS attempt_status, ea.provider_request_id AS attempt_provider_request_id, attempt_result.content_hash AS attempt_result_digest, attempt_error.content_hash AS attempt_error_digest, e.id AS effect_id, e.status AS effect_status, e.count_call_id, e.node_instance_id, cc.count_ordinal, cc.status AS count_status, cc.count_execution_pin_digest, cc.trim_candidate_object_id, cc.trim_candidate_digest, cc.request_digest, cc.operation_key_json, cc.result_source, cc.result_object_id, result.content_hash AS result_digest, cp.checkpoint_digest, a.status AS node_attempt_status, a.worker_id, a.lease_fence, a.run_control_epoch, r.status AS run_status, r.control_epoch FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN count_calls cc ON cc.id = e.count_call_id JOIN node_attempts a ON a.id = ea.invoking_node_attempt_id JOIN node_instances ni ON ni.id = e.node_instance_id JOIN graph_runs r ON r.id = ni.run_id LEFT JOIN content_objects attempt_result ON attempt_result.id = ea.result_object_id LEFT JOIN content_objects attempt_error ON attempt_error.id = ea.error_object_id LEFT JOIN content_objects result ON result.id = cc.result_object_id LEFT JOIN llm_loop_checkpoints cp ON cp.node_instance_id = e.node_instance_id WHERE ea.id = ? AND ea.invoking_node_attempt_id = ?",
             vec![
                 effect_attempt_id.into(),

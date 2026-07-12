@@ -38,7 +38,7 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
     let now = now_ms();
     let snapshot_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -61,6 +61,12 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
         LlmLogicalCallStatus::Prepared,
         None,
     );
+    let mut stale_prepare = prepare_command(&claimed, &snapshot, prepared_checkpoint.clone());
+    stale_prepare.fence.worker_id = "stale-worker".into();
+    assert!(matches!(
+        store.prepare_model_call(stale_prepare, now).await,
+        Err(StorageError::Conflict("effect_attempt_fence"))
+    ));
     let prepared = store
         .prepare_model_call(
             prepare_command(&claimed, &snapshot, prepared_checkpoint.clone()),
@@ -243,7 +249,7 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
     ));
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT mc.status AS model_status, e.status AS effect_status, ea.status AS attempt_status, mc.response_object_id FROM model_calls mc JOIN effects e ON e.model_call_id = mc.id JOIN effect_attempts ea ON ea.effect_id = e.id WHERE mc.id = 'model-call-1'",
             vec![],
         ))
@@ -280,6 +286,12 @@ pub(super) fn prepare_command(
         effect_attempt_id: "effect-attempt-1".into(),
         node_instance_id: claimed.node_instance_id.clone(),
         originating_attempt_id: claimed.attempt_id.clone(),
+        fence: EffectAttemptFence {
+            invoking_node_attempt_id: claimed.attempt_id.clone(),
+            worker_id: claimed.worker_id.clone(),
+            lease_fence: claimed.lease_fence,
+            run_control_epoch: claimed.run_control_epoch,
+        },
         call_no: 1,
         channel_id: snapshot.channel.channel_id.clone(),
         operation: snapshot.operation.clone(),

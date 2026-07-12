@@ -97,7 +97,7 @@ async fn resolve_parts<C: ConnectionTrait>(
             .content
             .ok_or_else(|| StorageError::Integrity("memory search content missing".into()))?;
         let row = connection
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT content_hash FROM content_objects WHERE id = ? AND lifecycle = 'live'",
                 vec![content_ref.into()],
             ))
@@ -152,7 +152,7 @@ async fn evidence_refs<C: ConnectionTrait>(
     commit_id: &str,
 ) -> StorageResult<Vec<String>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT evidence_refs_json FROM memory_change_proposals WHERE applied_commit_id = ?",
             vec![commit_id.into()],
         ))

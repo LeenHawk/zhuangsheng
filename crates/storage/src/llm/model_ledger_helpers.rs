@@ -51,7 +51,7 @@ pub(super) async fn load_existing<C: ConnectionTrait>(
     retry_json: &str,
 ) -> StorageResult<Option<PreparedModelCall>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT mc.id AS model_call_id, mc.originating_attempt_id, mc.channel_id, mc.channel_revision_id, mc.model_id, mc.operation_key_json, mc.operation_taxonomy_version, mc.adapter_decoder_version, mc.status AS model_status, co.content_hash AS request_digest, e.id AS effect_id, e.effect_kind, e.classification, e.operation_key, e.idempotency_key, e.retry_policy_json, e.status AS effect_status, ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status FROM model_calls mc JOIN content_objects co ON co.id = mc.request_object_id JOIN effects e ON e.model_call_id = mc.id JOIN effect_attempts ea ON ea.effect_id = e.id AND ea.attempt_no = 1 WHERE mc.node_instance_id = ? AND mc.call_no = ?",
             vec![command.node_instance_id.clone().into(), i64::try_from(command.call_no).map_err(|_| StorageError::InvalidArgument("model call number is too large".into()))?.into()],
         ))
@@ -104,7 +104,7 @@ pub(crate) async fn persist_checkpoint<C: ConnectionTrait>(
     let bytes = canonical::to_vec(checkpoint)?;
     let object_id = put_inline_object(connection, &bytes, now).await?;
     let old = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![checkpoint.node_instance_id.clone().into()],
         ))
@@ -112,7 +112,7 @@ pub(crate) async fn persist_checkpoint<C: ConnectionTrait>(
         .map(|row| row.try_get::<String>("", "checkpoint_object_id"))
         .transpose()?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO llm_loop_checkpoints (node_instance_id, schema_version, last_updated_by_attempt_id, checkpoint_object_id, checkpoint_digest, effect_watermark, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(node_instance_id) DO UPDATE SET schema_version = excluded.schema_version, last_updated_by_attempt_id = excluded.last_updated_by_attempt_id, checkpoint_object_id = excluded.checkpoint_object_id, checkpoint_digest = excluded.checkpoint_digest, effect_watermark = excluded.effect_watermark, updated_at = excluded.updated_at",
             vec![
                 checkpoint.node_instance_id.clone().into(),
@@ -127,7 +127,7 @@ pub(crate) async fn persist_checkpoint<C: ConnectionTrait>(
         .await?;
     if let Some(old) = old.filter(|old| old != &object_id) {
         connection
-            .execute(sql(
+            .execute_raw(sql(
                 "DELETE FROM content_object_refs WHERE object_id = ? AND owner_kind = 'node_instance' AND owner_id = ? AND role = 'llm_checkpoint'",
                 vec![old.into(), checkpoint.node_instance_id.clone().into()],
             ))
@@ -143,7 +143,7 @@ pub(crate) async fn persist_checkpoint<C: ConnectionTrait>(
     )
     .await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "DELETE FROM content_object_refs WHERE owner_kind = 'node_instance' AND owner_id = ? AND role = 'llm_transcript' AND object_id <> ?",
             vec![checkpoint.node_instance_id.clone().into(), checkpoint.transcript_ref.clone().into()],
         ))
@@ -168,19 +168,19 @@ pub(super) async fn finish_rows<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let attempt = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE effect_attempts SET status = ?, result_object_id = ?, error_object_id = ?, finished_at = ? WHERE id = ? AND status = 'started'",
             vec![stored.attempt_status.into(), stored.result_object_id.clone().into(), stored.error_object_id.clone().into(), now.into(), effect_attempt_id.into()],
         ))
         .await?;
     let effect = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE effects SET status = ?, result_object_id = ?, completed_at = ? WHERE id = ? AND status = 'pending'",
             vec![stored.effect_status.into(), stored.result_object_id.clone().into(), stored.effect_completed.then_some(now).into(), fenced.effect_id.clone().into()],
         ))
         .await?;
     let model = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE model_calls SET status = ?, response_object_id = ?, usage_json = ?, finished_at = ? WHERE id = ? AND status = 'running'",
             vec![stored.model_status.into(), stored.result_object_id.clone().into(), stored.usage_json.clone().into(), now.into(), fenced.model_call_id.clone().into()],
         ))
@@ -231,7 +231,7 @@ pub(super) async fn add_ref<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT OR IGNORE INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
             vec![object_id.into(), owner_kind.into(), owner_id.into(), role.into(), now.into()],
         ))
@@ -241,7 +241,7 @@ pub(super) async fn add_ref<C: ConnectionTrait>(
 
 async fn ensure_live_object<C: ConnectionTrait>(connection: &C, id: &str) -> StorageResult<()> {
     if connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT id FROM content_objects WHERE id = ? AND lifecycle = 'live'",
             vec![id.into()],
         ))

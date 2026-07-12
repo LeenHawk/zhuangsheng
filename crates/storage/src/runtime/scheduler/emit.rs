@@ -120,7 +120,7 @@ pub(super) async fn emit_edges<C: ConnectionTrait>(
     if edges.is_empty() {
         return Ok(());
     }
-    let counters = connection.query_one(sql(
+    let counters = connection.query_one_raw(sql(
         "SELECT next_enqueue_seq, total_queue_values, pending_queue_values FROM run_execution_counters WHERE run_id = ?",
         vec![run_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("run counters missing".into()))?;
@@ -135,7 +135,7 @@ pub(super) async fn emit_edges<C: ConnectionTrait>(
             "run queue limit exceeded".into(),
         ));
     }
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE run_execution_counters SET next_enqueue_seq = next_enqueue_seq + ?, total_queue_values = total_queue_values + ?, pending_queue_values = pending_queue_values + ? WHERE run_id = ? AND next_enqueue_seq = ?",
         vec![count.into(), count.into(), count.into(), run_id.into(), first_seq.into()],
     )).await?;
@@ -149,7 +149,7 @@ pub(super) async fn emit_edges<C: ConnectionTrait>(
             .ok_or_else(|| StorageError::Integrity("edge output value missing".into()))?;
         let queue_id = new_id("queue");
         let seq = first_seq + index as i64;
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO edge_queue_values (id, run_id, edge_id, enqueue_seq, producer_instance_id, producer_emission_index, value_object_id, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
             vec![queue_id.clone().into(), run_id.into(), edge.id.clone().into(), seq.into(), instance_id.into(), value.id.clone().into(), now.into()],
         )).await?;
@@ -203,7 +203,7 @@ pub(super) async fn ensure_edge_capacity<C: ConnectionTrait>(
     if count == 0 {
         return Ok(());
     }
-    let counters = connection.query_one(sql(
+    let counters = connection.query_one_raw(sql(
         "SELECT total_queue_values, pending_queue_values FROM run_execution_counters WHERE run_id = ?",
         vec![run_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("run counters missing".into()))?;
@@ -248,7 +248,7 @@ pub(super) async fn commit_run_output<C: ConnectionTrait>(
     };
     if mode == "single"
         && connection
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT 1 AS present FROM run_output_values WHERE run_id = ? AND output_key = ?",
                 vec![run_id.into(), output_key.clone().into()],
             ))
@@ -260,14 +260,14 @@ pub(super) async fn commit_run_output<C: ConnectionTrait>(
         ));
     }
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT next_output_seq FROM run_execution_counters WHERE run_id = ?",
             vec![run_id.into()],
         ))
         .await?
         .ok_or_else(|| StorageError::Integrity("run output counter missing".into()))?;
     let seq: i64 = row.try_get("", "next_output_seq")?;
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE run_execution_counters SET next_output_seq = next_output_seq + 1 WHERE run_id = ? AND next_output_seq = ?",
         vec![run_id.into(), seq.into()],
     )).await?;
@@ -275,7 +275,7 @@ pub(super) async fn commit_run_output<C: ConnectionTrait>(
         return Err(StorageError::Conflict("run_output_sequence"));
     }
     let output_id = new_id("runout");
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO run_output_values (id, run_id, output_key, collection_mode, output_seq, node_instance_id, value_object_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         vec![output_id.clone().into(), run_id.into(), output_key.clone().into(), mode.into(), seq.into(), instance_id.into(), object_id.clone().into(), now.into()],
     )).await?;

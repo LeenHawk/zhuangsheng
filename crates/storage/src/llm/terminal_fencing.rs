@@ -20,7 +20,7 @@ pub(crate) async fn fence_run_effects<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<u64> {
     let rows = connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT e.id AS effect_id, e.node_instance_id, e.model_call_id, e.count_call_id, e.tool_call_id FROM effects e JOIN node_instances ni ON ni.id = e.node_instance_id WHERE ni.run_id = ? AND e.status IN ('pending','outcome_unknown') ORDER BY e.id",
             vec![run_id.into()],
         ))
@@ -42,14 +42,14 @@ async fn fence_unmaterialized_tool_calls<C: ConnectionTrait>(
     terminal_epoch: u64,
     now: i64,
 ) -> StorageResult<u64> {
-    let rows = connection.query_all(sql(
+    let rows = connection.query_all_raw(sql(
         "SELECT tc.id AS tool_call_id, tc.node_instance_id FROM tool_calls tc JOIN node_instances ni ON ni.id = tc.node_instance_id WHERE ni.run_id = ? AND tc.status IN ('requested','validated','awaiting_approval') AND NOT EXISTS (SELECT 1 FROM effects e WHERE e.tool_call_id = tc.id) ORDER BY tc.node_instance_id, tc.call_index",
         vec![run_id.into()],
     )).await?;
     for row in &rows {
         let tool_call_id: String = row.try_get("", "tool_call_id")?;
         let node_instance_id: String = row.try_get("", "node_instance_id")?;
-        if connection.execute(sql(
+        if connection.execute_raw(sql(
             "UPDATE tool_calls SET status = 'cancelled_before_start', finished_at = ? WHERE id = ? AND status IN ('requested','validated','awaiting_approval')",
             vec![now.into(), tool_call_id.clone().into()],
         )).await?.rows_affected() != 1 {
@@ -79,7 +79,7 @@ async fn update_unmaterialized_checkpoint<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.into()],
         ))
@@ -115,7 +115,7 @@ async fn abort_open_tool_blocker<C: ConnectionTrait>(
     terminal_epoch: u64,
     now: i64,
 ) -> StorageResult<()> {
-    let blocker = connection.query_one(sql(
+    let blocker = connection.query_one_raw(sql(
         "SELECT wait_id FROM wait_blockers WHERE blocker_kind = 'tool_call' AND blocker_id = ? AND status = 'open'",
         vec![tool_call_id.into()],
     )).await?;
@@ -131,7 +131,7 @@ async fn abort_open_tool_blocker<C: ConnectionTrait>(
         "toolCallId": tool_call_id,
     }))?;
     let decision_id = put_inline_object(connection, &decision, now).await?;
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE wait_blockers SET status = 'aborted', decision_object_id = ? WHERE wait_id = ? AND blocker_kind = 'tool_call' AND blocker_id = ? AND status = 'open'",
         vec![decision_id.clone().into(), wait_id.clone().into(), tool_call_id.into()],
     )).await?.rows_affected() != 1 {
@@ -157,7 +157,7 @@ async fn fence_effect<C: ConnectionTrait>(
 ) -> StorageResult<()> {
     let effect_id: String = row.try_get("", "effect_id")?;
     let unresolved = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.id, ea.status FROM effect_attempts ea LEFT JOIN effect_resolutions er ON er.effect_attempt_id = ea.id WHERE ea.effect_id = ? AND ea.status IN ('started','outcome_unknown') AND er.id IS NULL ORDER BY ea.attempt_no DESC LIMIT 1",
             vec![effect_id.clone().into()],
         ))
@@ -166,7 +166,7 @@ async fn fence_effect<C: ConnectionTrait>(
         let attempt_id: String = attempt.try_get("", "id")?;
         if attempt.try_get::<String>("", "status")? == "started" {
             let updated = connection
-                .execute(sql(
+                .execute_raw(sql(
                     "UPDATE effect_attempts SET status = 'outcome_unknown', finished_at = ? WHERE id = ? AND status = 'started'",
                     vec![now.into(), attempt_id.clone().into()],
                 ))
@@ -192,7 +192,7 @@ async fn fence_effect<C: ConnectionTrait>(
         )
     } else {
         let prepared = connection
-            .query_all(sql(
+            .query_all_raw(sql(
                 "SELECT ea.id FROM effect_attempts ea LEFT JOIN effect_resolutions er ON er.effect_attempt_id = ea.id WHERE ea.effect_id = ? AND ea.status = 'prepared' AND er.id IS NULL ORDER BY ea.attempt_no",
                 vec![effect_id.clone().into()],
             ))
@@ -200,7 +200,7 @@ async fn fence_effect<C: ConnectionTrait>(
         for attempt in prepared {
             let attempt_id: String = attempt.try_get("", "id")?;
             let updated = connection
-                .execute(sql(
+                .execute_raw(sql(
                     "UPDATE effect_attempts SET status = 'superseded_before_start', finished_at = ? WHERE id = ? AND status = 'prepared'",
                     vec![now.into(), attempt_id.clone().into()],
                 ))
@@ -226,7 +226,7 @@ async fn fence_effect<C: ConnectionTrait>(
         )
     };
     let effect = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE effects SET status = ?, completed_at = ? WHERE id = ? AND status IN ('pending','outcome_unknown')",
             vec![owner_status.into(), now.into(), effect_id.clone().into()],
         ))
@@ -267,7 +267,7 @@ async fn update_owner_and_checkpoint<C: ConnectionTrait>(
     let count_call_id: Option<String> = row.try_get("", "count_call_id")?;
     let tool_call_id: Option<String> = row.try_get("", "tool_call_id")?;
     let checkpoint_row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.clone().into()],
         ))
@@ -362,7 +362,7 @@ async fn update_owner<C: ConnectionTrait>(
         }
     };
     if connection
-        .execute(sql(statement, vec![status.into(), owner_id.into()]))
+        .execute_raw(sql(statement, vec![status.into(), owner_id.into()]))
         .await?
         .rows_affected()
         != 1
@@ -396,7 +396,7 @@ async fn write_system_resolution<C: ConnectionTrait>(
         "key": key,
     }))?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO effect_resolutions (id, effect_id, effect_attempt_id, resolution_kind, command_idempotency_key, request_digest, decision_object_id, actor_kind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'system', ?)",
             vec![
                 new_id("effectresolution").into(),
@@ -430,7 +430,7 @@ async fn abort_open_blocker<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let blocker = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT wait_id FROM wait_blockers WHERE blocker_kind = 'effect' AND blocker_id = ? AND status = 'open'",
             vec![effect_id.into()],
         ))
@@ -447,7 +447,7 @@ async fn abort_open_blocker<C: ConnectionTrait>(
     }))?;
     let decision_id = put_inline_object(connection, &decision, now).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE wait_blockers SET status = 'aborted', decision_object_id = ? WHERE wait_id = ? AND blocker_kind = 'effect' AND blocker_id = ? AND status = 'open'",
             vec![decision_id.clone().into(), wait_id.clone().into(), effect_id.into()],
         ))

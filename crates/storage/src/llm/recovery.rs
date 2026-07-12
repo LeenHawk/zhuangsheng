@@ -14,7 +14,7 @@ pub(crate) async fn supersede_prepared_effect_attempts<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<u64> {
     let rows = connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT ea.id AS effect_attempt_id, e.id AS effect_id, e.node_instance_id, e.model_call_id, e.count_call_id, e.tool_call_id FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id WHERE ea.invoking_node_attempt_id = ? AND ea.status = 'prepared' ORDER BY ea.id",
             vec![invoking_attempt_id.into()],
         ))
@@ -24,7 +24,7 @@ pub(crate) async fn supersede_prepared_effect_attempts<C: ConnectionTrait>(
     }
     let node_instance_id = rows[0].try_get::<String>("", "node_instance_id")?;
     let checkpoint_row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.clone().into()],
         ))
@@ -50,7 +50,7 @@ pub(crate) async fn supersede_prepared_effect_attempts<C: ConnectionTrait>(
         let effect_attempt_id: String = row.try_get("", "effect_attempt_id")?;
         let effect_id: String = row.try_get("", "effect_id")?;
         let updated = connection
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE effect_attempts SET status = 'superseded_before_start', finished_at = ? WHERE id = ? AND invoking_node_attempt_id = ? AND status = 'prepared'",
                 vec![now.into(), effect_attempt_id.clone().into(), invoking_attempt_id.into()],
             ))
@@ -142,7 +142,7 @@ async fn update_owner<C: ConnectionTrait>(
         _ => return Err(StorageError::Integrity("unknown effect owner table".into())),
     };
     if connection
-        .execute(sql(statement, vec![owner_id.into()]))
+        .execute_raw(sql(statement, vec![owner_id.into()]))
         .await?
         .rows_affected()
         != 1

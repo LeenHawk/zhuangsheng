@@ -7,31 +7,56 @@ use zhuangsheng_core::{
         ApplicationError,
         secret::{ResolveRuntimeSecretCommand, RuntimeSecretResolution, RuntimeSecretResolver},
     },
-    graph::EffectClassification,
     llm::{
-        ChannelCredential, EffectAttemptFence, EffectRetryPolicy, FinishModelCallCommand,
-        InitialToolBatchInput, InitialToolBatchPlan, LlmLogicalCallStatus, LlmRequestBuildInput,
-        ModelCallEffectOutcome, PrepareInitialModelCallCommand, StartModelCallCommand,
-        ToolRegistrySnapshot,
-        adapter::{
-            AdapterExecutionOptions, AdapterResources, decode_generation_terminal,
-            encode_generation_request,
-        },
+        ChannelCredential, InitialToolBatchInput, InitialToolBatchPlan, LlmRequestBuildInput,
         build_llm_request,
         context::{ContextAssemblyInput, ContextBudgetInput, ContextCountSource, assemble_context},
+        plan_initial_tool_batch,
     },
     scheduler::{ClaimedAttempt, LlmAttemptExecution, LlmAttemptExecutor},
 };
 use zhuangsheng_storage::SqliteStore;
 
 use crate::{
+    StreamEventHub,
     llm_executor_support::*,
     provider::{HttpProviderClient, ProviderHttpError, ProviderTransport},
+    tool_executor::ToolExecutorRegistry,
 };
+
+mod attempt_resume;
+mod hosted_tools;
+mod model_call;
+mod model_completed_resume;
+mod model_completion;
+mod model_effect;
+mod model_retry;
+mod model_stream;
+mod model_stream_batch;
+mod model_stream_failure;
+mod model_transport;
+mod output_repair;
+mod tool_dispatch;
+mod tool_retry;
+
+use attempt_resume::{AttemptResume, resume_attempt};
+use model_call::{ModelCallInput, ModelCallResult, run_model_call};
+#[cfg(test)]
+pub(crate) use model_completed_resume::CompletedModelPause;
+#[cfg(test)]
+pub(crate) use output_repair::RepairPreparedPause;
+use output_repair::{OutputDecision, finalize_or_prepare_repair};
+use tool_dispatch::{ToolDispatchResult, dispatch_tool_batch};
 
 pub struct LocalLlmExecutor {
     store: Arc<SqliteStore>,
     provider: Arc<dyn ProviderTransport>,
+    tools: ToolExecutorRegistry,
+    stream_events: StreamEventHub,
+    #[cfg(test)]
+    repair_pause: Option<Arc<RepairPreparedPause>>,
+    #[cfg(test)]
+    completed_model_pause: Option<Arc<CompletedModelPause>>,
 }
 
 impl LocalLlmExecutor {
@@ -39,11 +64,59 @@ impl LocalLlmExecutor {
         Ok(Self {
             store,
             provider: Arc::new(HttpProviderClient::new()?),
+            tools: ToolExecutorRegistry::with_builtins(),
+            stream_events: StreamEventHub::new(),
+            #[cfg(test)]
+            repair_pause: None,
+            #[cfg(test)]
+            completed_model_pause: None,
         })
     }
 
     pub fn with_provider(store: Arc<SqliteStore>, provider: Arc<dyn ProviderTransport>) -> Self {
-        Self { store, provider }
+        Self {
+            store,
+            provider,
+            tools: ToolExecutorRegistry::with_builtins(),
+            stream_events: StreamEventHub::new(),
+            #[cfg(test)]
+            repair_pause: None,
+            #[cfg(test)]
+            completed_model_pause: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_provider_and_tools(
+        store: Arc<SqliteStore>,
+        provider: Arc<dyn ProviderTransport>,
+        tools: ToolExecutorRegistry,
+    ) -> Self {
+        Self {
+            store,
+            provider,
+            tools,
+            stream_events: StreamEventHub::new(),
+            repair_pause: None,
+            completed_model_pause: None,
+        }
+    }
+
+    pub fn with_stream_events(mut self, stream_events: StreamEventHub) -> Self {
+        self.stream_events = stream_events;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_repair_pause(mut self, pause: Arc<RepairPreparedPause>) -> Self {
+        self.repair_pause = Some(pause);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_completed_model_pause(mut self, pause: Arc<CompletedModelPause>) -> Self {
+        self.completed_model_pause = Some(pause);
+        self
     }
 }
 
@@ -66,22 +139,6 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                 "LLM context read snapshot is missing",
             ));
         };
-        if execution
-            .streaming
-            .as_ref()
-            .is_some_and(|value| value.enabled)
-        {
-            return Ok(finalize_failure(
-                "llm_streaming_executor_pending",
-                "streaming LLM execution is not connected yet",
-            ));
-        }
-        if !execution.hosted_tools.is_empty() {
-            return Ok(finalize_failure(
-                "llm_hosted_tool_executor_pending",
-                "hosted tool execution is not connected yet",
-            ));
-        }
         let node_input = Value::Object(
             attempt
                 .inputs
@@ -125,32 +182,6 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
             Ok(output) => output,
             Err(error) => return Ok(assembly_failure(error)),
         };
-        let registry: ToolRegistrySnapshot = execution.tool_registry.clone();
-        let built = match build_llm_request(LlmRequestBuildInput {
-            execution,
-            context: &assembly,
-            registry_snapshot: &registry,
-            tool_descriptors: &execution.tool_descriptors,
-            transcript_tail: &[],
-            continuation: None,
-            approved_hosted_bindings: &BTreeSet::new(),
-            model_call_no: 1,
-        }) {
-            Ok(output) => output,
-            Err(error) => return Ok(finalize_failure(error.code, &error.message)),
-        };
-        let wire = match encode_generation_request(
-            &execution.operation,
-            &built.request,
-            &AdapterResources::default(),
-            AdapterExecutionOptions {
-                stream: false,
-                max_output_tokens: reserved_output,
-            },
-        ) {
-            Ok(wire) => wire,
-            Err(error) => return Ok(finalize_failure(error.code, &error.message)),
-        };
         let credential = match &execution.channel.spec.credential {
             ChannelCredential::Secret { api_key_ref } => {
                 match RuntimeSecretResolver::resolve_runtime_secret(
@@ -185,178 +216,129 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
             }
             ChannelCredential::None => None,
         };
-        let model_call_id = new_id("modelcall");
-        let effect_id = new_id("effect");
-        let effect_attempt_id = new_id("effectattempt");
-        let prepared = self
-            .store
-            .prepare_initial_model_call(
-                PrepareInitialModelCallCommand {
-                    model_call_id: model_call_id.clone(),
-                    effect_id: effect_id.clone(),
-                    effect_attempt_id: effect_attempt_id.clone(),
-                    node_instance_id: attempt.node_instance_id.clone(),
-                    originating_attempt_id: attempt.attempt_id.clone(),
-                    channel_id: execution.channel.channel_id.clone(),
-                    operation: execution.operation.clone(),
-                    request_bytes: wire.body().to_vec(),
-                    transcript: built.request.transcript.clone(),
-                    registry_snapshot: registry,
-                    read_set_digest: context_snapshot.read_set_digest.clone(),
-                    effect_kind: "model_generation".into(),
-                    effect_classification: EffectClassification::Idempotent,
-                    effect_operation_key: "llm.generate".into(),
-                    effect_idempotency_key: model_call_id.clone(),
-                    retry_policy: EffectRetryPolicy {
-                        max_attempts: 2,
-                        backoff_ms: vec![250],
-                    },
-                },
-                now,
-            )
-            .await
-            .map_err(ApplicationError::from)?;
-        let fence = EffectAttemptFence {
-            invoking_node_attempt_id: attempt.attempt_id.clone(),
-            worker_id: attempt.worker_id.clone(),
-            lease_fence: attempt.lease_fence,
-            run_control_epoch: attempt.run_control_epoch,
+        let base_transcript_len = assembly.messages.len();
+        let resume = resume_attempt(
+            self,
+            attempt,
+            execution,
+            &assembly,
+            base_transcript_len,
+            credential.as_ref(),
+            reserved_output,
+            now,
+        )
+        .await?;
+        let resume = match resume {
+            AttemptResume::Continue(resume) => resume,
+            AttemptResume::Terminal(result) => return Ok(result),
         };
-        let mut running = prepared.checkpoint.clone();
-        set_model_status(&mut running, LlmLogicalCallStatus::Running);
-        running = running.seal().map_err(|_| ApplicationError::Internal)?;
-        self.store
-            .start_model_call(
-                StartModelCallCommand {
-                    effect_attempt_id: effect_attempt_id.clone(),
-                    fence: fence.clone(),
-                    provider_request_id: None,
-                    checkpoint: running.clone(),
-                },
-                now,
-            )
-            .await
-            .map_err(ApplicationError::from)?;
-        let response = self
-            .provider
-            .send(&execution.channel, &wire, credential.as_ref())
-            .await;
-        let response = match response {
-            Ok(response) => response,
-            Err(error) => {
-                let status = if error.outcome_unknown {
-                    LlmLogicalCallStatus::OutcomeUnknown
-                } else {
-                    LlmLogicalCallStatus::Failed
+        let mut transcript_tail = resume.transcript_tail;
+        let mut prior_checkpoint = resume.prior_checkpoint;
+        let mut recovered_completed = resume.recovered_completed;
+        let mut output_repairs_used = resume.output_repairs_used;
+        loop {
+            let completed = if let Some(completed) = recovered_completed.take() {
+                completed
+            } else {
+                let call_no = prior_checkpoint.as_ref().map_or(
+                    1,
+                    |checkpoint: &zhuangsheng_core::llm::LlmLoopCheckpoint| {
+                        checkpoint.model_calls_used.saturating_add(1)
+                    },
+                );
+                let built = match build_llm_request(LlmRequestBuildInput {
+                    execution,
+                    context: &assembly,
+                    registry_snapshot: &execution.tool_registry,
+                    tool_descriptors: &execution.tool_descriptors,
+                    transcript_tail: &transcript_tail,
+                    continuation: None,
+                    approved_hosted_bindings: &BTreeSet::new(),
+                    model_call_no: call_no,
+                }) {
+                    Ok(output) => output,
+                    Err(error) => return Ok(finalize_failure(error.code, &error.message)),
                 };
-                let mut terminal = running;
-                set_model_status(&mut terminal, status);
-                terminal = terminal.seal().map_err(|_| ApplicationError::Internal)?;
-                let error_bytes = provider_error_bytes(&error);
-                self.store
-                    .finish_model_call(
-                        FinishModelCallCommand {
-                            effect_attempt_id,
-                            fence,
-                            outcome: if error.outcome_unknown {
-                                ModelCallEffectOutcome::OutcomeUnknown { error_bytes }
-                            } else {
-                                ModelCallEffectOutcome::Failed { error_bytes }
-                            },
-                            checkpoint: terminal,
-                            transcript: None,
-                        },
+                match run_model_call(
+                    self,
+                    ModelCallInput {
+                        attempt,
+                        execution,
+                        built,
+                        prior_checkpoint: prior_checkpoint.take(),
+                        credential: credential.as_ref(),
+                        reserved_output,
                         now,
-                    )
-                    .await
-                    .map_err(ApplicationError::from)?;
-                return Ok(if error.outcome_unknown {
-                    LlmAttemptExecution::Handled
-                } else {
-                    finalize_failure(error.code, &error.safe_message)
-                });
-            }
-        };
-        let decoded =
-            decode_generation_terminal(&execution.operation, &model_call_id, &response.body);
-        let mut completed = running;
-        set_model_status(&mut completed, LlmLogicalCallStatus::Completed);
-        completed = completed.seal().map_err(|_| ApplicationError::Internal)?;
-        let usage = decoded
-            .as_ref()
-            .ok()
-            .and_then(|draft| draft.response.usage.clone());
-        let durable_transcript = decoded
-            .as_ref()
-            .ok()
-            .filter(|draft| {
-                draft.sensitive_entries.is_empty() && draft.opaque_attachments.is_empty()
-            })
-            .map(|draft| {
-                let mut transcript = built.request.transcript.clone();
-                transcript.extend(draft.response.items.clone());
-                transcript
-            });
-        let completed_checkpoint = self
-            .store
-            .finish_model_call(
-                FinishModelCallCommand {
-                    effect_attempt_id,
-                    fence,
-                    outcome: ModelCallEffectOutcome::Completed {
-                        response_bytes: response.body,
-                        usage,
                     },
-                    checkpoint: completed,
-                    transcript: durable_transcript,
-                },
-                now,
-            )
-            .await
-            .map_err(ApplicationError::from)?;
-        let decoded = match decoded {
-            Ok(value) => value,
-            Err(error) => return Ok(finalize_failure(error.code, &error.message)),
-        };
-        if !decoded.sensitive_entries.is_empty() || !decoded.opaque_attachments.is_empty() {
-            return Ok(finalize_failure(
-                "llm_opaque_storage_pending",
-                "provider response requires opaque continuation storage",
-            ));
-        }
-        let tool_plan =
-            match zhuangsheng_core::llm::plan_initial_tool_batch(InitialToolBatchInput {
+                )
+                .await?
+                {
+                    ModelCallResult::Completed(completed) => *completed,
+                    ModelCallResult::Terminal(result) => return Ok(result),
+                }
+            };
+            #[cfg(test)]
+            if let Some(pause) = &self.completed_model_pause {
+                pause.wait_once().await;
+            }
+            let tool_plan = match plan_initial_tool_batch(InitialToolBatchInput {
                 execution,
-                request_tools: &built.resolved_tools,
-                response_items: &decoded.response.items,
-                model_call_id: &model_call_id,
+                request_tools: &completed.resolved_tools,
+                response_items: &completed.decoded.response.items,
+                model_call_id: &completed.model_call_id,
                 node_instance_id: &attempt.node_instance_id,
                 originating_attempt_id: &attempt.attempt_id,
-                checkpoint: completed_checkpoint,
+                checkpoint: completed.checkpoint.clone(),
                 now_ms: now,
             }) {
                 Ok(plan) => plan,
                 Err(error) => return Ok(finalize_failure(error.code, &error.message)),
             };
-        match tool_plan {
-            InitialToolBatchPlan::Approval(command) => {
-                self.store
-                    .prepare_tool_approval_batch(command, now)
-                    .await
-                    .map_err(ApplicationError::from)?;
-                return Ok(LlmAttemptExecution::Handled);
+            match tool_plan {
+                InitialToolBatchPlan::Approval(command) => {
+                    self.store
+                        .prepare_tool_approval_batch(command, now)
+                        .await
+                        .map_err(ApplicationError::from)?;
+                    return Ok(LlmAttemptExecution::Handled);
+                }
+                InitialToolBatchPlan::Executable(batch) => {
+                    let settled =
+                        match dispatch_tool_batch(self, attempt, execution, batch, now).await? {
+                            ToolDispatchResult::Settled(settled) => *settled,
+                            ToolDispatchResult::Terminal(result) => return Ok(result),
+                        };
+                    transcript_tail = settled
+                        .transcript
+                        .get(base_transcript_len..)
+                        .ok_or(ApplicationError::Internal)?
+                        .to_vec();
+                    prior_checkpoint = Some(settled.checkpoint);
+                }
+                InitialToolBatchPlan::NoCalls => {
+                    match finalize_or_prepare_repair(
+                        self,
+                        attempt,
+                        execution,
+                        completed,
+                        output_repairs_used,
+                        now,
+                    )
+                    .await?
+                    {
+                        OutputDecision::Final(result) => return Ok(result),
+                        OutputDecision::Repair(continuation) => {
+                            transcript_tail = continuation
+                                .transcript
+                                .get(base_transcript_len..)
+                                .ok_or(ApplicationError::Internal)?
+                                .to_vec();
+                            prior_checkpoint = Some(continuation.checkpoint);
+                            output_repairs_used = continuation.repairs_used;
+                        }
+                    }
+                }
             }
-            InitialToolBatchPlan::ExecutablePending => {
-                return Ok(finalize_failure(
-                    "llm_tool_dispatcher_pending",
-                    "custom tool execution dispatcher is not connected yet",
-                ));
-            }
-            InitialToolBatchPlan::NoCalls => {}
         }
-        Ok(finalize_output(
-            execution.output.as_ref(),
-            &decoded.response.items,
-        ))
     }
 }

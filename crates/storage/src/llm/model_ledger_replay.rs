@@ -39,7 +39,7 @@ pub(super) async fn load_retry_replay<C: ConnectionTrait>(
     command: &PrepareModelCallRetryCommand,
 ) -> StorageResult<Option<RetryReplay>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status, ea.request_object_id AS attempt_request_object_id, e.id AS effect_id, e.status AS effect_status, mc.node_instance_id, mc.call_no, mc.status AS model_status, mc.request_object_id AS model_request_object_id, cp.checkpoint_digest FROM effects e JOIN model_calls mc ON mc.id = e.model_call_id JOIN effect_attempts ea ON ea.effect_id = e.id LEFT JOIN llm_loop_checkpoints cp ON cp.node_instance_id = mc.node_instance_id WHERE mc.id = ? AND (ea.id = ? OR ea.invoking_node_attempt_id = ?) ORDER BY ea.attempt_no DESC LIMIT 1",
             vec![
                 command.model_call_id.clone().into(),

@@ -42,7 +42,7 @@ impl SqliteStore {
             now,
         )
         .await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO llm_channels (id, name, head_revision_id, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)",
             vec![id.clone().into(), name.clone().into(), now.into(), now.into()],
         )).await?;
@@ -59,14 +59,14 @@ impl SqliteStore {
     }
 
     pub async fn list_channels(&self) -> StorageResult<Vec<ChannelView>> {
-        self.db.query_all(sql(
+        self.db.query_all_raw(sql(
             "SELECT id, name, head_revision_id, created_at, updated_at FROM llm_channels ORDER BY created_at, id",
             vec![],
         )).await?.iter().map(channel_from_row).collect()
     }
 
     pub async fn get_channel(&self, channel_id: &str) -> StorageResult<ChannelView> {
-        let row = self.db.query_one(sql(
+        let row = self.db.query_one_raw(sql(
             "SELECT id, name, head_revision_id, created_at, updated_at FROM llm_channels WHERE id = ?",
             vec![channel_id.into()],
         )).await?.ok_or_else(|| StorageError::NotFound { kind: "channel", id: channel_id.into() })?;
@@ -98,7 +98,7 @@ impl SqliteStore {
             return Ok(result);
         }
         let row = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT head_revision_id FROM llm_channels WHERE id = ?",
                 vec![command.channel_id.clone().into()],
             ))
@@ -134,7 +134,7 @@ impl SqliteStore {
         )
         .await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE llm_channels SET head_revision_id = ?, updated_at = ? WHERE id = ?",
                 vec![
                     id.clone().into(),
@@ -186,7 +186,7 @@ async fn next_revision_no<C: ConnectionTrait>(
     connection: &C,
     channel_id: &str,
 ) -> StorageResult<u64> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT COALESCE(MAX(revision_no), 0) + 1 AS next_no FROM llm_channel_revisions WHERE channel_id = ?",
         vec![channel_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("missing channel revision sequence".into()))?;
@@ -208,7 +208,7 @@ async fn insert_revision<C: ConnectionTrait>(
         ChannelCredential::Secret { api_key_ref } => ("secret", Some(canonical_json(api_key_ref)?)),
         ChannelCredential::None => ("none", None),
     };
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO llm_channel_revisions (id, channel_id, revision_no, operation_taxonomy_version, adapter_decoder_version, base_url, transport_policy_json, credential_kind, api_key_ref, operation_keys_json, model_catalogs_json, capabilities_json, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         vec![
             id.into(), channel_id.into(), (revision_no as i64).into(),
@@ -252,7 +252,7 @@ pub(super) async fn insert_pending_receipt<C: ConnectionTrait>(
     resource_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, resource_id, status, created_at) VALUES (?, ?, ?, 'publish_config', 'config', ?, 'pending', ?)",
         vec![scope.into(), key.into(), digest.into(), resource_id.into(), now.into()],
     )).await?;
@@ -267,7 +267,7 @@ pub(super) async fn finish_receipt<C: ConnectionTrait, T: serde::Serialize>(
     now: i64,
 ) -> StorageResult<()> {
     let object_id = put_inline_object(connection, &canonical::to_vec(result)?, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE application_command_receipts SET status = 'completed', result_object_id = ?, completed_at = ? WHERE scope = ? AND idempotency_key = ?",
         vec![object_id.into(), now.into(), scope.into(), key.into()],
     )).await?;

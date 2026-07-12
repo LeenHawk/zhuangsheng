@@ -24,7 +24,7 @@ pub(super) async fn load_ledger_context<C: ConnectionTrait>(
     node_attempt_id: &str,
 ) -> StorageResult<LedgerContext> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ni.graph_revision_id, ni.execution_snapshot_object_id, a.node_instance_id AS attempt_instance_id FROM node_instances ni JOIN node_attempts a ON a.id = ? WHERE ni.id = ?",
             vec![node_attempt_id.into(), node_instance_id.into()],
         ))
@@ -144,7 +144,7 @@ pub(super) async fn load_model_call_attempt<C: ConnectionTrait>(
     fence: &EffectAttemptFence,
 ) -> StorageResult<FencedModelCall> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.effect_id, ea.status AS attempt_status, ea.provider_request_id AS attempt_provider_request_id, ea.result_object_id AS attempt_result_object_id, attempt_result.content_hash AS attempt_result_digest, attempt_error.content_hash AS attempt_error_digest, e.model_call_id, e.node_instance_id, e.status AS effect_status, e.classification, mc.call_no, mc.status AS model_status, mc.provider_request_id AS model_provider_request_id, mc.response_object_id, model_response.content_hash AS response_digest, mc.usage_json, cp.checkpoint_digest, a.status AS node_attempt_status, a.worker_id, a.lease_fence, a.run_control_epoch, r.status AS run_status, r.control_epoch FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN model_calls mc ON mc.id = e.model_call_id JOIN node_attempts a ON a.id = ea.invoking_node_attempt_id JOIN node_instances ni ON ni.id = e.node_instance_id JOIN graph_runs r ON r.id = ni.run_id LEFT JOIN content_objects attempt_result ON attempt_result.id = ea.result_object_id LEFT JOIN content_objects attempt_error ON attempt_error.id = ea.error_object_id LEFT JOIN content_objects model_response ON model_response.id = mc.response_object_id LEFT JOIN llm_loop_checkpoints cp ON cp.node_instance_id = e.node_instance_id WHERE ea.id = ? AND ea.invoking_node_attempt_id = ?",
             vec![effect_attempt_id.into(), fence.invoking_node_attempt_id.clone().into()],
         ))
@@ -245,7 +245,7 @@ pub(super) async fn validate_node_attempt_fence<C: ConnectionTrait>(
     fence: &EffectAttemptFence,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT a.node_instance_id, a.status, a.worker_id, a.lease_fence, a.run_control_epoch, r.status AS run_status, r.control_epoch FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE a.id = ?",
             vec![fence.invoking_node_attempt_id.clone().into()],
         ))

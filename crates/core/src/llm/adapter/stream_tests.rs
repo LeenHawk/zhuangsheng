@@ -48,6 +48,65 @@ fn responses_stream_normalizes_sequence_and_terminal_identity() {
 }
 
 #[test]
+fn responses_stream_emits_hosted_tool_lifecycle_before_terminal() {
+    let mut decoder =
+        OpenAiResponsesStreamDecoder::new(pin(ContentGenerationKind::OpenAiResponses), "call-1")
+            .unwrap();
+    let fixtures = [
+        json!({
+            "type":"response.created","sequence_number":0,
+            "response":{"id":"response-1","created_at":1,"object":"response","output":[],"status":"in_progress"}
+        }),
+        json!({
+            "type":"response.output_item.added","sequence_number":1,"output_index":0,
+            "item":{"type":"web_search_call","id":"search-1","status":"in_progress","action":{"type":"search","query":"lore"}}
+        }),
+        json!({
+            "type":"response.output_item.done","sequence_number":2,"output_index":0,
+            "item":{"type":"web_search_call","id":"search-1","status":"completed","action":{"type":"search","query":"lore"}}
+        }),
+        json!({
+            "type":"response.output_item.added","sequence_number":3,"output_index":1,
+            "item":{"type":"message","id":"message-1","role":"assistant","status":"in_progress","content":[]}
+        }),
+        json!({
+            "type":"response.output_text.delta","sequence_number":4,"content_index":0,
+            "delta":"found","item_id":"message-1","output_index":1
+        }),
+        json!({
+            "type":"response.completed","sequence_number":5,
+            "response":{
+                "id":"response-1","created_at":1,"object":"response","status":"completed",
+                "output":[
+                    {"type":"web_search_call","id":"search-1","status":"completed","action":{"type":"search","query":"lore"}},
+                    {"type":"message","id":"message-1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"found","annotations":[]}]}
+                ]
+            }
+        }),
+    ];
+    let mut finalizer = StreamFinalizer::default();
+    let mut hosted_events = 0;
+    for fixture in fixtures {
+        let batch = decoder
+            .push(&serde_json::to_vec(&fixture).unwrap())
+            .unwrap();
+        hosted_events += batch
+            .events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    crate::llm::ir::LlmStreamEventIr::HostedToolEvent { .. }
+                )
+            })
+            .count();
+        push_events(&mut finalizer, batch);
+    }
+    assert_eq!(hosted_events, 1);
+    finalizer.finish().unwrap();
+}
+
+#[test]
 fn chat_stream_aggregates_tool_arguments_before_terminal() {
     let mut decoder =
         OpenAiChatStreamDecoder::new(pin(ContentGenerationKind::OpenAiChatCompletions), "call-1")

@@ -29,7 +29,7 @@ pub(super) async fn open_effect_resolution_wait<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ni.run_id, ni.node_id, cp.checkpoint_object_id FROM node_instances ni JOIN llm_loop_checkpoints cp ON cp.node_instance_id = ni.id WHERE ni.id = ?",
             vec![wait.node_instance_id.into()],
         ))
@@ -58,7 +58,7 @@ pub(super) async fn open_effect_resolution_wait<C: ConnectionTrait>(
     }))?;
     let request_object_id = put_inline_object(connection, &request, now).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO node_waits (id, run_id, node_instance_id, node_attempt_id, kind, correlation_key, request_object_id, continuation_object_id, on_timeout, status, created_at) VALUES (?, ?, ?, ?, 'effect_resolution', ?, ?, ?, 'fail', 'open', ?)",
             vec![
                 wait.wait_id.into(),
@@ -73,13 +73,13 @@ pub(super) async fn open_effect_resolution_wait<C: ConnectionTrait>(
         ))
         .await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO wait_blockers (wait_id, blocker_kind, blocker_id, blocker_order, status) VALUES (?, 'effect', ?, 0, 'open')",
             vec![wait.wait_id.into(), wait.effect_id.into()],
         ))
         .await?;
     let attempt = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_attempts SET status = 'waiting', continuation_object_id = ?, worker_id = NULL, lease_until = NULL, finished_at = ? WHERE id = ? AND node_instance_id = ? AND status = 'running'",
             vec![
                 continuation_object_id.clone().into(),
@@ -90,7 +90,7 @@ pub(super) async fn open_effect_resolution_wait<C: ConnectionTrait>(
         ))
         .await?;
     let instance = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_instances SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'",
             vec![now.into(), wait.node_instance_id.into()],
         ))
@@ -99,19 +99,19 @@ pub(super) async fn open_effect_resolution_wait<C: ConnectionTrait>(
         return Err(StorageError::Conflict("effect_wait_owner_status"));
     }
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE runtime_timers SET status = 'cancelled' WHERE node_attempt_id = ? AND kind = 'attempt_deadline' AND status = 'pending'",
             vec![wait.invoking_node_attempt_id.into()],
         ))
         .await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE run_id = ? AND node_id = ? AND kind = 'attempt_ready' AND status = 'claimed'",
             vec![run_id.clone().into(), node_id.clone().into()],
         ))
         .await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET open_waits = open_waits + 1 WHERE run_id = ?",
             vec![run_id.clone().into()],
         ))
@@ -161,7 +161,7 @@ pub(super) async fn allocate_wait_id<C: ConnectionTrait>(
     node_instance_id: &str,
 ) -> StorageResult<String> {
     if connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT 1 AS present FROM node_waits WHERE node_instance_id = ? AND status = 'open'",
             vec![node_instance_id.into()],
         ))
@@ -178,7 +178,7 @@ pub(super) async fn load_wait_ids<C: ConnectionTrait>(
     node_instance_id: &str,
 ) -> StorageResult<Vec<String>> {
     connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT id FROM node_waits WHERE node_instance_id = ? ORDER BY created_at, id",
             vec![node_instance_id.into()],
         ))

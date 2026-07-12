@@ -16,7 +16,7 @@ impl SqliteStore {
             return Err(SecretStoreError::NotInitialized.into());
         }
         self.db
-            .query_all(sql(
+            .query_all_raw(sql(
                 "SELECT id, name, kind, created_at, updated_at FROM secret_records WHERE status = 'active' ORDER BY created_at, id",
                 vec![],
             ))
@@ -95,7 +95,7 @@ impl SqliteStore {
         )
         .await?;
         let row = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT id, name, kind, created_at, updated_at FROM secret_records WHERE id = ? AND status = 'active'",
                 vec![command.secret_id.clone().into()],
             ))
@@ -138,7 +138,7 @@ async fn upsert_record<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO secret_records (id, store_id, name, kind, key_version, algorithm, nonce, ciphertext, status, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 'xchacha20-poly1305', ?, ?, 'active', ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind, key_version = 1, algorithm = excluded.algorithm, nonce = excluded.nonce, ciphertext = excluded.ciphertext, status = 'active', updated_at = excluded.updated_at, deleted_at = NULL WHERE secret_records.store_id = excluded.store_id",
             vec![
                 command.secret_id.clone().into(),

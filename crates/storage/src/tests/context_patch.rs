@@ -228,7 +228,7 @@ async fn run(store: &crate::SqliteStore, key: &str) -> zhuangsheng_core::runtime
 async fn count(store: &crate::SqliteStore, table: &str) -> i64 {
     store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             &format!("SELECT COUNT(*) AS count FROM {table}"),
             vec![],
         ))

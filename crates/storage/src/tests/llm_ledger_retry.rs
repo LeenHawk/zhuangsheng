@@ -25,7 +25,7 @@ async fn retryable_unknown_keeps_fact_and_creates_new_fenced_attempt() {
     let now = now_ms();
     let snapshot_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -101,7 +101,7 @@ async fn retryable_unknown_keeps_fact_and_creates_new_fenced_attempt() {
 
     let executor_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT executor_object_id FROM node_attempts WHERE id = ?",
             vec![claimed.attempt_id.clone().into()],
         ))
@@ -112,7 +112,7 @@ async fn retryable_unknown_keeps_fact_and_creates_new_fenced_attempt() {
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_attempts SET status = 'completed', finished_at = ? WHERE id = ?",
             vec![(now + 3).into(), claimed.attempt_id.clone().into()],
         ))
@@ -120,7 +120,7 @@ async fn retryable_unknown_keeps_fact_and_creates_new_fenced_attempt() {
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, worker_id, lease_until, idempotency_key, executor_object_id, started_at) VALUES ('node-attempt-2', ?, 2, 0, 'reconcile', 'running', ?, 1, 'ledger-worker-2', ?, 'ledger-attempt-2', ?, ?)",
             vec![claimed.node_instance_id.clone().into(), i64::try_from(claimed.run_control_epoch).unwrap().into(), (now + 30_000).into(), executor_object_id.into(), (now + 3).into()],
         ))
@@ -186,7 +186,7 @@ async fn retryable_unknown_keeps_fact_and_creates_new_fenced_attempt() {
     ));
     let rows = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT status FROM effect_attempts WHERE effect_id = 'effect-1' ORDER BY attempt_no",
             vec![],
         ))

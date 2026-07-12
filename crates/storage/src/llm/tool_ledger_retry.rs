@@ -31,7 +31,7 @@ pub(super) async fn prepare_retry(
         return Ok(result(&command, replay, true));
     }
     let row = transaction
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT tc.node_instance_id, tc.model_call_id, tc.call_index, tc.call_digest, tc.arguments_object_id, tc.status AS tool_status, e.id AS effect_id, e.status AS effect_status, e.retry_policy_json, COALESCE(MAX(ea.attempt_no), 0) AS attempt_count, (SELECT COUNT(*) FROM tool_calls all_calls WHERE all_calls.node_instance_id = tc.node_instance_id) AS tool_calls_used FROM tool_calls tc JOIN effects e ON e.tool_call_id = tc.id LEFT JOIN effect_attempts ea ON ea.effect_id = e.id WHERE tc.id = ? GROUP BY tc.id, e.id",
             vec![command.tool_call_id.clone().into()],
         ))
@@ -60,7 +60,7 @@ pub(super) async fn prepare_retry(
         ));
     }
     transaction
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, ?, 'prepared', ?)",
             vec![
                 command.effect_attempt_id.clone().into(),
@@ -72,7 +72,7 @@ pub(super) async fn prepare_retry(
         ))
         .await?;
     if transaction
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE tool_calls SET status = 'prepared' WHERE id = ? AND status = 'retry_ready'",
             vec![command.tool_call_id.clone().into()],
         ))
@@ -126,7 +126,7 @@ async fn load_retry_replay<C: ConnectionTrait>(
     command: &PrepareToolCallRetryCommand,
 ) -> StorageResult<Option<RetryContext>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status, ea.request_object_id AS attempt_request_object_id, e.id AS effect_id, e.status AS effect_status, tc.node_instance_id, tc.model_call_id, tc.call_index, tc.call_digest, tc.arguments_object_id, tc.status AS tool_status, cp.checkpoint_digest, (SELECT COUNT(*) FROM tool_calls all_calls WHERE all_calls.node_instance_id = tc.node_instance_id) AS tool_calls_used FROM effects e JOIN tool_calls tc ON tc.id = e.tool_call_id JOIN effect_attempts ea ON ea.effect_id = e.id LEFT JOIN llm_loop_checkpoints cp ON cp.node_instance_id = tc.node_instance_id WHERE tc.id = ? AND (ea.id = ? OR ea.invoking_node_attempt_id = ?) ORDER BY ea.attempt_no DESC LIMIT 1",
             vec![
                 command.tool_call_id.clone().into(),

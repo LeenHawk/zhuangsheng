@@ -5,8 +5,8 @@ use crate::{
     llm::{
         ContentGenerationKind, LlmOperationExecutionPin, Operation, OperationKey,
         ir::{
-            LlmContentPartIr, LlmRequestIr, LlmTurnItemIr, MessageRole, ResponseFormatIr,
-            ToolResultOutcome,
+            HostedToolDescriptorIr, LlmContentPartIr, LlmRequestIr, LlmTurnItemIr, MessageRole,
+            MetadataValue, ResponseFormatIr, ToolResultOutcome,
         },
     },
 };
@@ -37,6 +37,39 @@ fn responses_encoder_applies_hard_output_limit() {
     let value: Value = serde_json::from_slice(wire.body()).unwrap();
     assert_eq!(value["max_output_tokens"], 100);
     assert_eq!(value["input"][0]["role"], "user");
+}
+
+#[test]
+fn responses_encoder_maps_only_allowlisted_web_search_config() {
+    let pin = pin(ContentGenerationKind::OpenAiResponses);
+    let mut request = base_request();
+    request.hosted_tools.push(HostedToolDescriptorIr {
+        binding_id: "search".into(),
+        hosted_kind: "web_search".into(),
+        config: [(
+            "search_context_size".into(),
+            MetadataValue::String("low".into()),
+        )]
+        .into(),
+    });
+    let wire =
+        encode_openai_responses_request(&pin, &request, &AdapterResources::default(), options())
+            .unwrap();
+    let value: Value = serde_json::from_slice(wire.body()).unwrap();
+    assert_eq!(value["tools"][0]["type"], "web_search");
+    assert_eq!(value["tools"][0]["search_context_size"], "low");
+    assert!(value["tools"][0].get("binding_id").is_none());
+
+    request.hosted_tools[0]
+        .config
+        .insert("api_token".into(), MetadataValue::String("nope".into()));
+    assert_eq!(
+        encode_openai_responses_request(&pin, &request, &AdapterResources::default(), options(),)
+            .err()
+            .unwrap()
+            .code,
+        "unsupported_responses_hosted_config"
+    );
 }
 
 #[test]

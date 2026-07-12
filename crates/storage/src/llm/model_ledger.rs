@@ -29,6 +29,13 @@ impl SqliteStore {
     ) -> StorageResult<PreparedModelCall> {
         validate_prepare_fields(&command)?;
         let transaction = self.db.begin().await?;
+        if command.originating_attempt_id != command.fence.invoking_node_attempt_id {
+            return Err(StorageError::InvalidArgument(
+                "model call originating attempt does not match its fence".into(),
+            ));
+        }
+        validate_node_attempt_fence(&transaction, &command.node_instance_id, &command.fence)
+            .await?;
         let context = load_ledger_context(
             &transaction,
             &command.node_instance_id,
@@ -71,7 +78,7 @@ impl SqliteStore {
             return Ok(existing);
         }
         let count: i64 = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT COUNT(*) AS count FROM model_calls WHERE node_instance_id = ?",
                 vec![command.node_instance_id.clone().into()],
             ))
@@ -95,7 +102,7 @@ impl SqliteStore {
         let request_object_id =
             put_inline_object(&transaction, &command.request_bytes, now).await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO model_calls (id, node_instance_id, originating_attempt_id, call_no, channel_id, channel_revision_id, model_id, operation_key_json, operation_taxonomy_version, adapter_decoder_version, request_object_id, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?)",
                 vec![
                     command.model_call_id.clone().into(),
@@ -114,7 +121,7 @@ impl SqliteStore {
             ))
             .await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effects (id, node_instance_id, model_call_id, effect_kind, classification, operation_key, idempotency_key, retry_policy_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
                 vec![
                     command.effect_id.clone().into(),
@@ -130,7 +137,7 @@ impl SqliteStore {
             ))
             .await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, 1, 'prepared', ?)",
                 vec![
                     command.effect_attempt_id.clone().into(),
@@ -211,7 +218,7 @@ impl SqliteStore {
             ReplayDecision::Fresh => {}
         }
         let updated = transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE effect_attempts SET status = 'started', provider_request_id = ?, started_at = ? WHERE id = ? AND status = 'prepared' AND invoking_node_attempt_id = ?",
                 vec![command.provider_request_id.clone().into(), now.into(), command.effect_attempt_id.clone().into(), command.fence.invoking_node_attempt_id.clone().into()],
             ))
@@ -220,7 +227,7 @@ impl SqliteStore {
             return Err(StorageError::Conflict("effect_attempt_status"));
         }
         let model = transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE model_calls SET status = 'running', provider_request_id = ? WHERE id = ? AND status = 'prepared'",
                 vec![command.provider_request_id.into(), fenced.model_call_id.into()],
             ))
@@ -279,7 +286,7 @@ impl SqliteStore {
             });
         }
         let row = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT mc.node_instance_id, mc.call_no, mc.request_object_id, mc.status AS model_status, e.id AS effect_id, e.status AS effect_status, e.classification, e.retry_policy_json, COALESCE(MAX(ea.attempt_no), 0) AS attempt_count FROM model_calls mc JOIN effects e ON e.model_call_id = mc.id LEFT JOIN effect_attempts ea ON ea.effect_id = e.id WHERE mc.id = ? GROUP BY mc.id, e.id",
                 vec![command.model_call_id.clone().into()],
             ))
@@ -336,13 +343,13 @@ impl SqliteStore {
         )?;
         let request_object_id: String = row.try_get("", "request_object_id")?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, ?, 'prepared', ?)",
                 vec![command.effect_attempt_id.clone().into(), effect_id.clone().into(), command.fence.invoking_node_attempt_id.clone().into(), next_attempt.into(), request_object_id.clone().into()],
             ))
             .await?;
         let updated = transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE model_calls SET status = 'prepared' WHERE id = ? AND status = 'retry_ready'",
                 vec![command.model_call_id.clone().into()],
             ))

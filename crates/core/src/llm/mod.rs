@@ -7,9 +7,12 @@ mod error;
 pub mod ir;
 mod ledger;
 mod output;
+mod output_repair_ledger;
 mod request_builder;
+mod request_builder_hosted;
 mod request_builder_tools;
 mod secret;
+mod stream_ledger;
 mod tool_batch;
 mod tool_ledger;
 mod tool_registry;
@@ -24,8 +27,10 @@ pub use gproxy_protocol::{
 };
 pub use ledger::*;
 pub use output::*;
+pub use output_repair_ledger::*;
 pub use request_builder::*;
 pub use secret::{SecretRef, SecretScheme};
+pub use stream_ledger::*;
 pub use tool_batch::*;
 pub use tool_ledger::*;
 pub use tool_registry::*;
@@ -35,3 +40,5 @@ pub use tool_registry_validation::*;
 mod request_builder_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tool_batch_tests;

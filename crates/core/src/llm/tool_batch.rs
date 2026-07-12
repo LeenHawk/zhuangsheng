@@ -14,7 +14,13 @@ use super::{
 pub enum InitialToolBatchPlan {
     NoCalls,
     Approval(PrepareToolApprovalBatchCommand),
-    ExecutablePending,
+    Executable(ExecutableToolBatchPlan),
+}
+
+pub struct ExecutableToolBatchPlan {
+    pub model_call_id: String,
+    pub calls: Vec<PrepareToolApprovalCall>,
+    pub checkpoint: LlmLoopCheckpoint,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -137,10 +143,11 @@ pub fn plan_initial_tool_batch(
             descriptor_requires_approval: resolved.descriptor.descriptor.effect.requires_approval,
             effect_idempotency_key: format!("tool:{tool_call_id}:effect"),
             retry_policy,
-            risk_summary: resolved
-                .requires_approval
-                .then(|| format!("Tool '{}' requests approval", resolved.exposed_name))
-                .unwrap_or_default(),
+            risk_summary: if resolved.requires_approval {
+                format!("Tool '{}' requests approval", resolved.exposed_name)
+            } else {
+                String::new()
+            },
             approval_expires_at: input.now_ms.saturating_add(15 * 60 * 1000),
         });
         checkpoints.push(ToolCallCheckpoint {
@@ -157,11 +164,23 @@ pub fn plan_initial_tool_batch(
             wait_id: Some(wait_id.clone()),
         });
     }
-    if !has_approval {
-        return Ok(InitialToolBatchPlan::ExecutablePending);
-    }
     let mut checkpoint = input.checkpoint;
     checkpoint.last_updated_by_attempt_id = input.originating_attempt_id.into();
+    if !has_approval {
+        for call in &mut checkpoints {
+            call.status = ToolCallCheckpointStatus::Requested;
+            call.wait_id = None;
+        }
+        checkpoint.current_batch = checkpoints;
+        checkpoint = checkpoint.seal().map_err(|error| {
+            ToolBatchPlanError::new("tool_checkpoint_invalid", error.to_string())
+        })?;
+        return Ok(InitialToolBatchPlan::Executable(ExecutableToolBatchPlan {
+            model_call_id: input.model_call_id.into(),
+            calls: plans,
+            checkpoint,
+        }));
+    }
     checkpoint.current_batch = checkpoints;
     checkpoint.tool_calls_used = used;
     checkpoint.effect_watermark = wait_id.clone();

@@ -10,25 +10,30 @@ use tower::ServiceExt;
 use zhuangsheng_core::scheduler::Scheduler;
 use zhuangsheng_storage::SqliteStore;
 
-use crate::app;
+use crate::{AppServices, StreamEventHub, app};
 
 mod config;
 mod secret;
+
+fn test_app(store: Arc<SqliteStore>) -> axum::Router {
+    app(AppServices {
+        graph: store.clone(),
+        channel: store.clone(),
+        preset: store.clone(),
+        context: store.clone(),
+        memory: store.clone(),
+        runtime: store.clone(),
+        secret: store.clone(),
+        tool_registry: store,
+        stream_events: StreamEventHub::new(),
+    })
+}
 
 #[tokio::test]
 async fn graph_http_vertical_slice_uses_public_contract() {
     let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
     let store = Arc::new(store);
-    let app = app(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-    );
+    let app = test_app(store.clone());
     let created = call(
         &app,
         request(
@@ -206,16 +211,7 @@ async fn graph_http_vertical_slice_uses_public_contract() {
 async fn graph_http_errors_use_typed_envelope() {
     let store = SqliteStore::connect("sqlite::memory:").await.unwrap();
     let store = Arc::new(store);
-    let app = app(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store,
-    );
+    let app = test_app(store);
     let response = app
         .oneshot(request(
             "POST",
@@ -240,16 +236,7 @@ async fn graph_http_errors_use_typed_envelope() {
 #[tokio::test]
 async fn memory_http_flow_uses_service_contract_and_typed_commands() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let app = app(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store,
-    );
+    let app = test_app(store);
     let proposed = call(
         &app,
         request(
@@ -344,16 +331,7 @@ async fn memory_http_flow_uses_service_contract_and_typed_commands() {
 #[tokio::test]
 async fn wait_response_route_uses_typed_blocker_decisions() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let app = app(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store,
-    );
+    let app = test_app(store);
     let response = call(
         &app,
         request(

@@ -98,7 +98,7 @@ pub(super) async fn replay_resolution<C: ConnectionTrait>(
     digest: &str,
 ) -> StorageResult<Option<EffectResolutionView>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT er.id, er.effect_attempt_id, er.resolution_kind, er.request_digest, wb.wait_id FROM effect_resolutions er LEFT JOIN wait_blockers wb ON wb.blocker_kind = 'effect' AND wb.blocker_id = er.effect_id WHERE er.effect_id = ? AND er.command_idempotency_key = ?",
             vec![
                 command.effect_id.clone().into(),
@@ -127,7 +127,7 @@ pub(super) async fn load_resolution_context<C: ConnectionTrait>(
     command: &ResolveEffectUnknownCommand,
 ) -> StorageResult<ResolutionContext> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT e.node_instance_id, e.model_call_id, e.count_call_id, e.tool_call_id, e.status AS effect_status, e.classification, e.retry_policy_json, ea.status AS attempt_status, ea.attempt_no, ea.invoking_node_attempt_id, mc.status AS model_status, tc.status AS tool_status, ni.run_id, ni.node_id, r.status AS run_status, r.control_epoch, w.id AS wait_id, w.node_attempt_id AS wait_attempt_id, w.status AS wait_status, wb.status AS blocker_status FROM effects e JOIN effect_attempts ea ON ea.effect_id = e.id AND ea.id = ? LEFT JOIN model_calls mc ON mc.id = e.model_call_id LEFT JOIN tool_calls tc ON tc.id = e.tool_call_id JOIN node_instances ni ON ni.id = e.node_instance_id JOIN graph_runs r ON r.id = ni.run_id JOIN wait_blockers wb ON wb.blocker_kind = 'effect' AND wb.blocker_id = e.id JOIN node_waits w ON w.id = wb.wait_id AND w.node_instance_id = e.node_instance_id AND w.kind = 'effect_resolution' WHERE e.id = ?",
             vec![
                 command.expected_effect_attempt_id.clone().into(),
@@ -202,7 +202,7 @@ pub(super) async fn ensure_live_object<C: ConnectionTrait>(
     object_id: &str,
 ) -> StorageResult<()> {
     if connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT 1 AS present FROM content_objects WHERE id = ? AND lifecycle = 'live'",
             vec![object_id.into()],
         ))

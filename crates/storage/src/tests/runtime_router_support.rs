@@ -125,7 +125,7 @@ pub(super) async fn count(store: &crate::SqliteStore, table: &str) -> i64 {
 pub(super) async fn count_where(store: &crate::SqliteStore, table: &str, predicate: &str) -> i64 {
     store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             &format!("SELECT COUNT(*) AS count FROM {table} WHERE {predicate}"),
             vec![],
         ))

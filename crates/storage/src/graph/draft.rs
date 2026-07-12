@@ -46,11 +46,11 @@ impl SqliteStore {
         }
         let token = new_id("draftrev");
         let now = now_ms();
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, resource_id, status, created_at) VALUES (?, ?, ?, 'update_graph_draft', 'graph', ?, 'pending', ?)",
             vec![scope.clone().into(), command.idempotency_key.clone().into(), digest.into(), command.graph_id.clone().into(), now.into()],
         )).await?;
-        let updated = transaction.execute(sql(
+        let updated = transaction.execute_raw(sql(
             "UPDATE graph_drafts SET document_json = ?, revision_token = ?, updated_at = ? WHERE graph_id = ? AND revision_token = ?",
             vec![document_json.into(), token.clone().into(), now.into(), command.graph_id.clone().into(), command.expected_revision_token.into()],
         )).await?;
@@ -58,7 +58,7 @@ impl SqliteStore {
             return Err(StorageError::Conflict("graph_draft_revision"));
         }
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE graphs SET name = ?, updated_at = ? WHERE id = ?",
                 vec![
                     command
@@ -79,7 +79,7 @@ impl SqliteStore {
             updated_at: now,
         };
         let object_id = put_inline_object(&transaction, &canonical::to_vec(&result)?, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE application_command_receipts SET status = 'completed', result_object_id = ?, completed_at = ? WHERE scope = ? AND idempotency_key = ?",
             vec![object_id.into(), now.into(), scope.into(), command.idempotency_key.into()],
         )).await?;
@@ -92,7 +92,7 @@ pub async fn load_draft<C: ConnectionTrait>(
     connection: &C,
     graph_id: &str,
 ) -> StorageResult<GraphDraftView> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT graph_id, document_json, revision_token, updated_at FROM graph_drafts WHERE graph_id = ?",
         vec![graph_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound { kind: "graph_draft", id: graph_id.into() })?;

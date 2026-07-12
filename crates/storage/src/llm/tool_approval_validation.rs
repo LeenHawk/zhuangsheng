@@ -47,7 +47,7 @@ pub(super) async fn validate_new_batch<C: ConnectionTrait>(
         }
     }
     if connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT 1 AS present FROM node_waits WHERE node_instance_id = ? AND status = 'open'",
             vec![command.node_instance_id.clone().into()],
         ))
@@ -57,7 +57,7 @@ pub(super) async fn validate_new_batch<C: ConnectionTrait>(
         return Err(StorageError::Conflict("node_instance_open_wait"));
     }
     let model = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT node_instance_id, status FROM model_calls WHERE id = ?",
             vec![command.model_call_id.clone().into()],
         ))
@@ -105,7 +105,7 @@ async fn validate_batch_checkpoint<C: ConnectionTrait>(
 ) -> StorageResult<()> {
     let checkpoint = &command.checkpoint;
     let historical: Vec<String> = connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT id FROM node_waits WHERE node_instance_id = ? ORDER BY created_at, id",
             vec![command.node_instance_id.clone().into()],
         ))
@@ -276,7 +276,7 @@ async fn count_calls<C: ConnectionTrait>(
         _ => return Err(StorageError::Integrity("unknown tool count scope".into())),
     };
     let count: i64 = connection
-        .query_one(sql(statement, vec![value.into()]))
+        .query_one_raw(sql(statement, vec![value.into()]))
         .await?
         .expect("count query returns a row")
         .try_get("", "count")?;

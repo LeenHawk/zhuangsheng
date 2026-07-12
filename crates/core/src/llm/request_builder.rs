@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::{
     canonical,
-    graph::{LlmNodeExecutionSnapshot, LlmOutputSpec, ToolGrant},
+    graph::{HostedToolBinding, LlmNodeExecutionSnapshot, LlmOutputSpec, ToolGrant},
 };
 
 use super::{
@@ -14,7 +14,8 @@ use super::{
         LlmRequestIr, LlmTurnItemIr, MetadataValue, OpaqueContinuationRef, ResponseFormatIr,
         validate_request_ir,
     },
-    request_builder_tools::{resolve_hosted_tools, resolve_tools},
+    request_builder_hosted::resolve_hosted_tools,
+    request_builder_tools::resolve_tools,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,10 +28,17 @@ pub struct ResolvedRequestTool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedHostedTool {
+    pub binding: HostedToolBinding,
+    pub provider_item_kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct LlmRequestBuildOutput {
     pub request: LlmRequestIr,
     pub request_digest: String,
     pub resolved_tools: Vec<ResolvedRequestTool>,
+    pub resolved_hosted_tools: Vec<ResolvedHostedTool>,
 }
 
 pub struct LlmRequestBuildInput<'a> {
@@ -69,7 +77,8 @@ pub fn build_llm_request(
         input.registry_snapshot,
         input.tool_descriptors,
     )?;
-    let hosted_tools = resolve_hosted_tools(input.execution, input.approved_hosted_bindings)?;
+    let (hosted_tools, resolved_hosted_tools) =
+        resolve_hosted_tools(input.execution, input.approved_hosted_bindings)?;
     let transcript = build_transcript(input.context, input.transcript_tail)?;
     let request_options = input.execution.request.clone().unwrap_or_default();
     let response_format = match input.execution.output.as_ref() {
@@ -129,6 +138,7 @@ pub fn build_llm_request(
         request,
         request_digest,
         resolved_tools,
+        resolved_hosted_tools,
     })
 }
 

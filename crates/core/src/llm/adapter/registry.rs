@@ -42,6 +42,12 @@ pub fn resolve_shape_adapter(
     }
     let key = match kind {
         ContentGenerationKind::OpenAiResponses => ShapeAdapterKey::OpenAiResponsesV1,
+        ContentGenerationKind::OpenAiResponsesWebSocket => {
+            return Err(ShapeAdapterError::new(
+                "unsupported_generation_transport",
+                "OpenAI Responses WebSocket transport is not implemented",
+            ));
+        }
         ContentGenerationKind::OpenAiChatCompletions => ShapeAdapterKey::OpenAiChatCompletionsV1,
         ContentGenerationKind::ClaudeMessages => ShapeAdapterKey::ClaudeMessagesV1,
         ContentGenerationKind::GeminiGenerateContent => ShapeAdapterKey::GeminiGenerateContentV1,
@@ -108,6 +114,24 @@ mod tests {
         assert_eq!(
             resolve_shape_adapter(&pin).unwrap_err().code,
             "unsupported_operation_version"
+        );
+    }
+
+    #[test]
+    fn websocket_responses_requires_a_dedicated_transport() {
+        let pin = LlmOperationExecutionPin {
+            channel_revision_id: "revision-1".into(),
+            model_id: "model-1".into(),
+            operation_key: OperationKey::content_generation(
+                Operation::GenerateContent,
+                ContentGenerationKind::OpenAiResponsesWebSocket,
+            ),
+            operation_taxonomy_version: 1,
+            adapter_decoder_version: 1,
+        };
+        assert_eq!(
+            resolve_shape_adapter(&pin).unwrap_err().code,
+            "unsupported_generation_transport"
         );
     }
 }

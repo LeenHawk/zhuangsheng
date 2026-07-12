@@ -41,7 +41,7 @@ pub(super) async fn prepare_retry(
         });
     }
     let row = transaction
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT cc.node_instance_id, cc.count_ordinal, cc.count_execution_pin_digest, cc.trim_candidate_object_id, cc.trim_candidate_digest, cc.request_digest, cc.request_object_id, cc.status AS count_status, e.id AS effect_id, e.status AS effect_status, e.retry_policy_json, COALESCE(MAX(ea.attempt_no), 0) AS attempt_count FROM count_calls cc JOIN effects e ON e.count_call_id = cc.id LEFT JOIN effect_attempts ea ON ea.effect_id = e.id WHERE cc.id = ? GROUP BY cc.id, e.id",
             vec![command.count_call_id.clone().into()],
         ))
@@ -72,7 +72,7 @@ pub(super) async fn prepare_retry(
     let replay = retry_context(&row)?;
     validate_retry_checkpoint(&transaction, &command, &replay).await?;
     transaction
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, ?, 'prepared', ?)",
             vec![
                 command.effect_attempt_id.clone().into(),
@@ -84,7 +84,7 @@ pub(super) async fn prepare_retry(
         ))
         .await?;
     if transaction
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE count_calls SET status = 'prepared' WHERE id = ? AND status = 'retry_ready'",
             vec![command.count_call_id.clone().into()],
         ))
@@ -149,7 +149,7 @@ async fn load_retry_replay<C: ConnectionTrait>(
     command: &PrepareCountCallRetryCommand,
 ) -> StorageResult<Option<RetryContext>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status, ea.request_object_id AS attempt_request_object_id, e.id AS effect_id, e.status AS effect_status, cc.node_instance_id, cc.count_ordinal, cc.count_execution_pin_digest, cc.trim_candidate_object_id, cc.trim_candidate_digest, cc.request_digest, cc.request_object_id, cc.status AS count_status, cp.checkpoint_digest FROM effects e JOIN count_calls cc ON cc.id = e.count_call_id JOIN effect_attempts ea ON ea.effect_id = e.id LEFT JOIN llm_loop_checkpoints cp ON cp.node_instance_id = cc.node_instance_id WHERE cc.id = ? AND (ea.id = ? OR ea.invoking_node_attempt_id = ?) ORDER BY ea.attempt_no DESC LIMIT 1",
             vec![
                 command.count_call_id.clone().into(),

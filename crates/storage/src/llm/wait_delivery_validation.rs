@@ -32,7 +32,7 @@ pub(super) async fn validate_continuation<C: ConnectionTrait>(
         ));
     }
     let rows = connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT id, model_call_id, call_digest, arguments_object_id, status FROM tool_calls WHERE node_instance_id = ? ORDER BY model_call_id, call_index",
             vec![context.node_instance_id.clone().into()],
         ))
@@ -56,7 +56,7 @@ pub(super) async fn validate_continuation<C: ConnectionTrait>(
         }
     }
     let open_kinds: Vec<String> = connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT blocker_kind FROM wait_blockers WHERE wait_id = ? AND status = 'open' ORDER BY blocker_order",
             vec![command.wait_id.clone().into()],
         ))
@@ -77,7 +77,7 @@ pub(super) async fn validate_decisions<C: ConnectionTrait>(
     continuation: &ToolApprovalContinuation,
     now: i64,
 ) -> StorageResult<Vec<ToolApprovalDecision>> {
-    let blockers = connection.query_all(sql(
+    let blockers = connection.query_all_raw(sql(
         "SELECT blocker_id FROM wait_blockers WHERE wait_id = ? AND blocker_kind = 'tool_call' AND status = 'open' ORDER BY blocker_order",
         vec![wait_id.into()],
     )).await?;
@@ -153,7 +153,7 @@ pub(super) async fn settle_decisions<C: ConnectionTrait>(
         } else {
             "rejected"
         };
-        if connection.execute(sql(
+        if connection.execute_raw(sql(
             "UPDATE wait_blockers SET status = ?, decision_object_id = ? WHERE wait_id = ? AND blocker_kind = 'tool_call' AND blocker_id = ? AND status = 'open'",
             vec![status.into(), decision_ref.clone().into(), command.wait_id.clone().into(), decision.tool_call_id.clone().into()],
         )).await?.rows_affected() != 1 {

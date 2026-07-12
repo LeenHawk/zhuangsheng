@@ -28,7 +28,7 @@ pub(crate) async fn load_header<C: ConnectionTrait>(
     connection: &C,
 ) -> StorageResult<Option<SecretStoreHeader>> {
     let Some(row) = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT store_id, format_version, header_json FROM secret_store_headers WHERE singleton = 1",
             vec![],
         ))
@@ -56,7 +56,7 @@ pub(crate) async fn find_secret_receipt<C: ConnectionTrait>(
     key: &str,
 ) -> StorageResult<Option<SecretCommandReceipt>> {
     connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT request_hmac, status, result_object_id, unlock_session_id, unlock_process_generation, result_expires_at FROM secret_command_receipts WHERE scope = ? AND idempotency_key = ?",
             vec![scope.into(), key.into()],
         ))
@@ -79,7 +79,7 @@ pub(crate) async fn load_secret_record<C: ConnectionTrait>(
     secret_id: &str,
 ) -> StorageResult<StoredSecretRecord> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT id, kind, key_version, algorithm, nonce, ciphertext FROM secret_records WHERE id = ? AND status = 'active'",
             vec![secret_id.into()],
         ))

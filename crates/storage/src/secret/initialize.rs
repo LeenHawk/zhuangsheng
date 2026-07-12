@@ -76,7 +76,7 @@ impl SqliteStore {
             return Err(SecretStoreError::AlreadyInitialized.into());
         }
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO secret_store_headers (singleton, store_id, format_version, header_json, created_at, updated_at) VALUES (1, ?, 1, ?, ?, ?)",
                 vec![
                     store_id.clone().into(),

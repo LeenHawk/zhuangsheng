@@ -90,7 +90,7 @@ async fn locked_runtime_secret_waits_before_effect_and_unlock_resumes_same_snaps
         })
         .await
         .unwrap();
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT w.status AS wait_status, w.accepted_delivery_id, a.status AS source_status, ni.status AS instance_status, r.status AS run_status, c.open_waits FROM node_waits w JOIN node_attempts a ON a.id = w.node_attempt_id JOIN node_instances ni ON ni.id = w.node_instance_id JOIN graph_runs r ON r.id = w.run_id JOIN run_execution_counters c ON c.run_id = w.run_id WHERE w.id = ?",
         vec![wait_id.clone().into()],
     )).await.unwrap().unwrap();
@@ -112,7 +112,7 @@ async fn locked_runtime_secret_waits_before_effect_and_unlock_resumes_same_snaps
         row.try_get::<String>("", "accepted_delivery_id").unwrap(),
         format!("unlock:{}", unlocked.session_id)
     );
-    let resume = store.db.query_one(sql(
+    let resume = store.db.query_one_raw(sql(
         "SELECT id, status, invocation_kind FROM node_attempts WHERE node_instance_id = ? AND invocation_kind = 'resume'",
         vec![claimed.node_instance_id.clone().into()],
     )).await.unwrap().unwrap();
@@ -157,7 +157,7 @@ async fn initializing_store_resolves_preexisting_runtime_unlock_wait() {
         .unwrap();
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT status, accepted_delivery_id FROM node_waits WHERE id = ?",
             vec![wait_id.into()],
         ))
@@ -173,7 +173,7 @@ async fn initializing_store_resolves_preexisting_runtime_unlock_wait() {
 }
 
 async fn assert_waiting_without_effect(store: &crate::SqliteStore, wait_id: &str) {
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT w.kind, a.status AS attempt_status, ni.status AS instance_status, r.status AS run_status, c.open_waits FROM node_waits w JOIN node_attempts a ON a.id = w.node_attempt_id JOIN node_instances ni ON ni.id = w.node_instance_id JOIN graph_runs r ON r.id = w.run_id JOIN run_execution_counters c ON c.run_id = w.run_id WHERE w.id = ?",
         vec![wait_id.into()],
     )).await.unwrap().unwrap();
@@ -200,7 +200,7 @@ async fn assert_waiting_without_effect(store: &crate::SqliteStore, wait_id: &str
         let query = format!("SELECT COUNT(*) AS count FROM {table}");
         let count: i64 = store
             .db
-            .query_one(sql(&query, vec![]))
+            .query_one_raw(sql(&query, vec![]))
             .await
             .unwrap()
             .unwrap()
@@ -213,7 +213,7 @@ async fn assert_waiting_without_effect(store: &crate::SqliteStore, wait_id: &str
 async fn assert_no_plaintext(store: &crate::SqliteStore) {
     let objects = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT inline_bytes FROM content_objects WHERE inline_bytes IS NOT NULL",
             vec![],
         ))
@@ -221,7 +221,7 @@ async fn assert_no_plaintext(store: &crate::SqliteStore) {
         .unwrap();
     let events = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT payload_json FROM run_events WHERE payload_json IS NOT NULL",
             vec![],
         ))
@@ -245,7 +245,7 @@ async fn assert_no_plaintext(store: &crate::SqliteStore) {
 async fn snapshot_ref(store: &crate::SqliteStore, node_instance_id: &str) -> String {
     store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![node_instance_id.into()],
         ))

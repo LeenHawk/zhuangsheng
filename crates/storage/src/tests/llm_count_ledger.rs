@@ -99,7 +99,7 @@ async fn local_count_is_one_logical_budget_item_and_replays_exactly() {
         conflict,
         Err(StorageError::Conflict("count_call_finish_replay"))
     ));
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT cc.status, cc.result_source, cp.checkpoint_object_id, (SELECT COUNT(*) FROM count_calls WHERE node_instance_id = cc.node_instance_id) AS logical_count FROM count_calls cc JOIN llm_loop_checkpoints cp ON cp.node_instance_id = cc.node_instance_id WHERE cc.id = 'count-call-1'",
         vec![],
     )).await.unwrap().unwrap();
@@ -249,7 +249,7 @@ async fn provider_unknown_retries_same_candidate_then_falls_back_local() {
         )
         .await
         .unwrap();
-    let rows = store.db.query_all(sql(
+    let rows = store.db.query_all_raw(sql(
         "SELECT status FROM effect_attempts WHERE effect_id = 'count-effect-1' ORDER BY attempt_no",
         vec![],
     )).await.unwrap();
@@ -264,7 +264,7 @@ async fn provider_unknown_retries_same_candidate_then_falls_back_local() {
     );
     let logical_count: i64 = store
         .db
-        .query_one(sql("SELECT COUNT(*) AS count FROM count_calls", vec![]))
+        .query_one_raw(sql("SELECT COUNT(*) AS count FROM count_calls", vec![]))
         .await
         .unwrap()
         .unwrap()
@@ -291,7 +291,7 @@ async fn setup(store: &SqliteStore, provider: bool) -> CountSetup {
     let now = now_ms();
     let snapshot_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -443,7 +443,7 @@ async fn install_reconcile_attempt(
 ) -> EffectAttemptFence {
     let executor = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT executor_object_id FROM node_attempts WHERE id = ?",
             vec![setup.claimed.attempt_id.clone().into()],
         ))
@@ -454,13 +454,13 @@ async fn install_reconcile_attempt(
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_attempts SET status = 'completed', finished_at = ? WHERE id = ?",
             vec![now.into(), setup.claimed.attempt_id.clone().into()],
         ))
         .await
         .unwrap();
-    store.db.execute(sql(
+    store.db.execute_raw(sql(
         "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, worker_id, lease_until, idempotency_key, executor_object_id, started_at) VALUES ('count-reconcile-attempt', ?, 2, 0, 'reconcile', 'running', ?, 1, 'count-reconcile-worker', ?, 'count-reconcile-key', ?, ?)",
         vec![setup.claimed.node_instance_id.clone().into(), i64::try_from(setup.claimed.run_control_epoch).unwrap().into(), (now + 30_000).into(), executor.into(), now.into()],
     )).await.unwrap();
@@ -475,7 +475,7 @@ async fn install_reconcile_attempt(
 async fn count_events(store: &SqliteStore) -> i64 {
     store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM run_events WHERE event_type LIKE 'llm.count.%'",
             vec![],
         ))

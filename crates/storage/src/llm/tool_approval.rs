@@ -91,7 +91,7 @@ impl SqliteStore {
                 "validated"
             };
             transaction
-                .execute(sql(
+                .execute_raw(sql(
                     "INSERT INTO tool_calls (id, node_instance_id, originating_attempt_id, model_call_id, provider_call_id, call_index, binding_id, tool_id, tool_version, call_digest, arguments_object_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     vec![
                         call.tool_call_id.clone().into(),
@@ -163,7 +163,7 @@ async fn open_approval_wait<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ni.run_id, ni.node_id, cp.checkpoint_object_id FROM node_instances ni JOIN llm_loop_checkpoints cp ON cp.node_instance_id = ni.id WHERE ni.id = ?",
             vec![command.node_instance_id.clone().into()],
         ))
@@ -207,7 +207,7 @@ async fn open_approval_wait<C: ConnectionTrait>(
     let continuation_ref =
         put_inline_object(connection, &canonical::to_vec(&continuation)?, now).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO node_waits (id, run_id, node_instance_id, node_attempt_id, kind, correlation_key, request_object_id, continuation_object_id, deadline_at, on_timeout, status, created_at) VALUES (?, ?, ?, ?, 'approval', ?, ?, ?, ?, 'fail', 'open', ?)",
             vec![
                 command.wait_id.clone().into(),
@@ -224,7 +224,7 @@ async fn open_approval_wait<C: ConnectionTrait>(
         .await?;
     for call in &approval_calls {
         connection
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO wait_blockers (wait_id, blocker_kind, blocker_id, blocker_order, status) VALUES (?, 'tool_call', ?, ?, 'open')",
                 vec![
                     command.wait_id.clone().into(),
@@ -287,31 +287,68 @@ async fn transition_owner_to_waiting<C: ConnectionTrait>(
     continuation_ref: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let attempt = connection.execute(sql(
+    let attempt = connection.execute_raw(sql(
         "UPDATE node_attempts SET status = 'waiting', continuation_object_id = ?, worker_id = NULL, lease_until = NULL, finished_at = ? WHERE id = ? AND node_instance_id = ? AND status = 'running'",
         vec![continuation_ref.into(), now.into(), command.originating_attempt_id.clone().into(), command.node_instance_id.clone().into()],
     )).await?;
-    let instance = connection.execute(sql(
+    let instance = connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'",
         vec![now.into(), command.node_instance_id.clone().into()],
     )).await?;
     if attempt.rows_affected() != 1 || instance.rows_affected() != 1 {
         return Err(StorageError::Conflict("approval_wait_owner_status"));
     }
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE runtime_timers SET status = 'cancelled' WHERE node_attempt_id = ? AND kind = 'attempt_deadline' AND status = 'pending'",
         vec![command.originating_attempt_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE run_id = ? AND node_id = ? AND kind = 'attempt_ready' AND status = 'claimed'",
         vec![run_id.into(), node_id.into()],
     )).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET open_waits = open_waits + 1 WHERE run_id = ?",
             vec![run_id.into()],
         ))
         .await?;
+    let has_active_instance = connection
+        .query_one_raw(sql(
+            "SELECT 1 AS present FROM node_instances WHERE run_id = ? AND status IN ('ready','running') LIMIT 1",
+            vec![run_id.into()],
+        ))
+        .await?
+        .is_some();
+    let has_dispatch_wakeup = connection
+        .query_one_raw(sql(
+            "SELECT 1 AS present FROM scheduler_wakeups WHERE run_id = ? AND kind IN ('node_maybe_ready','attempt_ready') AND status IN ('pending','claimed') LIMIT 1",
+            vec![run_id.into()],
+        ))
+        .await?
+        .is_some();
+    if !has_active_instance && !has_dispatch_wakeup {
+        let updated = connection
+            .execute_raw(sql(
+                "UPDATE graph_runs SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'",
+                vec![now.into(), run_id.into()],
+            ))
+            .await?;
+        if updated.rows_affected() == 1 {
+            append_event(
+                connection,
+                Event {
+                    run_id,
+                    event_type: "run.waiting",
+                    importance: "critical",
+                    node_instance_id: None,
+                    attempt_id: None,
+                    payload: json!({"schemaVersion":1,"reason":"tool_approval"}),
+                    now,
+                },
+            )
+            .await?;
+        }
+    }
     Ok(())
 }
 
@@ -321,7 +358,7 @@ async fn replay_batch<C: ConnectionTrait>(
     digest: &str,
 ) -> StorageResult<Option<PreparedToolApprovalBatch>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT kind, node_instance_id, continuation_object_id FROM node_waits WHERE id = ?",
             vec![command.wait_id.clone().into()],
         ))

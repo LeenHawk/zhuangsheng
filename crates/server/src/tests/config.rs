@@ -10,21 +10,12 @@ use zhuangsheng_core::{
 };
 use zhuangsheng_storage::SqliteStore;
 
-use super::{app, call, request};
+use super::{call, request, test_app};
 
 #[tokio::test]
 async fn channel_and_preset_http_flow_publish_immutable_configuration() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let app = app(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store,
-    );
+    let app = test_app(store);
     let channel = call(
         &app,
         request(
@@ -162,16 +153,7 @@ async fn tool_descriptor_http_listing_excludes_executor_metadata() {
         })
         .await
         .unwrap();
-    let app = app(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store,
-    );
+    let app = test_app(store);
     let descriptors = call(
         &app,
         request("GET", "/v1/tools/descriptors", json!(null), &[]),

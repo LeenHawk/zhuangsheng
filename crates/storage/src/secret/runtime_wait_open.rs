@@ -37,7 +37,7 @@ impl SqliteStore {
         let transaction = self.db.begin().await?;
         let owner = load_owner(&transaction, command).await?;
         validate_owner(&owner, command, now)?;
-        if transaction.query_one(sql(
+        if transaction.query_one_raw(sql(
             "SELECT 1 AS present FROM node_waits WHERE node_instance_id = ? AND status = 'open'",
             vec![command.node_instance_id.clone().into()],
         )).await?.is_some() {
@@ -84,7 +84,7 @@ impl SqliteStore {
         };
         let continuation_ref =
             put_inline_object(&transaction, &canonical::to_vec(&continuation)?, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO node_waits (id, run_id, node_instance_id, node_attempt_id, kind, correlation_key, request_object_id, continuation_object_id, on_timeout, status, created_at) VALUES (?, ?, ?, ?, 'secret_store_unlocked', ?, ?, ?, 'fail', 'open', ?)",
             vec![
                 wait_id.clone().into(), command.run_id.clone().into(),
@@ -147,7 +147,7 @@ async fn load_owner<C: ConnectionTrait>(
     connection: &C,
     command: &ResolveRuntimeSecretCommand,
 ) -> StorageResult<WaitOwner> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT a.status AS attempt_status, a.worker_id, a.lease_fence, a.run_control_epoch AS attempt_epoch, a.lease_until, a.deadline_at AS attempt_deadline, ni.status AS instance_status, ni.graph_revision_id, ni.execution_snapshot_object_id, r.status AS run_status, r.control_epoch, r.drain_epoch, r.deadline_at AS run_deadline, c.open_waits, (SELECT COUNT(*) FROM node_attempts all_attempts WHERE all_attempts.node_instance_id = ni.id) AS attempt_count FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id JOIN run_execution_counters c ON c.run_id = r.id WHERE a.id = ? AND ni.id = ? AND r.id = ?",
         vec![command.attempt_id.clone().into(), command.node_instance_id.clone().into(), command.run_id.clone().into()],
     )).await?.ok_or_else(|| StorageError::Conflict("secret_wait_owner"))?;
@@ -208,38 +208,38 @@ async fn transition_owner<C: ConnectionTrait>(
 ) -> StorageResult<()> {
     let fence = i64::try_from(command.lease_fence)
         .map_err(|_| StorageError::Conflict("secret_wait_fence"))?;
-    let attempt = connection.execute(sql(
+    let attempt = connection.execute_raw(sql(
         "UPDATE node_attempts SET status = 'waiting', continuation_object_id = ?, worker_id = NULL, lease_until = NULL, finished_at = ? WHERE id = ? AND node_instance_id = ? AND status = 'running' AND worker_id = ? AND lease_fence = ?",
         vec![continuation_ref.into(), now.into(), command.attempt_id.clone().into(), command.node_instance_id.clone().into(), command.worker_id.clone().into(), fence.into()],
     )).await?;
-    let instance = connection.execute(sql(
+    let instance = connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'",
         vec![now.into(), command.node_instance_id.clone().into()],
     )).await?;
     if attempt.rows_affected() != 1 || instance.rows_affected() != 1 {
         return Err(StorageError::Conflict("secret_wait_owner_status"));
     }
-    connection.execute(sql("UPDATE runtime_timers SET status = 'cancelled' WHERE node_attempt_id = ? AND kind = 'attempt_deadline' AND status = 'pending'", vec![command.attempt_id.clone().into()])).await?;
-    if connection.execute(sql(
+    connection.execute_raw(sql("UPDATE runtime_timers SET status = 'cancelled' WHERE node_attempt_id = ? AND kind = 'attempt_deadline' AND status = 'pending'", vec![command.attempt_id.clone().into()])).await?;
+    if connection.execute_raw(sql(
         "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE id = ? AND run_id = ? AND status = 'claimed' AND claimed_by = ?",
         vec![command.wakeup_id.clone().into(), command.run_id.clone().into(), command.worker_id.clone().into()],
     )).await?.rows_affected() != 1 { return Err(StorageError::Conflict("secret_wait_wakeup")); }
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET open_waits = open_waits + 1 WHERE run_id = ?",
             vec![command.run_id.clone().into()],
         ))
         .await?;
-    let has_active_instance = connection.query_one(sql(
+    let has_active_instance = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM node_instances WHERE run_id = ? AND status IN ('ready','running') LIMIT 1",
         vec![command.run_id.clone().into()],
     )).await?.is_some();
-    let has_dispatch_wakeup = connection.query_one(sql(
+    let has_dispatch_wakeup = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM scheduler_wakeups WHERE run_id = ? AND kind IN ('node_maybe_ready','attempt_ready') AND status IN ('pending','claimed') LIMIT 1",
         vec![command.run_id.clone().into()],
     )).await?.is_some();
     if may_wait_run && !has_active_instance && !has_dispatch_wakeup {
-        connection.execute(sql("UPDATE graph_runs SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'", vec![now.into(), command.run_id.clone().into()])).await?;
+        connection.execute_raw(sql("UPDATE graph_runs SET status = 'waiting', updated_at = ? WHERE id = ? AND status = 'running'", vec![now.into(), command.run_id.clone().into()])).await?;
     }
     Ok(())
 }

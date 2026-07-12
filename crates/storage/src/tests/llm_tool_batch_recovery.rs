@@ -70,7 +70,7 @@ async fn expired_parallel_started_tools_reconcile_as_one_checkpoint_batch() {
     );
     let tool_statuses: Vec<String> = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT status FROM tool_calls ORDER BY call_index",
             vec![],
         ))
@@ -82,7 +82,7 @@ async fn expired_parallel_started_tools_reconcile_as_one_checkpoint_batch() {
     assert_eq!(tool_statuses, vec!["retry_ready", "retry_ready"]);
     let attempt_statuses: Vec<String> = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT status FROM effect_attempts WHERE effect_id IN ('tool-effect-1','tool-effect-2') ORDER BY effect_id",
             vec![],
         ))
@@ -101,7 +101,7 @@ async fn expired_parallel_started_tools_reconcile_as_one_checkpoint_batch() {
     );
     let reconcile: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM node_attempts WHERE node_instance_id = ? AND invocation_kind = 'reconcile' AND status = 'queued'",
             vec![setup.claimed.node_instance_id.into()],
         ))
@@ -197,7 +197,7 @@ async fn activate_resume(
 ) -> EffectAttemptFence {
     let resume = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT id, run_control_epoch FROM node_attempts WHERE node_instance_id = ? AND invocation_kind = 'resume'",
             vec![node_instance_id.into()],
         ))
@@ -208,7 +208,7 @@ async fn activate_resume(
     let run_control_epoch: i64 = resume.try_get("", "run_control_epoch").unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_attempts SET status = 'running', worker_id = 'parallel-worker', lease_fence = 1, lease_until = ?, started_at = ? WHERE id = ? AND status = 'queued'",
             vec![(now + 5).into(), (now + 4).into(), resume_attempt_id.clone().into()],
         ))
@@ -216,7 +216,7 @@ async fn activate_resume(
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_instances SET status = 'running' WHERE id = ? AND status = 'ready'",
             vec![node_instance_id.into()],
         ))

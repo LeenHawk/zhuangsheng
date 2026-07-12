@@ -8,7 +8,7 @@ use zhuangsheng_core::{
 };
 use zhuangsheng_storage::SqliteStore;
 
-use super::{app, call, request};
+use super::{call, request, test_app};
 
 const PASSWORD: &str = "correct horse battery staple";
 const API_KEY: &str = "sk-http-secret-value";
@@ -16,16 +16,7 @@ const API_KEY: &str = "sk-http-secret-value";
 #[tokio::test]
 async fn secret_http_flow_never_returns_plaintext_and_expires_unlock_receipt() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let app = app(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-    );
+    let app = test_app(store.clone());
     let initial_status = call(
         &app,
         request("GET", "/v1/secret-store/status", json!(null), &[]),

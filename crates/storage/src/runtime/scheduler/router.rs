@@ -29,7 +29,7 @@ pub(super) async fn create_control_snapshot<C: ConnectionTrait>(
         return Ok(None);
     };
     let existing = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT visits, first_visited_at FROM router_controls WHERE run_id = ? AND node_id = ?",
             vec![run_id.into(), node.id.clone().into()],
         ))
@@ -40,7 +40,7 @@ pub(super) async fn create_control_snapshot<C: ConnectionTrait>(
         let visits = old
             .checked_add(1)
             .ok_or_else(|| StorageError::Integrity("Router visits overflow".into()))?;
-        let updated = connection.execute(sql(
+        let updated = connection.execute_raw(sql(
             "UPDATE router_controls SET visits = ?, updated_at = ? WHERE run_id = ? AND node_id = ? AND visits = ?",
             vec![visits.into(), now.into(), run_id.into(), node.id.clone().into(), old.into()],
         )).await?;
@@ -49,7 +49,7 @@ pub(super) async fn create_control_snapshot<C: ConnectionTrait>(
         }
         (visits, first)
     } else {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO router_controls (run_id, node_id, visits, first_visited_at, updated_at) VALUES (?, ?, 1, ?, ?)",
             vec![run_id.into(), node.id.clone().into(), now.into(), now.into()],
         )).await?;
@@ -81,7 +81,7 @@ pub(super) async fn create_control_snapshot<C: ConnectionTrait>(
         elapsed_ms: elapsed,
         limit_reasons: reasons,
     };
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO router_activation_controls (node_instance_id, run_id, node_id, visits, first_visited_at, decision_at, elapsed_ms, limit_reasons_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         vec![instance_id.into(), run_id.into(), node.id.clone().into(), visits.into(), first_visited_at.into(), now.into(), (elapsed as i64).into(), canonical::to_string(&snapshot.limit_reasons)?.into()],
     )).await?;
@@ -96,7 +96,7 @@ pub(super) async fn load_control_snapshot<C: ConnectionTrait>(
     if !matches!(&node.kind, DraftNodeKind::Router { .. }) {
         return Ok(None);
     }
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT visits, first_visited_at, decision_at, elapsed_ms, limit_reasons_json FROM router_activation_controls WHERE node_instance_id = ?",
         vec![instance_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("Router control snapshot missing".into()))?;
@@ -201,7 +201,7 @@ async fn persist_outcome<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let object_id = put_inline_object(connection, &canonical::to_vec(record)?, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO router_decisions (node_instance_id, attempt_id, outcome, decision_object_id, created_at) VALUES (?, ?, ?, ?, ?)",
         vec![instance_id.into(), attempt_id.into(), outcome.into(), object_id.clone().into(), now.into()],
     )).await?;

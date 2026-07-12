@@ -19,7 +19,7 @@ pub(super) async fn load_existing<C: ConnectionTrait>(
     retry_json: &str,
 ) -> StorageResult<Option<PreparedToolCall>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT tc.id AS tool_call_id, tc.originating_attempt_id, tc.provider_call_id, tc.binding_id, tc.tool_id, tc.tool_version, tc.call_digest, tc.arguments_object_id, args.content_hash AS arguments_digest, tc.status AS tool_status, e.id AS effect_id, e.classification, e.operation_key, e.idempotency_key, e.retry_policy_json, e.status AS effect_status, ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status FROM tool_calls tc JOIN content_objects args ON args.id = tc.arguments_object_id JOIN effects e ON e.tool_call_id = tc.id JOIN effect_attempts ea ON ea.effect_id = e.id AND ea.attempt_no = 1 WHERE tc.model_call_id = ? AND tc.call_index = ?",
             vec![
                 command.model_call_id.clone().into(),
@@ -104,7 +104,7 @@ pub(super) async fn append_tool_event<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT run_id FROM node_instances WHERE id = ?",
             vec![node_instance_id.into()],
         ))

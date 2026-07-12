@@ -55,7 +55,7 @@ async fn temporary_start_is_atomic_idempotent_and_durable() {
     reopened.get_graph_revision(&revision_id).await.unwrap();
     let head: String = reopened
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT head_commit_id FROM context_branches WHERE context_id = ? AND id = ?",
             vec![context_id.into(), branch_id.into()],
         ))
@@ -162,7 +162,7 @@ async fn assert_counts(
     ] {
         let row = store
             .db
-            .query_one(sql(
+            .query_one_raw(sql(
                 &format!("SELECT COUNT(*) AS count FROM {table}"),
                 vec![],
             ))

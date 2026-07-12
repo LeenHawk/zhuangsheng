@@ -102,7 +102,7 @@ async fn count(store: &crate::SqliteStore, expression: &str) -> i64 {
     };
     store
         .db
-        .query_one(sql(statement, vec![]))
+        .query_one_raw(sql(statement, vec![]))
         .await
         .unwrap()
         .unwrap()
@@ -113,7 +113,7 @@ async fn count(store: &crate::SqliteStore, expression: &str) -> i64 {
 async fn load_checkpoint(store: &crate::SqliteStore, node_instance_id: &str) -> LlmLoopCheckpoint {
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.into()],
         ))

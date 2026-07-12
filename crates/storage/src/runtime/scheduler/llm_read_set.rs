@@ -37,7 +37,7 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
         return Ok(());
     }
     let run = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT context_id, branch_id FROM graph_runs WHERE id = ?",
             vec![run_id.into()],
         ))
@@ -151,12 +151,12 @@ async fn persist_binding<C: ConnectionTrait>(
     }
     let object_id = put_inline_object(connection, &canonical::to_vec(&result)?, now).await?;
     for selection in resolved.selections {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO node_read_set (id, node_attempt_id, aggregate_kind, aggregate_id, lineage_key, commit_id, binding_id, selection_ordinal, selected_content_hash, consistency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             vec![new_id("readset").into(), attempt_id.into(), selection.aggregate_kind.into(), selection.aggregate_id.into(), selection.lineage_key.into(), selection.commit_id.into(), read.id.clone().into(), selection.selection_ordinal.into(), selection.content_hash.into(), consistency(read.consistency).into()],
         )).await?;
     }
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO node_bound_read_results (node_attempt_id, binding_id, envelope_object_id, result_digest, scope_snapshot_token, truncated) VALUES (?, ?, ?, ?, ?, ?)",
         vec![attempt_id.into(), read.id.clone().into(), object_id.clone().into(), digest.into(), resolved.scope_snapshot_token.into(), i64::from(resolved.truncated).into()],
     )).await?;

@@ -20,7 +20,7 @@ pub(super) async fn replay_memory_search_batch<C: ConnectionTrait>(
     connection: &C,
     command: &ExecuteMemorySearchToolBatchCommand,
 ) -> StorageResult<MemorySearchToolBatchView> {
-    let rows = connection.query_all(sql(
+    let rows = connection.query_all_raw(sql(
         "SELECT tc.id, tc.originating_attempt_id, tc.provider_call_id, tc.call_index, tc.binding_id, tc.tool_id, tc.tool_version, tc.call_digest, tc.arguments_object_id, tc.output_object_id, tc.status, br.envelope_object_id, br.result_digest, br.scope_snapshot_token, br.truncated, cp.checkpoint_digest FROM tool_calls tc JOIN tool_call_bound_read_results br ON br.tool_call_id = tc.id JOIN llm_loop_checkpoints cp ON cp.node_instance_id = tc.node_instance_id WHERE tc.model_call_id = ? ORDER BY tc.call_index",
         vec![command.model_call_id.clone().into()],
     )).await?;
@@ -96,7 +96,7 @@ async fn validate_read_set<C: ConnectionTrait>(
     tool_call_id: &str,
     envelope: &MemorySearchToolEnvelope,
 ) -> StorageResult<()> {
-    let rows = connection.query_all(sql(
+    let rows = connection.query_all_raw(sql(
         "SELECT memory_id, commit_id, selection_ordinal, selected_content_hash FROM tool_call_read_set WHERE tool_call_id = ? ORDER BY selection_ordinal",
         vec![tool_call_id.into()],
     )).await?;

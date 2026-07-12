@@ -25,7 +25,7 @@ impl SqliteStore {
         &self,
         command: FinishToolCallCommand,
         now: i64,
-    ) -> StorageResult<()> {
+    ) -> StorageResult<zhuangsheng_core::llm::LlmLoopCheckpoint> {
         let transaction = self.db.begin().await?;
         let call =
             load_tool_attempt(&transaction, &command.effect_attempt_id, &command.fence).await?;
@@ -74,7 +74,7 @@ impl SqliteStore {
                 ),
             )?;
             transaction.commit().await?;
-            return Ok(());
+            return Ok(checkpoint);
         }
         validate_tool_fence(&call, &command.fence)?;
         if call.attempt_status != "started"
@@ -182,7 +182,7 @@ impl SqliteStore {
         )
         .await?;
         transaction.commit().await?;
-        Ok(())
+        Ok(checkpoint)
     }
 }
 
@@ -407,15 +407,15 @@ async fn finish_rows<C: ConnectionTrait>(
     outcome: &StoredToolOutcome,
     now: i64,
 ) -> StorageResult<()> {
-    let attempt = connection.execute(crate::graph::helpers::sql(
+    let attempt = connection.execute_raw(crate::graph::helpers::sql(
         "UPDATE effect_attempts SET status = ?, result_object_id = ?, error_object_id = ?, finished_at = ? WHERE id = ? AND status = 'started'",
         vec![outcome.attempt_status.into(), outcome.output_object_id.clone().into(), outcome.error_object_id.clone().into(), now.into(), effect_attempt_id.into()],
     )).await?;
-    let effect = connection.execute(crate::graph::helpers::sql(
+    let effect = connection.execute_raw(crate::graph::helpers::sql(
         "UPDATE effects SET status = ?, result_object_id = ?, completed_at = ? WHERE id = ? AND status = 'pending'",
         vec![outcome.effect_status.into(), outcome.output_object_id.clone().into(), outcome.effect_completed.then_some(now).into(), call.effect_id.clone().into()],
     )).await?;
-    let tool = connection.execute(crate::graph::helpers::sql(
+    let tool = connection.execute_raw(crate::graph::helpers::sql(
         "UPDATE tool_calls SET status = ?, output_object_id = ?, error_object_id = ?, finished_at = ? WHERE id = ? AND status = 'running'",
         vec![outcome.tool_status.into(), outcome.output_object_id.clone().into(), outcome.error_object_id.clone().into(), now.into(), call.tool_call_id.clone().into()],
     )).await?;

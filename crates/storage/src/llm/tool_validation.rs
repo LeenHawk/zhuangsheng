@@ -271,7 +271,7 @@ pub(super) async fn load_tool_attempt<C: ConnectionTrait>(
     fence: &EffectAttemptFence,
 ) -> StorageResult<FencedToolCall> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.status AS attempt_status, ea.provider_request_id AS attempt_provider_request_id, attempt_result.content_hash AS attempt_result_digest, attempt_error.content_hash AS attempt_error_digest, e.id AS effect_id, e.status AS effect_status, e.classification, e.tool_call_id, e.node_instance_id, tc.model_call_id, tc.call_index, tc.call_digest, tc.arguments_object_id, tc.status AS tool_status, tc.output_object_id, output.content_hash AS output_digest, cp.checkpoint_digest, a.status AS node_attempt_status, a.worker_id, a.lease_fence, a.run_control_epoch, r.status AS run_status, r.control_epoch, (SELECT COUNT(*) FROM tool_calls all_calls WHERE all_calls.node_instance_id = e.node_instance_id) AS tool_calls_used FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN tool_calls tc ON tc.id = e.tool_call_id JOIN node_attempts a ON a.id = ea.invoking_node_attempt_id JOIN node_instances ni ON ni.id = e.node_instance_id JOIN graph_runs r ON r.id = ni.run_id LEFT JOIN content_objects attempt_result ON attempt_result.id = ea.result_object_id LEFT JOIN content_objects attempt_error ON attempt_error.id = ea.error_object_id LEFT JOIN content_objects output ON output.id = tc.output_object_id LEFT JOIN llm_loop_checkpoints cp ON cp.node_instance_id = e.node_instance_id WHERE ea.id = ? AND ea.invoking_node_attempt_id = ?",
             vec![
                 effect_attempt_id.into(),
@@ -353,7 +353,7 @@ pub(super) async fn validate_tool_start_policy<C: ConnectionTrait>(
         .limits
         .max_concurrent_tools
         .ok_or_else(|| StorageError::Integrity("tool concurrency limit is not pinned".into()))?;
-    let rows = connection.query_all(sql(
+    let rows = connection.query_all_raw(sql(
         "SELECT tc.id, tc.call_index, tc.status, e.classification FROM tool_calls tc LEFT JOIN effects e ON e.tool_call_id = tc.id WHERE tc.model_call_id = ? ORDER BY tc.call_index",
         vec![call.model_call_id.clone().into()],
     )).await?;

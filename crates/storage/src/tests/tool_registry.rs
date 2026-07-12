@@ -43,7 +43,7 @@ async fn tool_publish_is_immutable_compiled_and_discoverable_without_executor_me
     assert!(!public_json.contains(IMPLEMENTATION_DIGEST));
     let refs: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM content_object_refs WHERE owner_kind = 'tool_registry_entry' AND owner_id = 'echo-tool:1'",
             vec![],
         ))
@@ -94,7 +94,7 @@ async fn node_instance_pins_registry_material_before_later_disable() {
         .unwrap();
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.into()],
         ))
@@ -134,7 +134,7 @@ async fn corrupted_tool_descriptor_fails_closed_on_load() {
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE tool_registry_entries SET descriptor_digest = 'sha256:tampered' WHERE tool_id = 'echo-tool' AND tool_version = '1'",
             vec![],
         ))

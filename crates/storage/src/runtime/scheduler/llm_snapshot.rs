@@ -31,7 +31,7 @@ pub(super) async fn ensure_llm_snapshot<C: ConnectionTrait>(
         return Ok(None);
     };
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![instance_id.into()],
         ))
@@ -122,7 +122,7 @@ pub(super) async fn ensure_llm_snapshot<C: ConnectionTrait>(
     verify_snapshot(&snapshot, revision, node)?;
     let object_id = put_inline_object(connection, &canonical::to_vec(&snapshot)?, now).await?;
     let updated = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_instances SET execution_snapshot_object_id = ?, operation_taxonomy_version = ?, adapter_decoder_version = ?, preset_version_id = ?, updated_at = ? WHERE id = ? AND execution_snapshot_object_id IS NULL",
             vec![
                 object_id.clone().into(),
@@ -138,7 +138,7 @@ pub(super) async fn ensure_llm_snapshot<C: ConnectionTrait>(
         return Err(StorageError::Conflict("llm_execution_snapshot_race"));
     }
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT OR IGNORE INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'node_instance', ?, 'llm_execution_snapshot', ?)",
             vec![object_id.into(), instance_id.into(), now.into()],
         ))

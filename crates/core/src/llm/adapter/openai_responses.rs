@@ -8,20 +8,20 @@ use crate::{
     llm::{
         LlmOperationExecutionPin,
         ir::{
-            HostedToolPhase, InstructionRole, LlmContentPartIr, LlmFinishReason, LlmRequestIr,
-            LlmResponseIr, LlmTurnItemIr, LlmUsageIr, MessageRole, ResponseFormatIr, ToolCallIr,
+            InstructionRole, LlmContentPartIr, LlmFinishReason, LlmRequestIr, LlmResponseIr,
+            LlmTurnItemIr, LlmUsageIr, MessageRole, ResponseFormatIr, ToolCallIr,
         },
     },
 };
 
 use super::{
-    AdapterExecutionOptions, AdapterResources, DecodedTerminalDraft, OpaqueAttachmentDraft,
-    OpaqueAttachmentTarget, SensitiveEntryDraft, ShapeAdapterError, ShapeAdapterKey,
-    WireGenerationRequest,
+    AdapterExecutionOptions, AdapterResources, DecodedTerminalDraft, ShapeAdapterError,
+    ShapeAdapterKey, WireGenerationRequest,
     common::{
         apply_extension_fields, finish_request, opaque_value, openai_responses_content,
         parse_typed_terminal, prepare, required_string, text_only,
     },
+    openai_responses_opaque::{push_opaque_hosted, push_opaque_reasoning},
 };
 
 pub fn encode_openai_responses_request(
@@ -31,10 +31,10 @@ pub fn encode_openai_responses_request(
     options: AdapterExecutionOptions,
 ) -> Result<WireGenerationRequest, ShapeAdapterError> {
     let target = prepare(pin, request, options, ShapeAdapterKey::OpenAiResponsesV1)?;
-    if request.continuation.is_some() || !request.hosted_tools.is_empty() {
+    if request.continuation.is_some() {
         return Err(ShapeAdapterError::new(
             "unsupported_responses_capability",
-            "responses v1 requires item continuations and has no generic hosted-tool mapping",
+            "responses v1 requires item continuations that are not resolved",
         ));
     }
     let mut input = Vec::new();
@@ -117,7 +117,7 @@ pub fn encode_openai_responses_request(
         Value::Number(u32_limit(options.max_output_tokens)?.into()),
     );
     apply_generation(&mut body, request, options.max_output_tokens)?;
-    apply_tools(&mut body, request);
+    apply_tools(&mut body, request)?;
     apply_response_format(&mut body, request);
     if let Some(extension) = request
         .extensions
@@ -235,26 +235,28 @@ fn apply_generation(
     Ok(())
 }
 
-fn apply_tools(body: &mut Map<String, Value>, request: &LlmRequestIr) {
-    if !request.tools.is_empty() {
-        body.insert(
-            "tools".into(),
-            Value::Array(
-                request
-                    .tools
-                    .iter()
-                    .map(|tool| {
-                        json!({
-                            "type":"function",
-                            "name":tool.name,
-                            "description":tool.description,
-                            "parameters":tool.input_schema.document,
-                            "strict":true,
-                        })
-                    })
-                    .collect(),
-            ),
-        );
+fn apply_tools(
+    body: &mut Map<String, Value>,
+    request: &LlmRequestIr,
+) -> Result<(), ShapeAdapterError> {
+    if !request.tools.is_empty() || !request.hosted_tools.is_empty() {
+        let mut tools: Vec<Value> = request
+            .tools
+            .iter()
+            .map(|tool| {
+                json!({
+                    "type":"function",
+                    "name":tool.name,
+                    "description":tool.description,
+                    "parameters":tool.input_schema.document,
+                    "strict":true,
+                })
+            })
+            .collect();
+        for tool in &request.hosted_tools {
+            tools.push(super::openai_responses_hosted::encode_hosted_tool(tool)?);
+        }
+        body.insert("tools".into(), Value::Array(tools));
     }
     if let Some(choice) = &request.tool_choice {
         body.insert(
@@ -267,6 +269,7 @@ fn apply_tools(body: &mut Map<String, Value>, request: &LlmRequestIr) {
             },
         );
     }
+    Ok(())
 }
 
 fn apply_response_format(body: &mut Map<String, Value>, request: &LlmRequestIr) {
@@ -357,81 +360,6 @@ fn decode_function_call(
             name: name.into(),
             arguments,
         },
-    });
-    Ok(())
-}
-
-fn push_opaque_reasoning(
-    model_call_id: &str,
-    index: usize,
-    item: &Value,
-    items: &mut Vec<LlmTurnItemIr>,
-    sensitive_entries: &mut Vec<SensitiveEntryDraft>,
-    attachments: &mut Vec<OpaqueAttachmentDraft>,
-) -> Result<(), ShapeAdapterError> {
-    let id = format!("{model_call_id}:reasoning:{index}");
-    let summary = item
-        .get("summary")
-        .and_then(Value::as_array)
-        .map(|parts| {
-            parts
-                .iter()
-                .filter_map(|part| part.get("text").and_then(Value::as_str))
-                .collect::<String>()
-        })
-        .filter(|value| !value.is_empty());
-    items.push(LlmTurnItemIr::Reasoning {
-        id: id.clone(),
-        summary,
-        opaque_item_ref: None,
-    });
-    push_sidecar(index, "reasoning", item, id, sensitive_entries, attachments)
-}
-
-fn push_opaque_hosted(
-    model_call_id: &str,
-    index: usize,
-    kind: &str,
-    item: &Value,
-    items: &mut Vec<LlmTurnItemIr>,
-    sensitive_entries: &mut Vec<SensitiveEntryDraft>,
-    attachments: &mut Vec<OpaqueAttachmentDraft>,
-) -> Result<(), ShapeAdapterError> {
-    let id = format!("{model_call_id}:hosted:{index}");
-    items.push(LlmTurnItemIr::HostedTool {
-        id: id.clone(),
-        binding_id: kind.into(),
-        kind: kind.into(),
-        phase: HostedToolPhase::Completed,
-        display_content: Vec::new(),
-        opaque_item_ref: None,
-    });
-    push_sidecar(index, kind, item, id, sensitive_entries, attachments)
-}
-
-fn push_sidecar(
-    index: usize,
-    slot: &str,
-    item: &Value,
-    item_id: String,
-    sensitive_entries: &mut Vec<SensitiveEntryDraft>,
-    attachments: &mut Vec<OpaqueAttachmentDraft>,
-) -> Result<(), ShapeAdapterError> {
-    let entry_key = format!("responses_item_{index}");
-    sensitive_entries.push(SensitiveEntryDraft {
-        entry_key: entry_key.clone(),
-        adapter_key: ShapeAdapterKey::OpenAiResponsesV1,
-        semantic_slot: slot.into(),
-        opaque_bytes: canonical::to_vec(item).map_err(|_| {
-            ShapeAdapterError::new(
-                "opaque_item_encode_failed",
-                "responses sidecar could not be encoded",
-            )
-        })?,
-    });
-    attachments.push(OpaqueAttachmentDraft {
-        entry_key,
-        target: OpaqueAttachmentTarget::Item { item_id },
     });
     Ok(())
 }

@@ -172,7 +172,7 @@ async fn load_wait_context<C: ConnectionTrait>(
     connection: &C,
     wait_id: &str,
 ) -> StorageResult<WaitContext> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT w.kind, w.status AS wait_status, w.run_id, w.node_instance_id, w.node_attempt_id, w.continuation_object_id, r.status AS run_status, r.control_epoch, ni.node_id, ni.status AS instance_status FROM node_waits w JOIN graph_runs r ON r.id = w.run_id JOIN node_instances ni ON ni.id = w.node_instance_id WHERE w.id = ?",
         vec![wait_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound { kind: "wait", id: wait_id.into() })?;
@@ -196,7 +196,7 @@ async fn has_open_effect_blocker<C: ConnectionTrait>(
     wait_id: &str,
 ) -> StorageResult<bool> {
     Ok(connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT 1 AS present FROM wait_blockers WHERE wait_id = ? AND blocker_kind = 'effect' AND status = 'open'",
             vec![wait_id.into()],
         ))
@@ -210,7 +210,7 @@ async fn load_current_checkpoint<C: ConnectionTrait>(
     node_instance_id: &str,
     wait_id: &str,
 ) -> StorageResult<LlmLoopCheckpoint> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT checkpoint_object_id, checkpoint_digest FROM llm_loop_checkpoints WHERE node_instance_id = ?",
         vec![node_instance_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("approval checkpoint is missing".into()))?;
@@ -259,7 +259,7 @@ async fn persist_wait_response<C: ConnectionTrait>(
         "deniedToolCallIds": denied,
     }))?;
     let response_ref = put_inline_object(connection, &response, now).await?;
-    if connection.execute(sql(
+    if connection.execute_raw(sql(
         "UPDATE node_waits SET status = 'resolved', response_object_id = ?, accepted_delivery_id = ?, resolved_at = ? WHERE id = ? AND status = 'open'",
         vec![response_ref.clone().into(), command.delivery_id.clone().into(), now.into(), command.wait_id.clone().into()],
     )).await?.rows_affected() != 1 {
@@ -286,7 +286,7 @@ async fn persist_delivery<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let result_ref = put_inline_object(connection, &canonical::to_vec(view)?, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO wait_deliveries (wait_id, delivery_id, payload_digest, result_object_id, created_at) VALUES (?, ?, ?, ?, ?)",
         vec![command.wait_id.clone().into(), command.delivery_id.clone().into(), payload_digest.into(), result_ref.clone().into(), now.into()],
     )).await?;
@@ -308,7 +308,7 @@ async fn persist_delivery<C: ConnectionTrait>(
         now,
     )
     .await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE run_execution_counters SET open_waits = open_waits - 1 WHERE run_id = (SELECT run_id FROM node_waits WHERE id = ?) AND open_waits > 0",
         vec![command.wait_id.clone().into()],
     )).await?;
@@ -322,6 +322,19 @@ async fn append_resolution_event<C: ConnectionTrait>(
     resume_attempt_id: Option<&str>,
     now: i64,
 ) -> StorageResult<()> {
+    let runnable = matches!(context.run_status.as_str(), "running" | "waiting");
+    if context.run_status == "waiting"
+        && connection
+            .execute_raw(sql(
+                "UPDATE graph_runs SET status = 'running', updated_at = ? WHERE id = ? AND status = 'waiting'",
+                vec![now.into(), context.run_id.clone().into()],
+            ))
+            .await?
+            .rows_affected()
+            != 1
+    {
+        return Err(StorageError::Conflict("approval_run_status"));
+    }
     let seq = append_event(
         connection,
         Event {
@@ -340,7 +353,7 @@ async fn append_resolution_event<C: ConnectionTrait>(
         },
     )
     .await?;
-    if let Some(resume_attempt_id) = resume_attempt_id.filter(|_| context.run_status == "running") {
+    if let Some(resume_attempt_id) = resume_attempt_id.filter(|_| runnable) {
         enqueue_wakeup(
             connection,
             &context.run_id,
@@ -360,7 +373,7 @@ async fn replay_delivery<C: ConnectionTrait>(
     command: &SubmitWaitResponseCommand,
     payload_digest: &str,
 ) -> StorageResult<Option<WaitDeliveryView>> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT payload_digest, result_object_id FROM wait_deliveries WHERE wait_id = ? AND delivery_id = ?",
         vec![command.wait_id.clone().into(), command.delivery_id.clone().into()],
     )).await?;

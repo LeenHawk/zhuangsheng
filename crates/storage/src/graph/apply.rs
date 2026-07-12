@@ -56,7 +56,7 @@ impl SqliteStore {
             &dependencies,
         )?;
         let now = now_ms();
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, status, created_at) VALUES (?, ?, ?, 'apply_graph', 'graph_revision', 'pending', ?)",
             vec![scope.clone().into(), command.idempotency_key.clone().into(), digest.into(), now.into()],
         )).await?;
@@ -72,7 +72,7 @@ impl SqliteStore {
         let mut result = load_revision(&transaction, &revision_id).await?;
         result.warnings = applied.warnings;
         let object_id = put_inline_object(&transaction, &canonical::to_vec(&result)?, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE application_command_receipts SET resource_id = ?, status = 'completed', result_object_id = ?, completed_at = ? WHERE scope = ? AND idempotency_key = ?",
             vec![revision_id.into(), object_id.into(), now.into(), scope.into(), command.idempotency_key.into()],
         )).await?;
@@ -133,12 +133,12 @@ async fn persist_revision<C: ConnectionTrait>(
     })?;
     let bundle_id = put_inline_object(connection, &bundle, now).await?;
     referenced.push((bundle_id.clone(), "schema_bundle"));
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO graph_revisions (id, graph_id, revision_no, operation_taxonomy_version, adapter_decoder_version, definition_json, schema_bundle_object_id, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         vec![revision_id.clone().into(), graph_id.into(), (revision_no as i64).into(), (applied.definition.operation_taxonomy_version as i64).into(), (applied.definition.adapter_decoder_version as i64).into(), canonical::to_string(&applied.definition)?.into(), bundle_id.into(), applied.content_hash.clone().into(), now.into()],
     )).await?;
     for (object, role) in referenced {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT OR IGNORE INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'graph_revision', ?, ?, ?)",
             vec![object.into(), revision_id.clone().into(), role.into(), now.into()],
         )).await?;
@@ -147,7 +147,7 @@ async fn persist_revision<C: ConnectionTrait>(
 }
 
 async fn next_revision<C: ConnectionTrait>(connection: &C, graph_id: &str) -> StorageResult<u64> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT COALESCE(MAX(revision_no), 0) + 1 AS next_revision FROM graph_revisions WHERE graph_id = ?",
         vec![graph_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("revision counter query failed".into()))?;
@@ -161,7 +161,7 @@ async fn find_by_hash<C: ConnectionTrait>(
     hash: &str,
 ) -> StorageResult<Option<(String, u64)>> {
     connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT id, revision_no FROM graph_revisions WHERE graph_id = ? AND content_hash = ?",
             vec![graph_id.into(), hash.into()],
         ))
@@ -177,7 +177,7 @@ pub(crate) async fn load_revision<C: ConnectionTrait>(
     connection: &C,
     id: &str,
 ) -> StorageResult<GraphRevisionView> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT id, graph_id, revision_no, operation_taxonomy_version, adapter_decoder_version, definition_json, schema_bundle_object_id, content_hash, created_at FROM graph_revisions WHERE id = ?",
         vec![id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound { kind: "graph_revision", id: id.into() })?;

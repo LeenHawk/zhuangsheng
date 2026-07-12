@@ -34,12 +34,12 @@ impl SqliteStore {
         let id = new_id("graph");
         let revision_token = new_id("draftrev");
         let now = now_ms();
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, resource_id, status, created_at) VALUES (?, ?, ?, 'create_graph', 'graph', ?, 'pending', ?)",
             vec![scope.into(), command.idempotency_key.clone().into(), digest.into(), id.clone().into(), now.into()],
         )).await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO graphs (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
                 vec![id.clone().into(), name.into(), now.into(), now.into()],
             ))
@@ -54,7 +54,7 @@ impl SqliteStore {
             limits: None,
         };
         let document = canonical::to_string(&draft)?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO graph_drafts (graph_id, document_json, revision_token, updated_at) VALUES (?, ?, ?, ?)",
             vec![id.clone().into(), document.into(), revision_token.clone().into(), now.into()],
         )).await?;
@@ -69,7 +69,7 @@ impl SqliteStore {
         };
         let result_object =
             put_inline_object(&transaction, &canonical::to_vec(&result)?, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE application_command_receipts SET status = 'completed', result_object_id = ?, completed_at = ? WHERE scope = ? AND idempotency_key = ?",
             vec![result_object.into(), now.into(), scope.into(), command.idempotency_key.into()],
         )).await?;

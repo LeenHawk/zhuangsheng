@@ -81,7 +81,7 @@ impl SqliteStore {
             "reason":command.reason,
         }))?;
         let payload_id = put_inline_object(&transaction, &payload, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO run_commands (id, run_id, command_kind, idempotency_key, request_digest, expected_control_epoch, payload_object_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
             vec![command_id.clone().into(), command.run_id.clone().into(), kind.name().into(), command.idempotency_key.clone().into(), digest.into(), (command.expected_epoch as i64).into(), payload_id.clone().into(), now.into()],
         )).await?;
@@ -94,7 +94,7 @@ impl SqliteStore {
         }
         let result = load_run(&transaction, &command.run_id).await?;
         let result_id = put_inline_object(&transaction, &canonical::to_vec(&result)?, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE run_commands SET status = 'completed', result_object_id = ?, applied_at = ? WHERE id = ? AND status = 'pending'",
             vec![result_id.clone().into(), now.into(), command_id.clone().into()],
         )).await?;
@@ -131,7 +131,7 @@ async fn apply_interrupt<C: ConnectionTrait>(
     if !matches!(status.as_str(), "running" | "waiting") {
         return Err(StorageError::Conflict("run_lifecycle"));
     }
-    let draining = connection.query_one(sql(
+    let draining = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM node_attempts WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('leased','running') LIMIT 1",
         vec![command.run_id.clone().into()],
     )).await?.is_some();
@@ -141,7 +141,7 @@ async fn apply_interrupt<C: ConnectionTrait>(
         "interrupted"
     };
     let drain_epoch: Option<i64> = draining.then_some(command.expected_epoch as i64);
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE graph_runs SET status = ?, control_epoch = control_epoch + 1, drain_epoch = ?, updated_at = ? WHERE id = ? AND control_epoch = ? AND status IN ('running','waiting')",
         vec![next_status.into(), drain_epoch.into(), now.into(), command.run_id.clone().into(), (command.expected_epoch as i64).into()],
     )).await?;
@@ -185,7 +185,7 @@ async fn apply_resume<C: ConnectionTrait>(
     command_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE graph_runs SET status = 'running', control_epoch = control_epoch + 1, drain_epoch = NULL, updated_at = ? WHERE id = ? AND control_epoch = ? AND status = 'interrupted'",
         vec![now.into(), command.run_id.clone().into(), (command.expected_epoch as i64).into()],
     )).await?;
@@ -205,7 +205,7 @@ async fn apply_resume<C: ConnectionTrait>(
         },
     )
     .await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE runtime_timers SET status = 'pending', due_at = ?, fired_at = NULL WHERE run_id = ? AND status = 'ready'",
         vec![now.into(), command.run_id.clone().into()],
     )).await?;
@@ -245,7 +245,7 @@ async fn apply_cancel<C: ConnectionTrait>(
         },
     )
     .await?;
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE graph_runs SET status = 'cancelled', control_epoch = control_epoch + 1, drain_epoch = NULL, finished_at = ?, updated_at = ? WHERE id = ? AND control_epoch = ? AND status NOT IN ('completed','failed','cancelled')",
         vec![now.into(), now.into(), command.run_id.clone().into(), (command.expected_epoch as i64).into()],
     )).await?;
@@ -259,28 +259,28 @@ async fn apply_cancel<C: ConnectionTrait>(
         now,
     )
     .await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE node_attempts SET status = 'cancelled', worker_id = NULL, lease_until = NULL, finished_at = ? WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('queued','leased','running','waiting')",
         vec![now.into(), command.run_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'cancelled', updated_at = ? WHERE run_id = ? AND status IN ('ready','running','waiting')",
         vec![now.into(), command.run_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE run_id = ? AND status IN ('pending','claimed')",
         vec![command.run_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE runtime_timers SET status = 'cancelled' WHERE run_id = ? AND status IN ('pending','ready')",
         vec![command.run_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE node_waits SET status = 'cancelled', resolved_at = ? WHERE run_id = ? AND status = 'open'",
         vec![now.into(), command.run_id.clone().into()],
     )).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET open_waits = 0 WHERE run_id = ?",
             vec![command.run_id.clone().into()],
         ))
@@ -308,7 +308,7 @@ async fn restore_wakeups<C: ConnectionTrait>(
     caused_by_seq: i64,
     now: i64,
 ) -> StorageResult<()> {
-    let rows = connection.query_all(sql(
+    let rows = connection.query_all_raw(sql(
         "SELECT a.id AS attempt_id, ni.node_id FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id WHERE ni.run_id = ? AND a.status = 'queued'",
         vec![run_id.into()],
     )).await?;
@@ -335,7 +335,7 @@ async fn replay_control<C: ConnectionTrait>(
     key: &str,
     digest: &str,
 ) -> StorageResult<Option<RunView>> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT request_digest, result_object_id, status FROM run_commands WHERE run_id = ? AND idempotency_key = ?",
         vec![run_id.into(), key.into()],
     )).await?;
@@ -352,7 +352,7 @@ async fn replay_control<C: ConnectionTrait>(
 
 async fn run_status<C: ConnectionTrait>(connection: &C, run_id: &str) -> StorageResult<String> {
     connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT status FROM graph_runs WHERE id = ?",
             vec![run_id.into()],
         ))

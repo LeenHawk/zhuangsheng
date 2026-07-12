@@ -25,7 +25,7 @@ impl SqliteStore {
     ) -> StorageResult<Option<SchedulerWork>> {
         let transaction = self.db.begin().await?;
         let row = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT w.id, w.run_id, w.node_id, w.kind FROM scheduler_wakeups w JOIN graph_runs r ON r.id = w.run_id WHERE w.status = 'pending' AND w.available_at <= ? AND r.status = 'running' ORDER BY w.available_at, w.created_at, w.id LIMIT 1",
                 vec![now.into()],
             ))
@@ -39,7 +39,7 @@ impl SqliteStore {
         let node_id: Option<String> = row.try_get("", "node_id")?;
         let kind: String = row.try_get("", "kind")?;
         let claimed = transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE scheduler_wakeups SET status = 'claimed', claimed_by = ?, lease_until = ? WHERE id = ? AND status = 'pending'",
                 vec![worker_id.into(), lease_until.into(), wakeup_id.clone().into()],
             ))
@@ -95,14 +95,14 @@ impl SqliteStore {
         now: i64,
     ) -> StorageResult<()> {
         let transaction = self.db.begin().await?;
-        let updated = transaction.execute(sql(
+        let updated = transaction.execute_raw(sql(
             "UPDATE node_attempts SET status = 'running', started_at = ? WHERE id = ? AND status = 'leased' AND worker_id = ? AND lease_fence = ? AND run_control_epoch = ?",
             vec![now.into(), attempt.attempt_id.clone().into(), attempt.worker_id.clone().into(), (attempt.lease_fence as i64).into(), (attempt.run_control_epoch as i64).into()],
         )).await?;
         if updated.rows_affected() != 1 {
             return Err(StorageError::Conflict("attempt_lease"));
         }
-        let node = transaction.execute(sql(
+        let node = transaction.execute_raw(sql(
             "UPDATE node_instances SET status = 'running', updated_at = ? WHERE id = ? AND status = 'ready'",
             vec![now.into(), attempt.node_instance_id.clone().into()],
         )).await?;
@@ -137,7 +137,7 @@ async fn claim_attempt<C: ConnectionTrait>(
     now: i64,
     requested_lease_until: i64,
 ) -> StorageResult<Option<SchedulerWork>> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT a.id AS attempt_id, a.lease_fence, ni.id AS node_instance_id, ni.graph_revision_id, ni.inputs_object_id, r.control_epoch, r.deadline_at FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE ni.run_id = ? AND ni.node_id = ? AND ni.status = 'ready' AND a.status = 'queued' ORDER BY a.attempt_no LIMIT 1",
         vec![run_id.into(), node_id.into()],
     )).await?;
@@ -168,14 +168,14 @@ async fn claim_attempt<C: ConnectionTrait>(
             now.saturating_add(timeout).min(run_deadline)
         });
     let lease_until = requested_lease_until.min(deadline);
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE node_attempts SET status = 'leased', run_control_epoch = ?, lease_fence = lease_fence + 1, worker_id = ?, lease_until = ?, deadline_at = ? WHERE id = ? AND status = 'queued' AND lease_fence = ?",
         vec![control_epoch.into(), worker_id.into(), lease_until.into(), deadline.into(), attempt_id.clone().into(), old_fence.into()],
     )).await?;
     if updated.rows_affected() != 1 {
         return Ok(None);
     }
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT OR IGNORE INTO runtime_timers (id, run_id, node_instance_id, node_attempt_id, kind, due_at, dedupe_key, status, created_at) VALUES (?, ?, ?, ?, 'attempt_deadline', ?, ?, 'pending', ?)",
         vec![crate::graph::helpers::new_id("timer").into(), run_id.into(), instance_id.clone().into(), attempt_id.clone().into(), deadline.into(), format!("attempt-deadline:{attempt_id}").into(), now.into()],
     )).await?;

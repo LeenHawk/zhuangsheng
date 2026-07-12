@@ -1,6 +1,7 @@
-use std::time::Duration;
+use std::{pin::Pin, time::Duration};
 
 use async_trait::async_trait;
+use futures_core::Stream;
 use reqwest::{
     Client, StatusCode, Url,
     header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue},
@@ -14,6 +15,9 @@ use zhuangsheng_core::{
 
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 
+mod provider_sse;
+mod provider_stream;
+
 pub struct HttpProviderClient {
     client: Client,
 }
@@ -26,13 +30,34 @@ pub trait ProviderTransport: Send + Sync {
         wire: &WireGenerationRequest,
         credential: Option<&SecretValue>,
     ) -> Result<ProviderHttpResponse, ProviderHttpError>;
+
+    async fn send_stream(
+        &self,
+        _channel: &LlmChannelRevision,
+        _wire: &WireGenerationRequest,
+        _credential: Option<&SecretValue>,
+    ) -> Result<ProviderHttpStreamResponse, ProviderHttpError> {
+        Err(error(
+            "provider_streaming_unsupported",
+            "provider transport does not support streaming",
+        ))
+    }
 }
+
+pub type ProviderFrameStream =
+    Pin<Box<dyn Stream<Item = Result<Vec<u8>, ProviderHttpError>> + Send>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderHttpResponse {
     pub status: u16,
     pub provider_request_id: Option<String>,
     pub body: Vec<u8>,
+}
+
+pub struct ProviderHttpStreamResponse {
+    pub status: u16,
+    pub provider_request_id: Option<String>,
+    pub frames: ProviderFrameStream,
 }
 
 #[derive(Debug, Error)]
@@ -145,6 +170,15 @@ impl ProviderTransport for HttpProviderClient {
         credential: Option<&SecretValue>,
     ) -> Result<ProviderHttpResponse, ProviderHttpError> {
         HttpProviderClient::send(self, channel, wire, credential).await
+    }
+
+    async fn send_stream(
+        &self,
+        channel: &LlmChannelRevision,
+        wire: &WireGenerationRequest,
+        credential: Option<&SecretValue>,
+    ) -> Result<ProviderHttpStreamResponse, ProviderHttpError> {
+        HttpProviderClient::send_stream(self, channel, wire, credential).await
     }
 }
 

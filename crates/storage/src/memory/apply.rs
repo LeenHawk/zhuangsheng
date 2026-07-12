@@ -192,7 +192,7 @@ fn version_payload(proposal: &MemoryChangeProposalView, content_ref: &Option<Str
 }
 
 async fn load_sequence<C: ConnectionTrait>(connection: &C, head: &str) -> StorageResult<i64> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT sequence_no FROM version_commits WHERE id = ? AND aggregate_kind = 'long_term_memory'",
         vec![head.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("memory head commit missing".into()))?;
@@ -211,12 +211,12 @@ async fn insert_commit<C: ConnectionTrait>(
 ) -> StorageResult<()> {
     let snapshot: Option<String> = (parent.is_none()).then(|| version_object_id.into());
     let patch: Option<String> = parent.is_some().then(|| version_object_id.into());
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO version_commits (id, aggregate_kind, aggregate_id, lineage_key, sequence_no, operation_id, patch_object_id, initial_snapshot_object_id, schema_version, policy_version, author_kind, author_id, origin_run_id, origin_node_instance_id, source_proposal_id, created_at) VALUES (?, 'long_term_memory', ?, 'global', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         vec![commit_id.into(), proposal.memory_id.clone().into(), sequence.into(), format!("memory-proposal:{}", proposal.id).into(), patch.into(), snapshot.into(), i64::from(proposal.schema_version).into(), i64::from(proposal.policy_version).into(), actor_kind(proposal.requested_by.kind).into(), proposal.requested_by.id.clone().into(), proposal.origin_run_id.clone().into(), proposal.origin_node_instance_id.clone().into(), proposal.id.clone().into(), now.into()],
     )).await?;
     if let Some(parent) = parent {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO commit_parents (commit_id, parent_commit_id, parent_order) VALUES (?, ?, 0)",
             vec![commit_id.into(), parent.into()],
         )).await?;
@@ -233,7 +233,7 @@ async fn update_record<C: ConnectionTrait>(
     content_ref: Option<&str>,
     now: i64,
 ) -> StorageResult<()> {
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE memory_records SET status = ?, head_commit_id = ?, current_content_object_id = ?, updated_at = ? WHERE id = ? AND status = ? AND ((head_commit_id IS NULL AND ? IS NULL) OR head_commit_id = ?)",
         vec![record_status(status).into(), commit_id.into(), content_ref.map(String::from).into(), now.into(), proposal.memory_id.clone().into(), record_status(record.status).into(), record.head_commit_id.clone().into(), record.head_commit_id.clone().into()],
     )).await?;
@@ -249,7 +249,7 @@ async fn finalize_proposal<C: ConnectionTrait>(
     commit_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE memory_change_proposals SET status = 'applied', applied_commit_id = ?, updated_at = ? WHERE id = ? AND status = 'approved'",
         vec![commit_id.into(), now.into(), command.proposal_id.clone().into()],
     )).await?;
@@ -275,13 +275,13 @@ async fn update_scope_and_search<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE memory_scopes SET revision_no = revision_no + 1, updated_at = ? WHERE id = ?",
             vec![now.into(), proposal.scope_id.clone().into()],
         ))
         .await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "DELETE FROM memory_search WHERE memory_id = ?",
             vec![proposal.memory_id.clone().into()],
         ))
@@ -295,7 +295,7 @@ async fn update_scope_and_search<C: ConnectionTrait>(
         let content: zhuangsheng_core::memory::LongTermMemoryContentV1 =
             crate::graph::helpers::load_object_json(connection, content_id).await?;
         connection
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO memory_search (memory_id, scope_id, text, tags) VALUES (?, ?, ?, ?)",
                 vec![
                     proposal.memory_id.clone().into(),
@@ -317,11 +317,11 @@ async fn add_refs<C: ConnectionTrait>(
     content_ref: Option<&str>,
     now: i64,
 ) -> StorageResult<()> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'version_commit', ?, 'memory_version', ?)",
         vec![version_object_id.into(), commit_id.into(), now.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "DELETE FROM content_object_refs WHERE owner_kind = 'memory_record' AND owner_id = ? AND role = 'current_content'",
         vec![proposal.memory_id.clone().into()],
     )).await?;
@@ -334,7 +334,7 @@ async fn add_refs<C: ConnectionTrait>(
             ),
             ("version_commit", commit_id, "memory_content"),
         ] {
-            connection.execute(sql(
+            connection.execute_raw(sql(
                 "INSERT OR IGNORE INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
                 vec![content_ref.into(), owner_kind.into(), owner_id.into(), role.into(), now.into()],
             )).await?;
@@ -350,20 +350,20 @@ async fn append_event<C: ConnectionTrait>(
     sequence: i64,
     now: i64,
 ) -> StorageResult<()> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT OR IGNORE INTO domain_event_counters (aggregate_kind, aggregate_id, lineage_key, next_seq) VALUES ('long_term_memory', ?, 'global', 1)",
         vec![proposal.memory_id.clone().into()],
     )).await?;
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT next_seq FROM domain_event_counters WHERE aggregate_kind = 'long_term_memory' AND aggregate_id = ? AND lineage_key = 'global'",
         vec![proposal.memory_id.clone().into()],
     )).await?.expect("memory event counter exists");
     let event_seq: i64 = row.try_get("", "next_seq")?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE domain_event_counters SET next_seq = next_seq + 1 WHERE aggregate_kind = 'long_term_memory' AND aggregate_id = ? AND lineage_key = 'global' AND next_seq = ?",
         vec![proposal.memory_id.clone().into(), event_seq.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO domain_events (id, aggregate_kind, aggregate_id, lineage_key, seq, event_type, schema_version, payload_json, created_at) VALUES (?, 'long_term_memory', ?, 'global', ?, 'memory.commit.applied', 1, ?, ?)",
         vec![new_id("domain_event").into(), proposal.memory_id.clone().into(), event_seq.into(), canonical::to_string(&json!({"schemaVersion":1,"proposalId":proposal.id,"commitId":commit_id,"sequenceNo":sequence}))?.into(), now.into()],
     )).await?;
@@ -378,7 +378,7 @@ async fn mark_conflicted<C: ConnectionTrait>(
     digest: &str,
     now: i64,
 ) -> StorageResult<MemoryChangeProposalView> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE memory_change_proposals SET status = 'conflicted', updated_at = ? WHERE id = ? AND status = 'approved'",
         vec![now.into(), command.proposal_id.clone().into()],
     )).await?;
@@ -415,12 +415,12 @@ async fn insert_transition<C: ConnectionTrait>(
     key: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT COALESCE(MAX(transition_no), 0) + 1 AS next_no FROM memory_proposal_transitions WHERE proposal_id = ?",
         vec![proposal_id.into()],
     )).await?.expect("transition aggregate returns a row");
     let number: i64 = row.try_get("", "next_no")?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO memory_proposal_transitions (id, proposal_id, transition_no, from_status, to_status, actor_kind, command_idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, 'application', ?, ?)",
         vec![new_id("memtransition").into(), proposal_id.into(), number.into(), from.into(), to.into(), key.into(), now.into()],
     )).await?;

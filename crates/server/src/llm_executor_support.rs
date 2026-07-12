@@ -2,12 +2,11 @@ use serde_json::json;
 use ulid::Ulid;
 use zhuangsheng_core::{
     canonical,
-    graph::{LlmNodeExecutionSnapshot, LlmOutputSpec},
+    graph::LlmNodeExecutionSnapshot,
     llm::{
         ActiveModelEffectCheckpoint, LlmLogicalCallStatus,
         context::{ContextAssemblyError, ContextAssemblyResult, ContextRole, ContextTokenCounter},
-        finalize_llm_output,
-        ir::{LlmContentPartIr, LlmTurnItemIr},
+        ir::LlmContentPartIr,
     },
     scheduler::{BuiltinResult, LlmAttemptExecution},
 };
@@ -43,18 +42,6 @@ pub(super) fn fixed_request_estimate(execution: &LlmNodeExecutionSnapshot) -> u6
     }))
     .map_or(0, |bytes| bytes.len() as u64);
     bytes.div_ceil(2).saturating_add(32)
-}
-
-pub(super) fn finalize_output(
-    output: Option<&LlmOutputSpec>,
-    items: &[LlmTurnItemIr],
-) -> LlmAttemptExecution {
-    match finalize_llm_output(output, items, items) {
-        Ok(value) => LlmAttemptExecution::Finalize(BuiltinResult::Completed {
-            outputs: [("default".into(), value)].into_iter().collect(),
-        }),
-        Err(error) => finalize_failure(error.code, &error.message),
-    }
 }
 
 pub(super) fn assembly_failure(error: ContextAssemblyError) -> LlmAttemptExecution {

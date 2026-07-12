@@ -68,12 +68,12 @@ impl SqliteStore {
         let result = LockSecretStoreResult { locked: true };
         let result_object =
             put_inline_object(&transaction, &canonical::to_vec(&result)?, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, resource_id, status, result_object_id, created_at, completed_at) VALUES (?, ?, ?, 'lock_secret_store', 'secret_store', ?, 'completed', ?, ?, ?)",
             vec![scope.into(), command.idempotency_key.into(), digest.into(), header.store_id.clone().into(), result_object.into(), now.into(), now.into()],
         )).await?;
         if let Some(session_id) = current_session {
-            transaction.execute(sql(
+            transaction.execute_raw(sql(
                 "UPDATE secret_command_receipts SET status = 'expired', expired_at = ? WHERE unlock_session_id = ? AND status = 'completed'",
                 vec![now.into(), session_id.into()],
             )).await?;

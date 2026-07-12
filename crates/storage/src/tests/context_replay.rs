@@ -95,7 +95,7 @@ async fn projection_can_be_rebuilt_from_authoritative_version_history() {
     .await;
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE materialized_projections SET projection_json = '{\"corrupt\":true}' WHERE aggregate_kind = 'working_context' AND aggregate_id = ? AND lineage_key = ?",
             vec![run.context_id.clone().into(), run.branch_id.clone().into()],
         ))
@@ -137,7 +137,7 @@ async fn snapshot_checksum_corruption_fails_closed() {
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE version_snapshots SET checksum = 'sha256:broken' WHERE commit_id = ?",
             vec![run.input_commit_id.clone().into()],
         ))

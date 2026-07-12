@@ -13,7 +13,7 @@ impl SqliteStore {
         self.get_run(run_id).await?;
         let rows = self
             .db
-            .query_all(sql(
+            .query_all_raw(sql(
                 "SELECT id, run_id, node_instance_id, node_attempt_id, kind, request_object_id, correlation_key, deadline_at, status, accepted_delivery_id, created_at, resolved_at FROM node_waits WHERE run_id = ? AND status = 'open' ORDER BY created_at, id",
                 vec![run_id.into()],
             ))
@@ -48,7 +48,7 @@ async fn load_blockers<C: ConnectionTrait>(
     wait_id: &str,
 ) -> StorageResult<Vec<WaitBlockerView>> {
     connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT blocker_kind, blocker_id, blocker_order, status, decision_object_id FROM wait_blockers WHERE wait_id = ? ORDER BY blocker_order",
             vec![wait_id.into()],
         ))

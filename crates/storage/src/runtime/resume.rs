@@ -23,7 +23,7 @@ pub(crate) async fn create_resume_attempt<C: ConnectionTrait>(
     resume: ResumeAttempt<'_>,
     now: i64,
 ) -> StorageResult<String> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT a.executor_object_id, a.retry_ordinal, ni.graph_revision_id, COALESCE(MAX(all_attempts.attempt_no), 0) AS max_attempt_no FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id LEFT JOIN node_attempts all_attempts ON all_attempts.node_instance_id = ni.id WHERE a.id = ? AND a.node_instance_id = ? GROUP BY a.id, ni.id",
         vec![resume.source_attempt_id.into(), resume.node_instance_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("wait attempt is unavailable".into()))?;
@@ -41,7 +41,7 @@ pub(crate) async fn create_resume_attempt<C: ConnectionTrait>(
         ));
     }
     let attempt_id = new_id("attempt");
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) VALUES (?, ?, ?, ?, 'resume', 'queued', ?, 0, ?, ?)",
         vec![
             attempt_id.clone().into(),
@@ -57,7 +57,7 @@ pub(crate) async fn create_resume_attempt<C: ConnectionTrait>(
     )).await?;
     copy_attempt_reads(connection, resume.source_attempt_id, &attempt_id, now).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET total_attempts = total_attempts + 1 WHERE run_id = ?",
             vec![resume.run_id.into()],
         ))

@@ -142,7 +142,7 @@ async fn channel_create_publish_and_reader_are_versioned_and_idempotent() {
 
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE llm_channel_revisions SET operation_taxonomy_version = 999 WHERE id = ?",
             vec![published.id.clone().into()],
         ))

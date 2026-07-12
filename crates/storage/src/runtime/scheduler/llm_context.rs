@@ -50,7 +50,7 @@ async fn load_binding<C: ConnectionTrait>(
     read: &StaticMemoryRead,
 ) -> StorageResult<ResolvedContextBinding> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT envelope_object_id, result_digest, scope_snapshot_token FROM node_bound_read_results WHERE node_attempt_id = ? AND binding_id = ?",
             vec![attempt_id.into(), read.id.clone().into()],
         ))
@@ -215,7 +215,7 @@ pub(crate) async fn compute_llm_read_set_digest<C: ConnectionTrait>(
     connection: &C,
     attempt_id: &str,
 ) -> StorageResult<String> {
-    let selections = connection.query_all(sql(
+    let selections = connection.query_all_raw(sql(
         "SELECT aggregate_kind, aggregate_id, lineage_key, commit_id, binding_id, selection_ordinal, selected_content_hash, consistency FROM node_read_set WHERE node_attempt_id = ? ORDER BY binding_id, selection_ordinal, id",
         vec![attempt_id.into()],
     )).await?;
@@ -232,7 +232,7 @@ pub(crate) async fn compute_llm_read_set_digest<C: ConnectionTrait>(
             "consistency":row.try_get::<String>("", "consistency")?,
         }));
     }
-    let results = connection.query_all(sql(
+    let results = connection.query_all_raw(sql(
         "SELECT binding_id, result_digest, scope_snapshot_token, truncated FROM node_bound_read_results WHERE node_attempt_id = ? ORDER BY binding_id",
         vec![attempt_id.into()],
     )).await?;

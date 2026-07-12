@@ -164,11 +164,26 @@ async fn run_events(
         .transpose()?;
     let mut cursor = header_cursor.or(query.after).unwrap_or(0);
     let service = state.runtime_service;
+    let mut live = state.stream_events.subscribe();
     let stream = async_stream::stream! {
         loop {
             match service.list_run_events(&run_id, cursor, 100).await {
                 Ok(events) if events.is_empty() => {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    tokio::select! {
+                        received = live.recv() => match received {
+                            Ok(event) if event.run_id == run_id => {
+                                let event_type = event.event_type();
+                                let data = serde_json::to_string(&event)
+                                    .unwrap_or_else(|_| "{\"error\":\"event_serialization_failed\"}".into());
+                                yield Ok(SseEvent::default().event(event_type).data(data));
+                            }
+                            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                tokio::time::sleep(Duration::from_millis(500)).await;
+                            }
+                        },
+                        _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+                    }
                 }
                 Ok(events) => {
                     for event in events {

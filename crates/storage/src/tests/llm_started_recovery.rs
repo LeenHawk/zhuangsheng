@@ -3,7 +3,10 @@ use serde_json::json;
 use zhuangsheng_core::{
     canonical,
     graph::EffectClassification,
-    llm::{EffectAttemptFence, LlmLogicalCallStatus, StartModelCallCommand},
+    llm::{
+        EffectAttemptFence, LlmLogicalCallStatus, LoadLlmResumeStateCommand, StartModelCallCommand,
+    },
+    scheduler::SchedulerWork,
 };
 
 use crate::{
@@ -28,7 +31,7 @@ async fn expired_started_pure_effect_becomes_retry_ready_reconcile() {
     assert_eq!(row.node_instance, "ready");
     let replacement = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT invocation_kind, status FROM node_attempts WHERE node_instance_id = ? AND attempt_no = 2",
             vec![setup.node_instance_id.into()],
         ))
@@ -45,6 +48,43 @@ async fn expired_started_pure_effect_becomes_retry_ready_reconcile() {
         replacement.try_get::<String>("", "status").unwrap(),
         "queued"
     );
+    let replacement = match store
+        .claim_next_work("recovery-worker", setup.now + 1, setup.now + 30_001)
+        .await
+        .unwrap()
+        .unwrap()
+    {
+        SchedulerWork::Attempt(attempt) => *attempt,
+        other => panic!("expected replacement attempt, got {other:?}"),
+    };
+    store
+        .mark_attempt_running(&replacement, setup.now + 1)
+        .await
+        .unwrap();
+    let state = store
+        .load_llm_resume_state(LoadLlmResumeStateCommand {
+            node_instance_id: replacement.node_instance_id.clone(),
+            fence: EffectAttemptFence {
+                invoking_node_attempt_id: replacement.attempt_id.clone(),
+                worker_id: replacement.worker_id.clone(),
+                lease_fence: replacement.lease_fence,
+                run_control_epoch: replacement.run_control_epoch,
+            },
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let retry = state.retry_ready_model_call.unwrap();
+    assert_eq!(retry.model_call_id, "model-call-1");
+    assert_eq!(retry.effect_id, "effect-1");
+    assert_eq!(
+        retry.request_bytes,
+        canonical::to_vec(&json!({"model":"roleplay-model","input":"hi"})).unwrap()
+    );
+    assert_eq!(
+        retry.operation,
+        replacement.execution_snapshot.unwrap().operation
+    );
 }
 
 #[tokio::test]
@@ -60,7 +100,7 @@ async fn expired_started_non_idempotent_effect_opens_resolution_wait() {
     assert_eq!(row.node_instance, "waiting");
     let wait = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT w.status AS wait_status, wb.status AS blocker_status FROM node_waits w JOIN wait_blockers wb ON wb.wait_id = w.id WHERE wb.blocker_kind = 'effect' AND wb.blocker_id = 'effect-1'",
             vec![],
         ))
@@ -74,7 +114,7 @@ async fn expired_started_non_idempotent_effect_opens_resolution_wait() {
     );
     let replacement = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT 1 AS present FROM node_attempts WHERE node_instance_id = ? AND attempt_no = 2",
             vec![setup.node_instance_id.into()],
         ))
@@ -97,7 +137,7 @@ async fn prepare_started(
     let now = now_ms();
     let snapshot_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -152,7 +192,7 @@ async fn prepare_started(
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_attempts SET lease_until = ? WHERE id = ?",
             vec![(now - 1).into(), claimed.attempt_id.into()],
         ))
@@ -173,7 +213,7 @@ struct Projection {
 }
 
 async fn load_projection(store: &SqliteStore) -> Projection {
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT ea.status AS attempt_status, e.status AS effect_status, mc.status AS model_status, a.status AS node_attempt_status, ni.status AS node_instance_status FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN model_calls mc ON mc.id = e.model_call_id JOIN node_attempts a ON a.id = ea.invoking_node_attempt_id JOIN node_instances ni ON ni.id = e.node_instance_id WHERE ea.id = 'effect-attempt-1'",
         vec![],
     )).await.unwrap().unwrap();

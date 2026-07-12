@@ -20,7 +20,8 @@ use super::{
         add_ref, classification_name, load_existing, persist_checkpoint, validate_prepare_fields,
     },
     validation::{
-        CheckpointExpectation, load_ledger_context, validate_checkpoint, validate_operation,
+        CheckpointExpectation, load_ledger_context, validate_checkpoint,
+        validate_node_attempt_fence, validate_operation,
     },
 };
 
@@ -32,6 +33,13 @@ impl SqliteStore {
     ) -> StorageResult<PreparedInitialModelCall> {
         validate_initial_fields(&command)?;
         let transaction = self.db.begin().await?;
+        if command.originating_attempt_id != command.fence.invoking_node_attempt_id {
+            return Err(StorageError::InvalidArgument(
+                "initial model call originating attempt does not match its fence".into(),
+            ));
+        }
+        validate_node_attempt_fence(&transaction, &command.node_instance_id, &command.fence)
+            .await?;
         let context = load_ledger_context(
             &transaction,
             &command.node_instance_id,
@@ -83,6 +91,7 @@ impl SqliteStore {
             effect_attempt_id: command.effect_attempt_id,
             node_instance_id: command.node_instance_id,
             originating_attempt_id: command.originating_attempt_id,
+            fence: command.fence,
             call_no: 1,
             channel_id: command.channel_id,
             operation: command.operation,
@@ -157,7 +166,7 @@ async fn insert_initial<C: ConnectionTrait>(
         return Ok(existing);
     }
     let count: i64 = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM model_calls WHERE node_instance_id = ?",
             vec![command.node_instance_id.clone().into()],
         ))
@@ -170,15 +179,15 @@ async fn insert_initial<C: ConnectionTrait>(
         ));
     }
     let request_object_id = put_inline_object(connection, &command.request_bytes, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO model_calls (id, node_instance_id, originating_attempt_id, call_no, channel_id, channel_revision_id, model_id, operation_key_json, operation_taxonomy_version, adapter_decoder_version, request_object_id, status, started_at) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?)",
         vec![command.model_call_id.clone().into(), command.node_instance_id.clone().into(), command.originating_attempt_id.clone().into(), command.channel_id.clone().into(), command.operation.channel_revision_id.clone().into(), command.operation.model_id.clone().into(), operation_json.into(), i64::from(command.operation.operation_taxonomy_version).into(), i64::from(command.operation.adapter_decoder_version).into(), request_object_id.clone().into(), now.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO effects (id, node_instance_id, model_call_id, effect_kind, classification, operation_key, idempotency_key, retry_policy_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
         vec![command.effect_id.clone().into(), command.node_instance_id.clone().into(), command.model_call_id.clone().into(), command.effect_kind.clone().into(), classification_name(command.effect_classification).into(), command.effect_operation_key.clone().into(), command.effect_idempotency_key.clone().into(), retry_json.into(), now.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, 1, 'prepared', ?)",
         vec![command.effect_attempt_id.clone().into(), command.effect_id.clone().into(), command.originating_attempt_id.clone().into(), request_object_id.clone().into()],
     )).await?;

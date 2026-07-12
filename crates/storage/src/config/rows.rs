@@ -37,7 +37,7 @@ pub(crate) async fn load_channel_revision<C: ConnectionTrait>(
     revision_id: &str,
 ) -> StorageResult<LlmChannelRevision> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT * FROM llm_channel_revisions WHERE id = ?",
             vec![revision_id.into()],
         ))
@@ -54,7 +54,7 @@ pub(crate) async fn load_channel_head<C: ConnectionTrait>(
     channel_id: &str,
 ) -> StorageResult<LlmChannelRevision> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT head_revision_id FROM llm_channels WHERE id = ?",
             vec![channel_id.into()],
         ))
@@ -76,7 +76,7 @@ pub(crate) async fn load_preset_version<C: ConnectionTrait>(
     version_id: &str,
 ) -> StorageResult<ContextPresetVersion> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT * FROM context_preset_versions WHERE id = ?",
             vec![version_id.into()],
         ))
@@ -93,7 +93,7 @@ pub(crate) async fn load_preset_head<C: ConnectionTrait>(
     preset_id: &str,
 ) -> StorageResult<ContextPresetVersion> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT head_version_id FROM context_presets WHERE id = ?",
             vec![preset_id.into()],
         ))

@@ -19,11 +19,11 @@ use super::{
 impl SqliteStore {
     pub(crate) async fn recover_expired_leases(&self, now: i64) -> StorageResult<u64> {
         let transaction = self.db.begin().await?;
-        let reset = transaction.execute(sql(
+        let reset = transaction.execute_raw(sql(
             "UPDATE scheduler_wakeups SET status = 'pending', claimed_by = NULL, lease_until = NULL WHERE status = 'claimed' AND lease_until <= ?",
             vec![now.into()],
         )).await?.rows_affected();
-        let row = transaction.query_one(sql(
+        let row = transaction.query_one_raw(sql(
             "SELECT a.id AS attempt_id, a.attempt_no, a.retry_ordinal, a.executor_object_id, ni.id AS node_instance_id, ni.run_id, ni.node_id, ni.graph_revision_id, r.status AS run_status FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE a.status IN ('leased','running') AND a.lease_until <= ? AND r.status IN ('running','interrupting') ORDER BY a.lease_until, a.id LIMIT 1",
             vec![now.into()],
         )).await?;
@@ -63,11 +63,11 @@ impl SqliteStore {
         let started_recovery =
             recover_started_effects(&transaction, &attempt_id, &error_id, now).await?;
         if let StartedEffectRecovery::Waiting { count, wait_id } = &started_recovery {
-            transaction.execute(sql(
+            transaction.execute_raw(sql(
                 "UPDATE node_attempts SET error_object_id = ? WHERE id = ? AND status = 'waiting'",
                 vec![error_id.clone().into(), attempt_id.clone().into()],
             )).await?;
-            transaction.execute(sql(
+            transaction.execute_raw(sql(
                 "UPDATE runtime_timers SET status = 'cancelled' WHERE node_attempt_id = ? AND kind = 'attempt_deadline' AND status = 'pending'",
                 vec![attempt_id.clone().into()],
             )).await?;
@@ -102,7 +102,7 @@ impl SqliteStore {
             StartedEffectRecovery::None => 0,
             StartedEffectRecovery::Waiting { .. } => unreachable!("handled above"),
         };
-        let expired = transaction.execute(sql(
+        let expired = transaction.execute_raw(sql(
             "UPDATE node_attempts SET status = 'failed', error_object_id = ?, worker_id = NULL, lease_until = NULL, finished_at = ? WHERE id = ? AND status IN ('leased','running')",
             vec![error_id.clone().into(), now.into(), attempt_id.clone().into()],
         )).await?;
@@ -112,11 +112,11 @@ impl SqliteStore {
         }
         let superseded_effects =
             supersede_prepared_effect_attempts(&transaction, &attempt_id, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE runtime_timers SET status = 'cancelled' WHERE node_attempt_id = ? AND kind = 'attempt_deadline' AND status = 'pending'",
             vec![attempt_id.clone().into()],
         )).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE node_instances SET status = 'ready', updated_at = ? WHERE id = ? AND status IN ('ready','running')",
             vec![now.into(), instance_id.clone().into()],
         )).await?;
@@ -126,12 +126,12 @@ impl SqliteStore {
         } else {
             "reconcile"
         };
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) SELECT ?, ?, ?, ?, ?, 'queued', control_epoch, 0, ?, ? FROM graph_runs WHERE id = ? AND status IN ('running','interrupting')",
             vec![next_attempt.clone().into(), instance_id.clone().into(), (attempt_no + 1).into(), (retry_ordinal + 1).into(), invocation_kind.into(), format!("attempt:{instance_id}:{}", attempt_no + 1).into(), executor_id.into(), run_id.clone().into()],
         )).await?;
         copy_attempt_reads(&transaction, &attempt_id, &next_attempt, now).await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "UPDATE run_execution_counters SET total_attempts = total_attempts + 1 WHERE run_id = ?",
             vec![run_id.clone().into()],
         )).await?;
@@ -175,12 +175,12 @@ async fn finish_interrupt_if_drained<C: ConnectionTrait>(
     run_status: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let other_draining = connection.query_one(sql(
+    let other_draining = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM node_attempts WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('leased','running') LIMIT 1",
         vec![run_id.into()],
     )).await?.is_some();
     if run_status == "interrupting" && !other_draining {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "UPDATE graph_runs SET status = 'interrupted', drain_epoch = NULL, updated_at = ? WHERE id = ? AND status = 'interrupting'",
             vec![now.into(), run_id.into()],
         )).await?;

@@ -43,7 +43,7 @@ async fn valid_apply_persists_immutable_revision_and_reuses_content() {
 
     let count: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM graph_revisions WHERE graph_id = ?",
             vec![graph.id.into()],
         ))
@@ -56,7 +56,7 @@ async fn valid_apply_persists_immutable_revision_and_reuses_content() {
 
     let violations = store
         .db
-        .query_all(sql("PRAGMA foreign_key_check", vec![]))
+        .query_all_raw(sql("PRAGMA foreign_key_check", vec![]))
         .await
         .unwrap();
     assert!(violations.is_empty());
@@ -96,7 +96,7 @@ async fn invalid_graph_and_unknown_versions_leave_no_revision() {
 
     let count: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM graph_revisions WHERE graph_id = ?",
             vec![graph.id.into()],
         ))

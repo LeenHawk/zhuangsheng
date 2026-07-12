@@ -21,7 +21,7 @@ pub(crate) async fn load_registered_tool<C: ConnectionTrait>(
     tool_id: &str,
     version: &str,
 ) -> StorageResult<RegisteredToolView> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT descriptor_json, schema_bundle_object_id, descriptor_digest, implementation_digest, executor_key, enabled, created_at, updated_at FROM tool_registry_entries WHERE tool_id = ? AND tool_version = ?",
         vec![tool_id.into(), version.into()],
     )).await?.ok_or_else(|| StorageError::NotFound {

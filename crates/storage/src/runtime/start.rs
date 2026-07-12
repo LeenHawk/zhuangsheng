@@ -231,7 +231,7 @@ async fn find_existing_run<C: ConnectionTrait>(
     digest: &str,
 ) -> StorageResult<Option<RunView>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT id, request_digest FROM graph_runs WHERE request_idempotency_scope = ? AND request_idempotency_key = ?",
             vec![scope.into(), key.into()],
         ))

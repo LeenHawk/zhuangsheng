@@ -1,12 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde_json::Value;
-
 use crate::graph::{LlmNodeExecutionSnapshot, ToolApprovalPolicy, ToolGrant};
 
 use super::{
     ResolvedToolDescriptor, ToolRegistryEntrySnapshot, ToolRegistrySnapshot,
-    ir::{HostedToolDescriptorIr, MetadataValue, ToolDescriptorIr},
+    ir::ToolDescriptorIr,
     request_builder::{LlmRequestBuildError, ResolvedRequestTool},
     validate_tool_grant,
 };
@@ -132,79 +130,10 @@ fn validate_descriptor(
     Ok(())
 }
 
-pub(super) fn resolve_hosted_tools(
-    execution: &LlmNodeExecutionSnapshot,
-    approved: &BTreeSet<String>,
-) -> Result<Vec<HostedToolDescriptorIr>, LlmRequestBuildError> {
-    let mut output = Vec::with_capacity(execution.hosted_tools.len());
-    for binding in &execution.hosted_tools {
-        if binding.operation_key != execution.operation.operation_key {
-            return Err(LlmRequestBuildError::new(
-                "hosted_tool_operation_mismatch",
-                "hosted tool operation does not match the pinned generation operation",
-            ));
-        }
-        if binding.effect.requires_approval && !approved.contains(&binding.binding_id) {
-            return Err(LlmRequestBuildError::new(
-                "hosted_tool_approval_required",
-                format!(
-                    "hosted tool requires approval before exposure: {}",
-                    binding.binding_id
-                ),
-            ));
-        }
-        let mut config = BTreeMap::new();
-        for (key, value) in &binding.model_facing_config {
-            if sensitive_name(key) {
-                return Err(LlmRequestBuildError::new(
-                    "hosted_tool_config_unsafe",
-                    "hosted tool config contains a sensitive field name",
-                ));
-            }
-            config.insert(key.clone(), metadata_value(value)?);
-        }
-        output.push(HostedToolDescriptorIr {
-            binding_id: binding.binding_id.clone(),
-            hosted_kind: binding.hosted_kind.clone(),
-            config,
-        });
-    }
-    Ok(output)
-}
-
-fn metadata_value(value: &Value) -> Result<MetadataValue, LlmRequestBuildError> {
-    match value {
-        Value::Null => Ok(MetadataValue::Null),
-        Value::Bool(value) => Ok(MetadataValue::Boolean(*value)),
-        Value::Number(value) => Ok(MetadataValue::Number(value.clone())),
-        Value::String(value) if value.len() <= 4096 => Ok(MetadataValue::String(value.clone())),
-        Value::String(_) | Value::Array(_) | Value::Object(_) => Err(LlmRequestBuildError::new(
-            "hosted_tool_config_invalid",
-            "hosted tool model-facing config must contain bounded scalar values",
-        )),
-    }
-}
-
 fn valid_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
-}
-
-fn sensitive_name(value: &str) -> bool {
-    let name = value.to_ascii_lowercase();
-    matches!(
-        name.as_str(),
-        "authorization"
-            | "proxy-authorization"
-            | "cookie"
-            | "set-cookie"
-            | "x-api-key"
-            | "api-key"
-            | "host"
-    ) || ["token", "secret", "credential", "signature"]
-        .iter()
-        .any(|needle| name.contains(needle))
 }

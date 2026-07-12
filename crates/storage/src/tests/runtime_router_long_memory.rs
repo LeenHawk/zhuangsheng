@@ -118,7 +118,7 @@ async fn long_term_scope_phantom_triggers_router_reconcile() {
         .await,
         1
     );
-    let tokens = store.db.query_all(sql(
+    let tokens = store.db.query_all_raw(sql(
         "SELECT scope_snapshot_token FROM node_bound_read_results WHERE binding_id = 'lore-read' ORDER BY scope_snapshot_token",
         vec![],
     )).await.unwrap();

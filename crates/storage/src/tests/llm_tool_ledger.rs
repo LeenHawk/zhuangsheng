@@ -29,7 +29,7 @@ async fn executable_tool_calls_are_fenced_replayed_and_not_digest_deduplicated()
     let now = now_ms();
     let snapshot_ref = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -113,7 +113,7 @@ async fn executable_tool_calls_are_fenced_replayed_and_not_digest_deduplicated()
         .unwrap();
     let model_response_ref = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT response_object_id FROM model_calls WHERE id = 'model-call-1'",
             vec![],
         ))
@@ -265,7 +265,7 @@ async fn executable_tool_calls_are_fenced_replayed_and_not_digest_deduplicated()
         .unwrap();
     let first_output_ref = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT output_object_id FROM tool_calls WHERE id = 'tool-call-1'",
             vec![],
         ))
@@ -319,7 +319,7 @@ async fn executable_tool_calls_are_fenced_replayed_and_not_digest_deduplicated()
         .unwrap();
     let rows = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT id, call_index, call_digest FROM tool_calls ORDER BY call_index",
             vec![],
         ))
@@ -342,7 +342,7 @@ async fn executable_tool_calls_are_fenced_replayed_and_not_digest_deduplicated()
     assert_eq!(rows[1].try_get::<i64>("", "call_index").unwrap(), 1);
     let events: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM run_events WHERE event_type LIKE 'llm.tool.%'",
             vec![],
         ))

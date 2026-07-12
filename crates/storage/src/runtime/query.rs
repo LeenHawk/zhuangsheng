@@ -14,7 +14,7 @@ pub(super) async fn load_run<C: ConnectionTrait>(
     run_id: &str,
 ) -> StorageResult<RunView> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT r.id, r.graph_revision_id, r.status, r.control_epoch, r.context_id, r.branch_id, r.input_commit_id, r.run_input_object_id, r.output_commit_id, r.deadline_at, r.created_at, r.updated_at, e.next_seq - 1 AS last_durable_seq FROM graph_runs r JOIN run_event_counters e ON e.run_id = r.id WHERE r.id = ?",
             vec![run_id.into()],
         ))

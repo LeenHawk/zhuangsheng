@@ -58,7 +58,7 @@ pub(super) async fn prepare_memory_search_setup(store: &SqliteStore) -> MemorySe
     let now = now_ms();
     let snapshot_ref: String = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -139,7 +139,7 @@ pub(super) async fn prepare_memory_search_setup(store: &SqliteStore) -> MemorySe
         .unwrap();
     let model_response_ref: String = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT response_object_id FROM model_calls WHERE id = 'model-call-1'",
             vec![],
         ))

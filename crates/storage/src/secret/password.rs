@@ -72,7 +72,7 @@ impl SqliteStore {
             rewrap_header(&header, new_password, &active.data_key, now)
         })?;
         let updated = transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE secret_store_headers SET header_json = ?, updated_at = ? WHERE singleton = 1 AND store_id = ? AND updated_at = ?",
                 vec![
                     canonical::to_string(&updated_header)?.into(),

@@ -66,7 +66,7 @@ pub(super) async fn object_metadata<C: ConnectionTrait>(
     object_id: &str,
 ) -> StorageResult<(String, i64)> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT content_hash, byte_size FROM content_objects WHERE id = ? AND lifecycle = 'live'",
             vec![object_id.into()],
         ))

@@ -147,7 +147,7 @@ async fn load_history<C: ConnectionTrait>(
             base_found = true;
             before_base = false;
         }
-        let row = connection.query_one(sql(
+        let row = connection.query_one_raw(sql(
             "SELECT v.patch_object_id, p.parent_commit_id FROM version_commits v LEFT JOIN commit_parents p ON p.commit_id = v.id AND p.parent_order = 0 WHERE v.id = ? AND v.aggregate_kind = 'working_context'",
             vec![commit_id.clone().into()],
         )).await?.ok_or_else(|| StorageError::Integrity("context commit ancestry is broken".into()))?;
@@ -186,7 +186,7 @@ async fn find_existing<C: ConnectionTrait>(
     patch_hash: &str,
 ) -> StorageResult<Option<ContextCommitView>> {
     let patch = &command.patch;
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT v.id, v.origin_run_id, v.origin_node_instance_id, c.content_hash FROM version_commits v LEFT JOIN content_objects c ON c.id = v.patch_object_id WHERE v.aggregate_kind = 'working_context' AND v.aggregate_id = ? AND v.lineage_key = ? AND v.operation_id = ?",
         vec![patch.aggregate_id.clone().into(), patch.lineage_key.clone().into(), patch.operation_id.clone().into()],
     )).await?;
@@ -206,7 +206,7 @@ async fn find_existing<C: ConnectionTrait>(
 
 async fn next_sequence<C: ConnectionTrait>(connection: &C, head: &str) -> StorageResult<i64> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT sequence_no FROM version_commits WHERE id = ?",
             vec![head.into()],
         ))
@@ -227,11 +227,11 @@ async fn insert_commit<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let patch = &command.patch;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO version_commits (id, aggregate_kind, aggregate_id, lineage_key, sequence_no, operation_id, patch_object_id, schema_version, policy_version, author_kind, author_id, origin_run_id, origin_node_instance_id, created_at) VALUES (?, 'working_context', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         vec![commit_id.into(), patch.aggregate_id.clone().into(), patch.lineage_key.clone().into(), sequence.into(), patch.operation_id.clone().into(), patch_object_id.into(), i64::from(patch.schema_version).into(), i64::from(patch.policy_version).into(), actor_kind(patch.author.kind).into(), patch.author.id.clone().into(), command.origin_run_id.clone().into(), command.origin_node_instance_id.clone().into(), now.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO commit_parents (commit_id, parent_commit_id, parent_order) VALUES (?, ?, 0)",
         vec![commit_id.into(), parent_commit_id.into()],
     )).await?;
@@ -246,14 +246,14 @@ async fn advance_projection<C: ConnectionTrait>(
     projection: &str,
     now: i64,
 ) -> StorageResult<()> {
-    let branch = connection.execute(sql(
+    let branch = connection.execute_raw(sql(
         "UPDATE context_branches SET head_commit_id = ?, updated_at = ? WHERE context_id = ? AND id = ? AND head_commit_id = ? AND status = 'active'",
         vec![new_head.into(), now.into(), patch.aggregate_id.clone().into(), patch.lineage_key.clone().into(), old_head.into()],
     )).await?;
     if branch.rows_affected() != 1 {
         return Err(StorageError::Conflict("context_head"));
     }
-    let materialized = connection.execute(sql(
+    let materialized = connection.execute_raw(sql(
         "UPDATE materialized_projections SET head_commit_id = ?, projection_json = ?, projection_object_id = NULL, schema_version = ?, updated_at = ? WHERE aggregate_kind = 'working_context' AND aggregate_id = ? AND lineage_key = ? AND head_commit_id = ?",
         vec![new_head.into(), projection.into(), i64::from(patch.schema_version).into(), now.into(), patch.aggregate_id.clone().into(), patch.lineage_key.clone().into(), old_head.into()],
     )).await?;
@@ -272,7 +272,7 @@ async fn bind_origin<C: ConnectionTrait>(
     let Some(run_id) = &command.origin_run_id else {
         return Ok(());
     };
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE graph_runs SET output_commit_id = ?, updated_at = ? WHERE id = ? AND context_id = ? AND branch_id = ?",
         vec![commit_id.into(), now.into(), run_id.clone().into(), command.patch.aggregate_id.clone().into(), command.patch.lineage_key.clone().into()],
     )).await?;
@@ -280,12 +280,12 @@ async fn bind_origin<C: ConnectionTrait>(
         return Err(StorageError::Conflict("run_context_binding"));
     }
     if let Some(instance_id) = &command.origin_node_instance_id {
-        let row = connection.query_one(sql(
+        let row = connection.query_one_raw(sql(
             "SELECT COALESCE(MAX(output_order), 0) + 1 AS next_order FROM node_output_commits WHERE node_instance_id = ?",
             vec![instance_id.clone().into()],
         )).await?.expect("aggregate query returns a row");
         let order: i64 = row.try_get("", "next_order")?;
-        let linked = connection.execute(sql(
+        let linked = connection.execute_raw(sql(
             "INSERT INTO node_output_commits (node_instance_id, commit_id, output_order) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM node_instances WHERE id = ? AND run_id = ?)",
             vec![instance_id.clone().into(), commit_id.into(), order.into(), instance_id.clone().into(), run_id.clone().into()],
         )).await?;
@@ -302,7 +302,7 @@ async fn add_commit_ref<C: ConnectionTrait>(
     commit_id: &str,
     now: i64,
 ) -> StorageResult<()> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'version_commit', ?, 'patch', ?)",
         vec![object_id.into(), commit_id.into(), now.into()],
     )).await?;
@@ -317,23 +317,23 @@ async fn append_domain_event<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let patch = &command.patch;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT OR IGNORE INTO domain_event_counters (aggregate_kind, aggregate_id, lineage_key, next_seq) VALUES ('working_context', ?, ?, 1)",
         vec![patch.aggregate_id.clone().into(), patch.lineage_key.clone().into()],
     )).await?;
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT next_seq FROM domain_event_counters WHERE aggregate_kind = 'working_context' AND aggregate_id = ? AND lineage_key = ?",
         vec![patch.aggregate_id.clone().into(), patch.lineage_key.clone().into()],
     )).await?.expect("domain event counter exists");
     let event_seq: i64 = row.try_get("", "next_seq")?;
-    let updated = connection.execute(sql(
+    let updated = connection.execute_raw(sql(
         "UPDATE domain_event_counters SET next_seq = next_seq + 1 WHERE aggregate_kind = 'working_context' AND aggregate_id = ? AND lineage_key = ? AND next_seq = ?",
         vec![patch.aggregate_id.clone().into(), patch.lineage_key.clone().into(), event_seq.into()],
     )).await?;
     if updated.rows_affected() != 1 {
         return Err(StorageError::Conflict("domain_event_sequence"));
     }
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO domain_events (id, aggregate_kind, aggregate_id, lineage_key, seq, event_type, schema_version, payload_json, created_at) VALUES (?, 'working_context', ?, ?, ?, 'context.commit.created', 1, ?, ?)",
         vec![new_id("domain_event").into(), patch.aggregate_id.clone().into(), patch.lineage_key.clone().into(), event_seq.into(), canonical::to_string(&json!({"schemaVersion":1,"commitId":commit_id,"sequenceNo":sequence,"operationId":patch.operation_id}))?.into(), now.into()],
     )).await?;

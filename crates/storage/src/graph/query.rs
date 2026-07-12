@@ -11,7 +11,7 @@ impl SqliteStore {
 
     pub async fn list_graphs(&self) -> StorageResult<Vec<GraphView>> {
         self.db
-            .query_all(sql(
+            .query_all_raw(sql(
                 "SELECT id, name, created_at, updated_at FROM graphs ORDER BY created_at, id",
                 vec![],
             ))

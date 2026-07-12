@@ -25,7 +25,7 @@ pub(super) async fn load_existing<C: ConnectionTrait>(
     retry_json: &str,
 ) -> StorageResult<Option<PreparedCountCall>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT cc.id AS count_call_id, cc.originating_attempt_id, cc.channel_id, cc.channel_revision_id, cc.model_id, cc.local_counter_id, cc.local_counter_version, cc.fallback_policy_version, cc.safety_margin_tokens, cc.count_execution_pin_digest, cc.trim_candidate_object_id, cc.trim_candidate_digest, cc.request_digest, cc.request_object_id, cc.status AS count_status, e.id AS effect_id, e.classification, e.idempotency_key, e.retry_policy_json, e.status AS effect_status, ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status FROM count_calls cc JOIN effects e ON e.count_call_id = cc.id JOIN effect_attempts ea ON ea.effect_id = e.id AND ea.attempt_no = 1 WHERE cc.node_instance_id = ? AND cc.count_ordinal = ?",
             vec![
                 command.node_instance_id.clone().into(),
@@ -123,7 +123,7 @@ pub(super) async fn append_count_event<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT run_id FROM node_instances WHERE id = ?",
             vec![node_instance_id.into()],
         ))

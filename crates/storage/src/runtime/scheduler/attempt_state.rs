@@ -26,7 +26,7 @@ pub(super) async fn load_attempt<C: ConnectionTrait>(
     connection: &C,
     attempt_id: &str,
 ) -> StorageResult<AttemptState> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT a.status, a.worker_id, a.lease_fence, a.run_control_epoch, a.result_idempotency_key, a.lease_until, a.deadline_at AS attempt_deadline, ni.id AS node_instance_id, ni.run_id, ni.node_id, ni.graph_revision_id, ni.inputs_object_id, r.status AS run_status, r.control_epoch AS current_control_epoch, r.drain_epoch, r.deadline_at AS run_deadline FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE a.id = ?",
         vec![attempt_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound { kind: "node_attempt", id: attempt_id.into() })?;

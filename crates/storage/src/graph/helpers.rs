@@ -33,7 +33,7 @@ pub async fn find_receipt<C: ConnectionTrait>(
     key: &str,
 ) -> StorageResult<Option<Receipt>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT request_digest, result_object_id FROM application_command_receipts WHERE scope = ? AND idempotency_key = ?",
             vec![scope.into(), key.into()],
         ))
@@ -60,7 +60,7 @@ pub async fn load_object_bytes<C: ConnectionTrait>(
     id: &str,
 ) -> StorageResult<Vec<u8>> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT inline_bytes, content_hash, byte_size FROM content_objects WHERE id = ? AND lifecycle = 'live'",
             vec![id.into()],
         ))
@@ -79,7 +79,7 @@ pub async fn load_object_bytes<C: ConnectionTrait>(
 
 pub async fn load_graph<C: ConnectionTrait>(connection: &C, id: &str) -> StorageResult<GraphView> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT id, name, created_at, updated_at FROM graphs WHERE id = ?",
             vec![id.into()],
         ))
@@ -107,7 +107,7 @@ pub async fn put_inline_object<C: ConnectionTrait>(
 ) -> StorageResult<String> {
     let content_hash = canonical::hash_bytes(bytes);
     if let Some(row) = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT id FROM content_objects WHERE content_hash = ?",
             vec![content_hash.clone().into()],
         ))
@@ -117,7 +117,7 @@ pub async fn put_inline_object<C: ConnectionTrait>(
     }
     let id = new_id("object");
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO content_objects (id, content_hash, byte_size, storage_kind, lifecycle, lifecycle_generation, inline_bytes, created_at) VALUES (?, ?, ?, 'inline', 'live', 0, ?, ?)",
             vec![id.clone().into(), content_hash.into(), (bytes.len() as i64).into(), bytes.to_vec().into(), created_at.into()],
         ))

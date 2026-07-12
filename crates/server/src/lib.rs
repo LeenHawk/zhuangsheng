@@ -2,6 +2,10 @@ mod api;
 pub mod llm_executor;
 mod llm_executor_support;
 pub mod provider;
+mod stream_events;
+mod tool_executor;
+
+pub use stream_events::{EphemeralLlmStreamEvent, StreamEventHub};
 
 use std::sync::Arc;
 
@@ -21,25 +25,29 @@ struct Health {
     status: &'static str,
 }
 
-pub fn app(
-    graph_service: Arc<dyn GraphService>,
-    channel_service: Arc<dyn ChannelService>,
-    preset_service: Arc<dyn ContextPresetService>,
-    context_service: Arc<dyn ContextService>,
-    memory_service: Arc<dyn MemoryService>,
-    runtime_service: Arc<dyn RuntimeService>,
-    secret_service: Arc<dyn SecretStoreService>,
-    tool_registry_service: Arc<dyn ToolRegistryService>,
-) -> Router {
+pub struct AppServices {
+    pub graph: Arc<dyn GraphService>,
+    pub channel: Arc<dyn ChannelService>,
+    pub preset: Arc<dyn ContextPresetService>,
+    pub context: Arc<dyn ContextService>,
+    pub memory: Arc<dyn MemoryService>,
+    pub runtime: Arc<dyn RuntimeService>,
+    pub secret: Arc<dyn SecretStoreService>,
+    pub tool_registry: Arc<dyn ToolRegistryService>,
+    pub stream_events: StreamEventHub,
+}
+
+pub fn app(services: AppServices) -> Router {
     let state = AppState {
-        graph_service,
-        channel_service,
-        preset_service,
-        context_service,
-        memory_service,
-        runtime_service,
-        secret_service,
-        tool_registry_service,
+        graph_service: services.graph,
+        channel_service: services.channel,
+        preset_service: services.preset,
+        context_service: services.context,
+        memory_service: services.memory,
+        runtime_service: services.runtime,
+        secret_service: services.secret,
+        tool_registry_service: services.tool_registry,
+        stream_events: services.stream_events,
     };
     Router::new()
         .route(

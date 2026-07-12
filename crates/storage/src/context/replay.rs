@@ -40,7 +40,7 @@ pub(crate) async fn reconstruct<C: ConnectionTrait>(
                 "context replay exceeds history limit".into(),
             ));
         }
-        let row = connection.query_one(sql(
+        let row = connection.query_one_raw(sql(
             "SELECT v.aggregate_id, v.lineage_key, v.patch_object_id, v.initial_snapshot_object_id, s.snapshot_object_id AS version_snapshot_id, s.schema_version AS snapshot_schema_version, s.checksum, p.parent_commit_id FROM version_commits v LEFT JOIN version_snapshots s ON s.commit_id = v.id LEFT JOIN commit_parents p ON p.commit_id = v.id AND p.parent_order = 0 WHERE v.id = ? AND v.aggregate_kind = 'working_context'",
             vec![current.clone().into()],
         )).await?.ok_or_else(|| StorageError::NotFound {
@@ -160,7 +160,7 @@ impl SqliteStore {
             return Err(StorageError::Conflict("context_projection_identity"));
         }
         let projection = canonical::to_string(&reconstructed.value)?;
-        let updated = transaction.execute(sql(
+        let updated = transaction.execute_raw(sql(
             "UPDATE materialized_projections SET projection_json = ?, projection_object_id = NULL, schema_version = 1, updated_at = ? WHERE aggregate_kind = 'working_context' AND aggregate_id = ? AND lineage_key = ? AND head_commit_id = ? AND EXISTS (SELECT 1 FROM context_branches WHERE context_id = ? AND id = ? AND head_commit_id = ?)",
             vec![projection.into(), now_ms().into(), context_id.into(), branch_id.into(), expected_head.into(), context_id.into(), branch_id.into(), expected_head.into()],
         )).await?;

@@ -43,7 +43,7 @@ async fn fifo_input_to_output_completes_once() {
     assert_eq!(count(&store, "run_output_values").await, 1);
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT value_object_id FROM run_output_values WHERE run_id = ? AND output_key = 'reply'",
             vec![run.id.into()],
         ))
@@ -56,7 +56,7 @@ async fn fifo_input_to_output_completes_once() {
 
     let sequences = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT seq FROM run_events WHERE run_id = ? ORDER BY seq",
             vec![completed.id.into()],
         ))
@@ -185,7 +185,7 @@ fn start(revision_id: &str, key: &str, message: &str) -> StartRunCommand {
 async fn count(store: &crate::SqliteStore, table: &str) -> i64 {
     store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             &format!("SELECT COUNT(*) AS count FROM {table}"),
             vec![],
         ))

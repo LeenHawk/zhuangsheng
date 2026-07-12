@@ -45,7 +45,7 @@ impl SqliteStore {
             now,
         )
         .await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO context_presets (id, name, head_version_id, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)",
             vec![id.clone().into(), name.clone().into(), now.into(), now.into()],
         )).await?;
@@ -62,14 +62,14 @@ impl SqliteStore {
     }
 
     pub async fn list_context_presets(&self) -> StorageResult<Vec<ContextPresetView>> {
-        self.db.query_all(sql(
+        self.db.query_all_raw(sql(
             "SELECT id, name, head_version_id, created_at, updated_at FROM context_presets ORDER BY created_at, id",
             vec![],
         )).await?.iter().map(preset_from_row).collect()
     }
 
     pub async fn get_context_preset(&self, preset_id: &str) -> StorageResult<ContextPresetView> {
-        let row = self.db.query_one(sql(
+        let row = self.db.query_one_raw(sql(
             "SELECT id, name, head_version_id, created_at, updated_at FROM context_presets WHERE id = ?",
             vec![preset_id.into()],
         )).await?.ok_or_else(|| StorageError::NotFound { kind: "context_preset", id: preset_id.into() })?;
@@ -109,7 +109,7 @@ impl SqliteStore {
             return Ok(result);
         }
         let row = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT head_version_id FROM context_presets WHERE id = ?",
                 vec![command.preset_id.clone().into()],
             ))
@@ -134,12 +134,12 @@ impl SqliteStore {
             now,
         )
         .await?;
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO context_preset_versions (id, preset_id, version_no, semantic_policy_version, spec_json, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             vec![id.clone().into(), command.preset_id.clone().into(), (version_no as i64).into(), (policy.semantic_policy_version as i64).into(), canonical_json(&spec)?.into(), content_hash.clone().into(), now.into()],
         )).await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE context_presets SET head_version_id = ?, updated_at = ? WHERE id = ?",
                 vec![
                     id.clone().into(),
@@ -192,7 +192,7 @@ async fn next_version_no<C: ConnectionTrait>(
     connection: &C,
     preset_id: &str,
 ) -> StorageResult<u64> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT COALESCE(MAX(version_no), 0) + 1 AS next_no FROM context_preset_versions WHERE preset_id = ?",
         vec![preset_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("missing preset version sequence".into()))?;

@@ -53,7 +53,7 @@ impl SqliteStore {
             MemoryProposalDecision::Approve => MemoryProposalStatus::Approved,
             MemoryProposalDecision::Reject => MemoryProposalStatus::Rejected,
         };
-        let updated = transaction.execute(sql(
+        let updated = transaction.execute_raw(sql(
             "UPDATE memory_change_proposals SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
             vec![proposal_status(next).into(), now.into(), command.proposal_id.clone().into(), proposal_status(command.expected_status).into()],
         )).await?;
@@ -64,7 +64,7 @@ impl SqliteStore {
         if next == MemoryProposalStatus::Rejected
             && proposal.change_type == MemoryProposalChangeType::Create
         {
-            let discarded = transaction.execute(sql(
+            let discarded = transaction.execute_raw(sql(
                 "UPDATE memory_records SET status = 'discarded', updated_at = ? WHERE id = ? AND status = 'reserved' AND head_commit_id IS NULL",
                 vec![now.into(), proposal.memory_id.clone().into()],
             )).await?;
@@ -96,12 +96,12 @@ async fn insert_transition<C: ConnectionTrait>(
     next: MemoryProposalStatus,
     now: i64,
 ) -> StorageResult<()> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT COALESCE(MAX(transition_no), 0) + 1 AS next_no FROM memory_proposal_transitions WHERE proposal_id = ?",
         vec![command.proposal_id.clone().into()],
     )).await?.expect("transition aggregate returns a row");
     let number: i64 = row.try_get("", "next_no")?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO memory_proposal_transitions (id, proposal_id, transition_no, from_status, to_status, actor_kind, actor_id, command_idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         vec![new_id("memtransition").into(), command.proposal_id.clone().into(), number.into(), proposal_status(command.expected_status).into(), proposal_status(next).into(), actor_kind(command.actor.kind).into(), command.actor.id.clone().into(), command.idempotency_key.clone().into(), now.into()],
     )).await?;

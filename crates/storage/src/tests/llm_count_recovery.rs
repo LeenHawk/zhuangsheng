@@ -25,7 +25,7 @@ async fn expired_provider_count_reuses_logical_call_via_reconcile() {
     let now = now_ms();
     let snapshot_ref = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -116,14 +116,14 @@ async fn expired_provider_count_reuses_logical_call_via_reconcile() {
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_attempts SET lease_until = ? WHERE id = ?",
             vec![now.into(), claimed.attempt_id.clone().into()],
         ))
         .await
         .unwrap();
     assert_eq!(store.recover_expired_leases(now + 2).await.unwrap(), 1);
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT cc.status AS count_status, ea.status AS attempt_status, (SELECT invocation_kind FROM node_attempts WHERE node_instance_id = cc.node_instance_id AND attempt_no = 2) AS replacement_kind FROM count_calls cc JOIN effects e ON e.count_call_id = cc.id JOIN effect_attempts ea ON ea.effect_id = e.id WHERE cc.id = 'recovery-count-call'",
         vec![],
     )).await.unwrap().unwrap();

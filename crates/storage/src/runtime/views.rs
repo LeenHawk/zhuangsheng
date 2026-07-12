@@ -20,7 +20,7 @@ impl SqliteStore {
     pub async fn get_run_outputs(&self, run_id: &str) -> StorageResult<RunOutputsView> {
         let row = self
             .db
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT graph_revision_id FROM graph_runs WHERE id = ?",
                 vec![run_id.into()],
             ))
@@ -33,7 +33,7 @@ impl SqliteStore {
         let revision = load_revision(&self.db, &revision_id).await?;
         let mut result = BTreeMap::new();
         for contract in &revision.definition.output_contract {
-            let rows = self.db.query_all(sql(
+            let rows = self.db.query_all_raw(sql(
                 "SELECT o.value_object_id, c.content_hash, c.byte_size FROM run_output_values o JOIN content_objects c ON c.id = o.value_object_id WHERE o.run_id = ? AND o.output_key = ? ORDER BY o.output_seq",
                 vec![run_id.into(), contract.key.clone().into()],
             )).await?;
@@ -83,7 +83,7 @@ impl SqliteStore {
     ) -> StorageResult<Vec<DurableRunEventView>> {
         self.get_run(run_id).await?;
         let limit = i64::from(limit.clamp(1, 500));
-        let rows = self.db.query_all(sql(
+        let rows = self.db.query_all_raw(sql(
             "SELECT id, run_id, seq, event_type, schema_version, created_at, node_instance_id, attempt_id, importance, payload_json, payload_object_id FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?",
             vec![run_id.into(), i64::try_from(after).unwrap_or(i64::MAX).into(), limit.into()],
         )).await?;
@@ -118,7 +118,7 @@ impl SqliteStore {
     pub async fn load_json_value_bytes(&self, value_ref: &str) -> StorageResult<Vec<u8>> {
         let readable = self
             .db
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT 1 AS present FROM run_output_values WHERE value_object_id = ? LIMIT 1",
                 vec![value_ref.into()],
             ))

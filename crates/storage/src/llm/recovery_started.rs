@@ -44,7 +44,7 @@ pub(crate) async fn recover_started_effects<C: ConnectionTrait>(
     error_object_id: &str,
     now: i64,
 ) -> StorageResult<StartedEffectRecovery> {
-    let rows = connection.query_all(sql(
+    let rows = connection.query_all_raw(sql(
         "SELECT ea.id AS effect_attempt_id, e.id AS effect_id, e.node_instance_id, e.classification, e.model_call_id, e.count_call_id, e.tool_call_id, tc.call_index FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id LEFT JOIN tool_calls tc ON tc.id = e.tool_call_id WHERE ea.invoking_node_attempt_id = ? AND ea.status = 'started' ORDER BY CASE WHEN tc.call_index IS NULL THEN -1 ELSE tc.call_index END, ea.id",
         vec![invoking_attempt_id.into()],
     )).await?;
@@ -58,7 +58,7 @@ pub(crate) async fn recover_started_effects<C: ConnectionTrait>(
     validate_batch(&effects)?;
     let node_instance_id = effects[0].node_instance_id.clone();
     let checkpoint_row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.clone().into()],
         ))
@@ -164,28 +164,28 @@ async fn recover_effect<C: ConnectionTrait>(
     } else {
         "retry_ready"
     };
-    let attempt = connection.execute(sql(
+    let attempt = connection.execute_raw(sql(
         "UPDATE effect_attempts SET status = 'outcome_unknown', error_object_id = ?, finished_at = ? WHERE id = ? AND status = 'started'",
         vec![error_object_id.into(), now.into(), effect.effect_attempt_id.clone().into()],
     )).await?;
     let owner = match &effect.owner {
         StartedOwner::Model(id) => {
             connection
-                .execute(sql(
+                .execute_raw(sql(
                     "UPDATE model_calls SET status = ? WHERE id = ? AND status = 'running'",
                     vec![owner_status.into(), id.clone().into()],
                 ))
                 .await?
         }
         StartedOwner::Count(id) => connection
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE count_calls SET status = 'retry_ready' WHERE id = ? AND status = 'running'",
                 vec![id.clone().into()],
             ))
             .await?,
         StartedOwner::Tool(id) => {
             connection
-                .execute(sql(
+                .execute_raw(sql(
                     "UPDATE tool_calls SET status = ? WHERE id = ? AND status = 'running'",
                     vec![owner_status.into(), id.clone().into()],
                 ))
@@ -197,7 +197,7 @@ async fn recover_effect<C: ConnectionTrait>(
     }
     if requires_coordination
         && connection
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE effects SET status = 'outcome_unknown', completed_at = ? WHERE id = ? AND status = 'pending'",
                 vec![now.into(), effect.effect_id.clone().into()],
             ))

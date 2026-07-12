@@ -11,11 +11,14 @@ use zhuangsheng_core::{
         graph::{ApplyGraphCommand, CreateGraphCommand, UpdateGraphDraftCommand},
         preset::{CreateContextPresetCommand, PublishContextPresetVersionCommand},
     },
-    graph::{DraftNodeKind, GraphDraft, LlmOutputSpec, ToolGrant},
+    graph::{
+        DraftNodeKind, EffectClassification, GraphDraft, HostedToolBinding, LlmNodeStreaming,
+        LlmOutputSpec, StreamingAudience, ToolEffectSpec, ToolGrant,
+    },
     llm::{
-        ChannelCredential, ChannelModel, ChannelModelCatalog, ChannelTransportPolicy,
-        ContentGenerationKind, LlmChannelRevision, LlmChannelRevisionSpec, ModelCapabilities,
-        ModelCatalogPolicy, Operation, OperationKey, SecretRef,
+        ChannelCapability, ChannelCredential, ChannelModel, ChannelModelCatalog,
+        ChannelTransportPolicy, ContentGenerationKind, LlmChannelRevision, LlmChannelRevisionSpec,
+        ModelCapabilities, ModelCatalogPolicy, Operation, OperationKey, SecretRef,
         adapter::WireGenerationRequest,
         context::{
             ContextAssemblyMode, ContextAssemblySpec, ContextBudgetPolicy, ContextBudgetStrategy,
@@ -27,7 +30,12 @@ use zhuangsheng_core::{
     schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
 };
 
+mod hosted_tools;
+mod model_recovery;
+mod output_repair;
 mod secret_wait;
+mod streaming;
+mod tool_recovery;
 mod tool_registry;
 use zhuangsheng_storage::SqliteStore;
 
@@ -119,10 +127,9 @@ async fn scheduler_finalizes_strict_json_output() {
         .run_until_idle(now_ms(), 128)
         .await
         .unwrap();
-    assert_eq!(
-        store.get_run(&run.id).await.unwrap().status,
-        RunStatus::Completed
-    );
+    let view = store.get_run(&run.id).await.unwrap();
+    let events = store.list_run_events(&run.id, 0, 200).await.unwrap();
+    assert_eq!(view.status, RunStatus::Completed, "events: {events:#?}");
     let outputs = store.get_run_outputs(&run.id).await.unwrap();
     assert!(matches!(
         &outputs["reply"].values[0],
@@ -137,6 +144,57 @@ async fn create_llm_graph(
     credential: Option<SecretRef>,
     tool: Option<ToolGrant>,
 ) -> String {
+    create_llm_graph_inner(store, json_output, credential, tool, None, None).await
+}
+
+async fn create_streaming_llm_graph(store: &SqliteStore, persist_chunks: bool) -> String {
+    create_llm_graph_inner(
+        store,
+        false,
+        None,
+        None,
+        None,
+        Some(LlmNodeStreaming {
+            enabled: true,
+            audience: StreamingAudience::Both,
+            persist_chunks,
+        }),
+    )
+    .await
+}
+
+pub(super) async fn create_hosted_llm_graph(store: &SqliteStore) -> String {
+    create_llm_graph_inner(
+        store,
+        false,
+        None,
+        None,
+        Some(HostedToolBinding {
+            binding_id: "search".into(),
+            operation_key: operation(),
+            hosted_kind: "web_search".into(),
+            model_facing_config: [("search_context_size".into(), json!("low"))].into(),
+            resource_scopes: vec!["internet:public".into()],
+            effect: ToolEffectSpec {
+                classification: EffectClassification::Idempotent,
+                operation_key: "hosted.web_search".into(),
+                requires_approval: false,
+            },
+            max_uses_per_model_call: 1,
+        }),
+        None,
+    )
+    .await
+}
+
+async fn create_llm_graph_inner(
+    store: &SqliteStore,
+    json_output: bool,
+    credential: Option<SecretRef>,
+    tool: Option<ToolGrant>,
+    hosted: Option<HostedToolBinding>,
+    streaming: Option<LlmNodeStreaming>,
+) -> String {
     let channel = store
         .create_channel(CreateChannelCommand {
             name: "Fake LLM".into(),
@@ -148,7 +206,12 @@ async fn create_llm_graph(
         .publish_channel_revision(PublishChannelRevisionCommand {
             channel_id: channel.id.clone(),
             expected_head_revision_id: None,
-            spec: channel_spec(credential, tool.is_some()),
+            spec: channel_spec(
+                credential,
+                tool.is_some() || hosted.is_some(),
+                hosted.is_some(),
+                streaming.is_some(),
+            ),
             idempotency_key: "llm-e2e-channel-revision".into(),
         })
         .await
@@ -181,7 +244,15 @@ async fn create_llm_graph(
         .update_graph_draft(UpdateGraphDraftCommand {
             graph_id: graph.graph.id.clone(),
             expected_revision_token: current.revision_token,
-            document: graph_draft(&graph.graph.id, &channel.id, &preset.id, json_output, tool),
+            document: graph_draft(
+                &graph.graph.id,
+                &channel.id,
+                &preset.id,
+                json_output,
+                tool,
+                hosted,
+                streaming,
+            ),
             idempotency_key: "llm-e2e-draft".into(),
         })
         .await
@@ -231,7 +302,12 @@ fn context_spec() -> ContextAssemblySpec {
     }
 }
 
-fn channel_spec(credential: Option<SecretRef>, tool_calling: bool) -> LlmChannelRevisionSpec {
+fn channel_spec(
+    credential: Option<SecretRef>,
+    tool_calling: bool,
+    hosted: bool,
+    streaming: bool,
+) -> LlmChannelRevisionSpec {
     let authenticated = credential.is_some();
     LlmChannelRevisionSpec {
         operation_taxonomy_version: 1,
@@ -254,14 +330,20 @@ fn channel_spec(credential: Option<SecretRef>, tool_calling: bool) -> LlmChannel
                 context_window: Some(16_384),
                 max_output_tokens: Some(2_048),
                 capabilities: ModelCapabilities {
-                    streaming: None,
+                    streaming: streaming.then_some(true),
                     tool_calling: tool_calling.then_some(true),
                     structured_output: Some(true),
                     vision_input: None,
                 },
             }],
         }],
-        capabilities: Vec::new(),
+        capabilities: hosted
+            .then(|| ChannelCapability::HostedTool {
+                operation_key: operation(),
+                hosted_kind: "web_search".into(),
+            })
+            .into_iter()
+            .collect(),
     }
 }
 
@@ -298,6 +380,8 @@ fn graph_draft(
     preset_id: &str,
     json_output: bool,
     tool: Option<ToolGrant>,
+    hosted: Option<HostedToolBinding>,
+    streaming: Option<LlmNodeStreaming>,
 ) -> GraphDraft {
     let mut draft: GraphDraft = serde_json::from_value(json!({
         "graphId":graph_id,
@@ -358,6 +442,28 @@ fn graph_draft(
             })
             .unwrap();
         config.tools.push(tool);
+    }
+    if let Some(hosted) = hosted {
+        let config = draft
+            .nodes
+            .iter_mut()
+            .find_map(|node| match &mut node.kind {
+                DraftNodeKind::Llm { config } => Some(config),
+                _ => None,
+            })
+            .unwrap();
+        config.hosted_tools.push(hosted);
+    }
+    if let Some(streaming) = streaming {
+        let config = draft
+            .nodes
+            .iter_mut()
+            .find_map(|node| match &mut node.kind {
+                DraftNodeKind::Llm { config } => Some(config),
+                _ => None,
+            })
+            .unwrap();
+        config.streaming = Some(streaming);
     }
     draft
 }

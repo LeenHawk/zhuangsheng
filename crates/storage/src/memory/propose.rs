@@ -65,7 +65,7 @@ impl SqliteStore {
             transaction.commit().await?;
             return Ok(view);
         }
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT OR IGNORE INTO memory_scopes (id, revision_no, created_at, updated_at) VALUES (?, 0, ?, ?)",
             vec![command.scope_id.clone().into(), now.into(), now.into()],
         )).await?;
@@ -80,7 +80,7 @@ impl SqliteStore {
             None => None,
         };
         let proposal_id = new_id("memproposal");
-        transaction.execute(sql(
+        transaction.execute_raw(sql(
             "INSERT INTO memory_change_proposals (id, scope_id, memory_id, expected_head_commit_id, change_type, content_object_id, reason, evidence_refs_json, requested_by_kind, requested_by_id, schema_version, policy_version, origin_run_id, origin_node_instance_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_review', ?, ?)",
             vec![proposal_id.clone().into(), command.scope_id.clone().into(), memory_id.into(), command.expected_head_commit_id.clone().into(), change_type.into(), content_id.clone().into(), command.reason.clone().into(), canonical::to_string(&command.evidence_refs)?.into(), actor_kind(command.requested_by.kind).into(), command.requested_by.id.clone().into(), i64::from(command.schema_version).into(), i64::from(command.policy_version).into(), command.origin_run_id.clone().into(), command.origin_node_instance_id.clone().into(), now.into(), now.into()],
         )).await?;
@@ -93,7 +93,7 @@ impl SqliteStore {
         )
         .await?;
         if let Some(content_id) = &content_id {
-            transaction.execute(sql(
+            transaction.execute_raw(sql(
                 "INSERT INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'memory_proposal', ?, 'content', ?)",
                 vec![content_id.clone().into(), proposal_id.clone().into(), now.into()],
             )).await?;
@@ -138,7 +138,7 @@ async fn reserve_memory<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<String> {
     let memory_id = new_id("memory");
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO memory_records (id, scope_id, status, created_at, updated_at) VALUES (?, ?, 'reserved', ?, ?)",
         vec![memory_id.clone().into(), scope_id.into(), now.into(), now.into()],
     )).await?;
@@ -151,7 +151,7 @@ async fn validate_existing_target<C: ConnectionTrait>(
 ) -> StorageResult<String> {
     let memory_id = command.memory_id.as_deref().expect("validated target");
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT scope_id, head_commit_id, status FROM memory_records WHERE id = ?",
             vec![memory_id.into()],
         ))
@@ -179,11 +179,11 @@ async fn insert_initial_transitions<C: ConnectionTrait>(
     actor_id: Option<&str>,
     now: i64,
 ) -> StorageResult<()> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO memory_proposal_transitions (id, proposal_id, transition_no, to_status, actor_kind, actor_id, created_at) VALUES (?, ?, 1, 'proposed', ?, ?, ?)",
         vec![new_id("memtransition").into(), proposal_id.into(), actor_kind.into(), actor_id.map(String::from).into(), now.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO memory_proposal_transitions (id, proposal_id, transition_no, from_status, to_status, actor_kind, actor_id, created_at) VALUES (?, ?, 2, 'proposed', 'awaiting_review', ?, ?, ?)",
         vec![new_id("memtransition").into(), proposal_id.into(), actor_kind.into(), actor_id.map(String::from).into(), now.into()],
     )).await?;

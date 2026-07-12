@@ -64,7 +64,7 @@ async fn attempt_timeout_waits_for_deterministic_retry_timer() {
     );
     let retry = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT due_at, status FROM runtime_timers WHERE kind = 'retry'",
             vec![],
         ))
@@ -206,7 +206,7 @@ fn start(revision_id: &str, key: &str, deadline_at: Option<i64>) -> StartRunComm
 async fn count_where(store: &crate::SqliteStore, table: &str, predicate: &str) -> i64 {
     store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             &format!("SELECT COUNT(*) AS count FROM {table} WHERE {predicate}"),
             vec![],
         ))

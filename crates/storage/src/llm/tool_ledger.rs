@@ -51,7 +51,7 @@ impl SqliteStore {
         }
         validate_model_owner(&transaction, &command).await?;
         let model_count: i64 = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT COUNT(*) AS count FROM tool_calls WHERE model_call_id = ?",
                 vec![command.model_call_id.clone().into()],
             ))
@@ -64,7 +64,7 @@ impl SqliteStore {
             ));
         }
         let total: i64 = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT COUNT(*) AS count FROM tool_calls WHERE node_instance_id = ?",
                 vec![command.node_instance_id.clone().into()],
             ))
@@ -105,7 +105,7 @@ impl SqliteStore {
         let arguments_ref =
             put_inline_object(&transaction, &canonical::to_vec(&material.arguments)?, now).await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO tool_calls (id, node_instance_id, originating_attempt_id, model_call_id, provider_call_id, call_index, binding_id, tool_id, tool_version, call_digest, arguments_object_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?)",
                 vec![
                     command.tool_call_id.clone().into(),
@@ -124,7 +124,7 @@ impl SqliteStore {
             ))
             .await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effects (id, node_instance_id, tool_call_id, effect_kind, classification, operation_key, idempotency_key, retry_policy_json, status, created_at) VALUES (?, ?, ?, 'custom_tool', ?, ?, ?, ?, 'pending', ?)",
                 vec![
                     command.effect_id.clone().into(),
@@ -139,7 +139,7 @@ impl SqliteStore {
             ))
             .await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, 1, 'prepared', ?)",
                 vec![
                     command.effect_attempt_id.clone().into(),
@@ -239,12 +239,12 @@ impl SqliteStore {
             return Err(StorageError::Conflict("tool_effect_status"));
         }
         validate_tool_start_policy(&transaction, &context, &call).await?;
-        let attempt = transaction.execute(sql(
+        let attempt = transaction.execute_raw(sql(
             "UPDATE effect_attempts SET status = 'started', provider_request_id = ?, started_at = ? WHERE id = ? AND status = 'prepared'",
             vec![command.provider_request_id.into(), now.into(), command.effect_attempt_id.clone().into()],
         )).await?;
         let tool = transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE tool_calls SET status = 'running' WHERE id = ? AND status = 'prepared'",
                 vec![call.tool_call_id.clone().into()],
             ))
@@ -285,7 +285,7 @@ async fn validate_model_owner<C: ConnectionTrait>(
     command: &PrepareToolCallCommand,
 ) -> StorageResult<()> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT node_instance_id, status FROM model_calls WHERE id = ?",
             vec![command.model_call_id.clone().into()],
         ))

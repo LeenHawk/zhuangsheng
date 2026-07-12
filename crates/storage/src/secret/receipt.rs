@@ -43,7 +43,7 @@ pub(crate) async fn insert_secret_receipt<C: ConnectionTrait, T: Serialize>(
 ) -> StorageResult<()> {
     let result_object_id = put_inline_object(connection, &canonical::to_vec(result)?, now).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO secret_command_receipts (scope, idempotency_key, command_kind, receipt_key_version, request_hmac, status, result_object_id, unlock_session_id, unlock_process_generation, result_expires_at, created_at, completed_at) VALUES (?, ?, ?, 1, ?, 'completed', ?, ?, ?, ?, ?, ?)",
             vec![
                 scope.into(),
@@ -85,7 +85,7 @@ pub(crate) async fn append_secret_audit<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO secret_store_audit (id, store_id, action, secret_id, result, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             vec![
                 new_id("secretaudit").into(),

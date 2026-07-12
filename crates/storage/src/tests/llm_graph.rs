@@ -157,7 +157,7 @@ async fn graph_apply_resolves_llm_channel_and_preset_heads() {
         .unwrap();
     let row = store
         .db
-        .query_one(crate::graph::helpers::sql(
+        .query_one_raw(crate::graph::helpers::sql(
             "SELECT execution_snapshot_object_id, preset_version_id FROM node_instances WHERE run_id = ? AND node_id = 'generate'",
             vec![run.id.into()],
         ))

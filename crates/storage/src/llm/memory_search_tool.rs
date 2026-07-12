@@ -130,7 +130,7 @@ async fn resolve_search<C: ConnectionTrait>(
             StorageError::Integrity("selected memory record has no content".into())
         })?;
         let object = connection
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT content_hash, lifecycle FROM content_objects WHERE id = ?",
                 vec![content_ref.into()],
             ))
@@ -171,7 +171,7 @@ async fn persist_tool_call<C: ConnectionTrait>(
     resolved: &ResolvedSearch,
     now: i64,
 ) -> StorageResult<()> {
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO tool_calls (id, node_instance_id, originating_attempt_id, model_call_id, provider_call_id, call_index, binding_id, tool_id, tool_version, call_digest, arguments_object_id, output_object_id, status, created_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)",
         vec![
             call.tool_call_id.clone().into(),
@@ -190,7 +190,7 @@ async fn persist_tool_call<C: ConnectionTrait>(
             now.into(),
         ],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO tool_call_bound_read_results (tool_call_id, query_object_id, envelope_object_id, result_digest, scope_snapshot_token, truncated, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         vec![
             call.tool_call_id.clone().into(),
@@ -203,7 +203,7 @@ async fn persist_tool_call<C: ConnectionTrait>(
         ],
     )).await?;
     for (ordinal, record) in resolved.envelope.records.iter().enumerate() {
-        connection.execute(sql(
+        connection.execute_raw(sql(
             "INSERT INTO tool_call_read_set (tool_call_id, memory_id, commit_id, selection_ordinal, selected_content_hash) VALUES (?, ?, ?, ?, ?)",
             vec![
                 call.tool_call_id.clone().into(),

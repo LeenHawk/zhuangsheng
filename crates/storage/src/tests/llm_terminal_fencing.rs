@@ -93,7 +93,7 @@ async fn prepare_effect(store: &SqliteStore) -> EffectSetup {
     let now = now_ms();
     let snapshot_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -153,7 +153,7 @@ async fn assert_terminal_projection(
     checkpoint_status: LlmLogicalCallStatus,
     node_instance_id: &str,
 ) {
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT ea.status AS attempt_status, e.status AS effect_status, mc.status AS model_status, er.resolution_kind FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN model_calls mc ON mc.id = e.model_call_id JOIN effect_resolutions er ON er.effect_attempt_id = ea.id WHERE ea.id = 'effect-attempt-1'",
         vec![],
     )).await.unwrap().unwrap();
@@ -175,7 +175,7 @@ async fn assert_terminal_projection(
     );
     let checkpoint_row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.into()],
         ))

@@ -29,7 +29,7 @@ pub(super) async fn settle_blocker<C: ConnectionTrait>(
         "satisfied"
     };
     let blocker = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE wait_blockers SET status = ?, decision_object_id = ? WHERE wait_id = ? AND blocker_kind = 'effect' AND blocker_id = ? AND status = 'open'",
             vec![
                 blocker_status.into(),
@@ -69,7 +69,7 @@ async fn resume_instance<C: ConnectionTrait>(
     }))?;
     let response_object_id = put_inline_object(connection, &response, now).await?;
     let wait = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_waits SET status = 'resolved', response_object_id = ?, accepted_delivery_id = ?, resolved_at = ? WHERE id = ? AND status = 'open'",
             vec![
                 response_object_id.clone().into(),
@@ -80,7 +80,7 @@ async fn resume_instance<C: ConnectionTrait>(
         ))
         .await?;
     let instance = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_instances SET status = 'ready', updated_at = ? WHERE id = ? AND status = 'waiting'",
             vec![now.into(), context.node_instance_id.clone().into()],
         ))
@@ -89,7 +89,7 @@ async fn resume_instance<C: ConnectionTrait>(
         return Err(StorageError::Conflict("effect_wait_settle"));
     }
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET open_waits = open_waits - 1 WHERE run_id = ? AND open_waits > 0",
             vec![context.run_id.clone().into()],
         ))
@@ -146,7 +146,7 @@ async fn create_resume_attempt<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<String> {
     let row = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT a.executor_object_id, a.retry_ordinal, ni.graph_revision_id, COALESCE(MAX(all_attempts.attempt_no), 0) AS max_attempt_no FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id LEFT JOIN node_attempts all_attempts ON all_attempts.node_instance_id = ni.id WHERE a.id = ? GROUP BY a.id, ni.id",
             vec![context.wait_attempt_id.clone().into()],
         ))
@@ -167,7 +167,7 @@ async fn create_resume_attempt<C: ConnectionTrait>(
     }
     let attempt_id = new_id("attempt");
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) VALUES (?, ?, ?, ?, 'resume', 'queued', ?, 0, ?, ?)",
             vec![
                 attempt_id.clone().into(),
@@ -184,7 +184,7 @@ async fn create_resume_attempt<C: ConnectionTrait>(
         .await?;
     copy_attempt_reads(connection, &context.wait_attempt_id, &attempt_id, now).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET total_attempts = total_attempts + 1 WHERE run_id = ?",
             vec![context.run_id.clone().into()],
         ))
@@ -199,7 +199,7 @@ async fn abort_run<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let updated = connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE graph_runs SET status = 'cancelled', control_epoch = control_epoch + 1, drain_epoch = NULL, finished_at = ?, updated_at = ? WHERE id = ? AND control_epoch = ? AND status NOT IN ('completed','failed','cancelled')",
             vec![
                 now.into(),
@@ -221,29 +221,29 @@ async fn abort_run<C: ConnectionTrait>(
         now,
     )
     .await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE node_attempts SET status = 'cancelled', worker_id = NULL, lease_until = NULL, finished_at = ? WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('queued','leased','running','waiting')",
         vec![now.into(), context.run_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'cancelled', updated_at = ? WHERE run_id = ? AND status IN ('ready','running','waiting')",
         vec![now.into(), context.run_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE node_waits SET status = 'cancelled', resolved_at = ? WHERE run_id = ? AND status = 'open'",
         vec![now.into(), context.run_id.clone().into()],
     )).await?;
     connection
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE run_execution_counters SET open_waits = 0 WHERE run_id = ?",
             vec![context.run_id.clone().into()],
         ))
         .await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE run_id = ? AND status IN ('pending','claimed')",
         vec![context.run_id.clone().into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE runtime_timers SET status = 'cancelled' WHERE run_id = ? AND status IN ('pending','ready')",
         vec![context.run_id.clone().into()],
     )).await?;

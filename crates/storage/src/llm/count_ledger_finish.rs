@@ -321,15 +321,15 @@ async fn finish_rows<C: ConnectionTrait>(
     outcome: &StoredCountOutcome,
     now: i64,
 ) -> StorageResult<()> {
-    let attempt = connection.execute(crate::graph::helpers::sql(
+    let attempt = connection.execute_raw(crate::graph::helpers::sql(
         "UPDATE effect_attempts SET status = ?, result_object_id = ?, error_object_id = ?, finished_at = ? WHERE id = ? AND status IN ('prepared','started')",
         vec![outcome.attempt_status.into(), outcome.result_object_id.clone().into(), outcome.error_object_id.clone().into(), now.into(), effect_attempt_id.into()],
     )).await?;
-    let effect = connection.execute(crate::graph::helpers::sql(
+    let effect = connection.execute_raw(crate::graph::helpers::sql(
         "UPDATE effects SET status = ?, result_object_id = ?, completed_at = ? WHERE id = ? AND status = 'pending'",
         vec![outcome.effect_status.into(), outcome.result_object_id.clone().into(), outcome.effect_completed.then_some(now).into(), call.effect_id.clone().into()],
     )).await?;
-    let count = connection.execute(crate::graph::helpers::sql(
+    let count = connection.execute_raw(crate::graph::helpers::sql(
         "UPDATE count_calls SET status = ?, result_source = ?, result_object_id = ?, finished_at = ? WHERE id = ? AND status IN ('prepared','running')",
         vec![outcome.count_status.into(), outcome.source.map(source_name).into(), outcome.result_object_id.clone().into(), now.into(), call.count_call_id.clone().into()],
     )).await?;

@@ -88,7 +88,7 @@ async fn encrypted_secret_lifecycle_is_session_bound_and_restart_locked() {
         wrong,
         Err(StorageError::SecretStore(SecretStoreError::UnlockFailed))
     ));
-    let failed_receipts = store.db.query_one(sql(
+    let failed_receipts = store.db.query_one_raw(sql(
         "SELECT COUNT(*) AS count FROM secret_command_receipts WHERE idempotency_key = 'unlock-wrong'",
         vec![],
     )).await.unwrap().unwrap();
@@ -191,7 +191,7 @@ async fn ciphertext_tampering_fails_closed() {
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE secret_records SET ciphertext = X'00010203' WHERE id = 'primary-api-key'",
             vec![],
         ))

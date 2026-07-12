@@ -26,7 +26,7 @@ pub(crate) async fn search_in<C: ConnectionTrait>(
 ) -> StorageResult<MemorySearchView> {
     validate(command)?;
     let scope = connection
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT revision_no FROM memory_scopes WHERE id = ?",
             vec![command.scope_id.clone().into()],
         ))
@@ -77,12 +77,12 @@ async fn candidates<C: ConnectionTrait>(
     command: &MemorySearchCommand,
 ) -> StorageResult<Vec<String>> {
     let rows = if let Some(text) = command.text.as_deref() {
-        connection.query_all(sql(
+        connection.query_all_raw(sql(
             "SELECT f.memory_id FROM memory_search f JOIN memory_records r ON r.id = f.memory_id WHERE memory_search MATCH ? AND f.scope_id = ? AND r.status IN ('active','obsolete') ORDER BY bm25(memory_search), f.memory_id LIMIT ?",
             vec![fts_query(text).into(), command.scope_id.clone().into(), MAX_CANDIDATES.into()],
         )).await?
     } else {
-        connection.query_all(sql(
+        connection.query_all_raw(sql(
             "SELECT id AS memory_id FROM memory_records WHERE scope_id = ? AND status IN ('active','obsolete') ORDER BY id LIMIT ?",
             vec![command.scope_id.clone().into(), MAX_CANDIDATES.into()],
         )).await?

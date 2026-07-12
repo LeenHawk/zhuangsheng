@@ -17,7 +17,7 @@ base64 = "0.22"
 chacha20poly1305 = "0.10"
 futures-core = "0.3"
 getrandom = "0.3"
-gproxy-protocol = { path = "samples/gproxy/crates/gproxy-protocol" }
+gproxy-protocol = "2"
 hex = "0.4"
 hkdf = "0.12"
 hmac = "0.12"
@@ -26,8 +26,8 @@ jsonschema = { version = "0.47", default-features = false, features = ["arbitrar
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
 num-bigint = "0.4"
 num-traits = "0.2"
-sea-orm = { version = "1.1", default-features = false, features = ["macros", "runtime-tokio-rustls", "sqlx-sqlite", "with-json"] }
-sea-orm-migration = { version = "1.1", default-features = false, features = ["runtime-tokio-rustls", "sqlx-sqlite"] }
+sea-orm = { version = "2.0.0-rc.42", default-features = false, features = ["macros", "runtime-tokio-rustls", "sqlx-sqlite", "with-json"] }
+sea-orm-migration = { version = "2.0.0-rc.42", default-features = false, features = ["runtime-tokio-rustls", "sqlx-sqlite"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_json_path = "0.7"

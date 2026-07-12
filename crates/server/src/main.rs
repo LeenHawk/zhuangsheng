@@ -13,8 +13,8 @@ use zhuangsheng_core::{
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
 };
-use zhuangsheng_server::app;
 use zhuangsheng_server::llm_executor::LocalLlmExecutor;
+use zhuangsheng_server::{AppServices, StreamEventHub, app};
 use zhuangsheng_storage::SqliteStore;
 
 #[tokio::main]
@@ -37,7 +37,9 @@ async fn main() -> anyhow::Result<()> {
     let runtime_service: Arc<dyn RuntimeService> = store.clone();
     let secret_service: Arc<dyn SecretStoreService> = store.clone();
     let tool_registry_service: Arc<dyn ToolRegistryService> = store.clone();
-    let llm_executor = Arc::new(LocalLlmExecutor::new(store.clone())?);
+    let stream_events = StreamEventHub::new();
+    let llm_executor =
+        Arc::new(LocalLlmExecutor::new(store.clone())?.with_stream_events(stream_events.clone()));
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(
         Scheduler::new(scheduler_store, "server-local-worker").with_llm_executor(llm_executor),
@@ -46,16 +48,17 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(address = %listener.local_addr()?, "server listening");
     axum::serve(
         listener,
-        app(
-            graph_service,
-            channel_service,
-            preset_service,
-            context_service,
-            memory_service,
-            runtime_service,
-            secret_service,
-            tool_registry_service,
-        ),
+        app(AppServices {
+            graph: graph_service,
+            channel: channel_service,
+            preset: preset_service,
+            context: context_service,
+            memory: memory_service,
+            runtime: runtime_service,
+            secret: secret_service,
+            tool_registry: tool_registry_service,
+            stream_events,
+        }),
     )
     .await?;
     Ok(())

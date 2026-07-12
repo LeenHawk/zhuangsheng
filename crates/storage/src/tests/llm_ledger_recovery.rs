@@ -21,7 +21,7 @@ async fn expired_lease_supersedes_prepared_effect_before_reconcile() {
     let now = now_ms();
     let snapshot_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -56,7 +56,7 @@ async fn expired_lease_supersedes_prepared_effect_before_reconcile() {
         .unwrap();
     store
         .db
-        .execute(sql(
+        .execute_raw(sql(
             "UPDATE node_attempts SET lease_until = ? WHERE id = ?",
             vec![(now - 1).into(), claimed.attempt_id.clone().into()],
         ))
@@ -67,7 +67,7 @@ async fn expired_lease_supersedes_prepared_effect_before_reconcile() {
 
     let ledger = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT ea.status AS attempt_status, e.status AS effect_status, mc.status AS model_status FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN model_calls mc ON mc.id = e.model_call_id WHERE ea.id = 'effect-attempt-1'",
             vec![],
         ))
@@ -88,7 +88,7 @@ async fn expired_lease_supersedes_prepared_effect_before_reconcile() {
     );
     let checkpoint_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -107,7 +107,7 @@ async fn expired_lease_supersedes_prepared_effect_before_reconcile() {
     );
     let replacement = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT invocation_kind, status FROM node_attempts WHERE node_instance_id = ? AND attempt_no = 2",
             vec![claimed.node_instance_id.into()],
         ))

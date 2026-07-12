@@ -54,7 +54,7 @@ async fn router_decision_and_selected_emission_are_durable_and_atomic() {
 
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT decision_object_id FROM router_decisions WHERE outcome = 'decision'",
             vec![],
         ))
@@ -141,7 +141,7 @@ async fn router_limit_uses_durable_candidate_visit_before_rules() {
         .run_one(now)
         .await
         .unwrap();
-    store.db.execute(sql(
+    store.db.execute_raw(sql(
         "INSERT INTO router_controls (run_id, node_id, visits, first_visited_at, updated_at) VALUES (?, 'router', 1, ?, ?)",
         vec![run.id.clone().into(), (now - 100).into(), now.into()],
     )).await.unwrap();
@@ -155,7 +155,7 @@ async fn router_limit_uses_durable_candidate_visit_before_rules() {
     );
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT visits, limit_reasons_json FROM router_activation_controls",
             vec![],
         ))
@@ -169,7 +169,7 @@ async fn router_limit_uses_durable_candidate_visit_before_rules() {
     );
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT decision_object_id FROM router_decisions",
             vec![],
         ))
@@ -301,7 +301,7 @@ async fn router_working_context_read_is_pinned_and_exposed_by_alias() {
     );
     let rows = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT commit_id, binding_id FROM node_read_set ORDER BY node_attempt_id",
             vec![],
         ))
@@ -433,7 +433,7 @@ async fn validate_on_commit_reconciles_without_new_visit_or_input_consumption() 
     );
     let rows = store
         .db
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT DISTINCT commit_id FROM node_read_set ORDER BY commit_id",
             vec![],
         ))

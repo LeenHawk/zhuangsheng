@@ -13,7 +13,7 @@ pub(super) async fn replay<T: DeserializeOwned, C: ConnectionTrait>(
     key: &str,
     digest: &str,
 ) -> StorageResult<Option<T>> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT request_digest, status, result_object_id FROM application_command_receipts WHERE scope = ? AND idempotency_key = ?",
         vec![scope.into(), key.into()],
     )).await?;
@@ -41,11 +41,11 @@ pub(super) async fn finish<T: Serialize, C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let object_id = put_inline_object(connection, &canonical::to_vec(result)?, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO application_command_receipts (scope, idempotency_key, request_digest, command_kind, resource_kind, resource_id, status, result_object_id, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)",
         vec![scope.into(), key.into(), digest.into(), command_kind.into(), resource_kind.into(), resource_id.into(), object_id.clone().into(), now.into(), now.into()],
     )).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'application_receipt', ?, 'result', ?)",
         vec![object_id.into(), format!("{scope}:{key}").into(), now.into()],
     )).await?;

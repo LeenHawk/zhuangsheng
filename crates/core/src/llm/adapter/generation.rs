@@ -30,6 +30,35 @@ pub fn encode_generation_request(
     }
 }
 
+pub fn restore_generation_request(
+    pin: &LlmOperationExecutionPin,
+    body: Vec<u8>,
+    stream: bool,
+) -> Result<WireGenerationRequest, ShapeAdapterError> {
+    if body.is_empty() || body.len() > 16 * 1024 * 1024 {
+        return Err(ShapeAdapterError::new(
+            "wire_request_size_limit",
+            "persisted provider request is empty or exceeds 16 MiB",
+        ));
+    }
+    serde_json::from_slice::<serde_json::Value>(&body).map_err(|_| {
+        ShapeAdapterError::new(
+            "wire_request_restore_failed",
+            "persisted provider request is not valid JSON",
+        )
+    })?;
+    let descriptor = resolve_shape_adapter(pin)?;
+    let target = gproxy_protocol::request_target(pin.operation_key, &pin.model_id, stream);
+    Ok(WireGenerationRequest::from_parts(
+        descriptor.key,
+        pin.clone(),
+        target.method,
+        target.path,
+        target.query,
+        body,
+    ))
+}
+
 pub fn decode_generation_terminal(
     pin: &LlmOperationExecutionPin,
     model_call_id: &str,

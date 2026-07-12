@@ -16,7 +16,7 @@ pub(crate) async fn load_proposal<C: ConnectionTrait>(
     connection: &C,
     proposal_id: &str,
 ) -> StorageResult<MemoryChangeProposalView> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT id, scope_id, memory_id, expected_head_commit_id, change_type, content_object_id, reason, evidence_refs_json, requested_by_kind, requested_by_id, schema_version, policy_version, origin_run_id, origin_node_instance_id, applied_commit_id, status, created_at, updated_at FROM memory_change_proposals WHERE id = ?",
         vec![proposal_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound {
@@ -53,7 +53,7 @@ pub(crate) async fn load_record<C: ConnectionTrait>(
     connection: &C,
     memory_id: &str,
 ) -> StorageResult<LongTermMemoryRecordView> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT id, scope_id, status, head_commit_id, current_content_object_id, created_at, updated_at FROM memory_records WHERE id = ?",
         vec![memory_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound {

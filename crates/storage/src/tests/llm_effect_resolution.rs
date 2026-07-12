@@ -20,7 +20,7 @@ async fn generic_wait_response_rejects_effect_blocker_without_partial_delivery()
     prepare_unknown(&store).await;
     let wait_id: String = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT wait_id FROM wait_blockers WHERE blocker_kind = 'effect' AND blocker_id = 'effect-1'",
             vec![],
         ))
@@ -55,7 +55,7 @@ async fn generic_wait_response_rejects_effect_blocker_without_partial_delivery()
     ));
     let deliveries: i64 = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT COUNT(*) AS count FROM wait_deliveries WHERE wait_id = ?",
             vec![wait_id.into()],
         ))
@@ -83,7 +83,7 @@ async fn unknown_model_outcome_opens_durable_wait_and_finish_replays() {
     replay_unknown_finish(&store, &setup).await;
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT w.status AS wait_status, wb.status AS blocker_status, a.status AS attempt_status, ni.status AS instance_status, c.open_waits, (SELECT COUNT(*) FROM scheduler_wakeups sw WHERE sw.run_id = w.run_id AND sw.status = 'claimed') AS claimed_wakeups, (SELECT COUNT(*) FROM runtime_timers rt WHERE rt.node_attempt_id = a.id AND rt.status = 'pending') AS pending_timers FROM node_waits w JOIN wait_blockers wb ON wb.wait_id = w.id JOIN node_attempts a ON a.id = w.node_attempt_id JOIN node_instances ni ON ni.id = w.node_instance_id JOIN run_execution_counters c ON c.run_id = w.run_id WHERE wb.blocker_kind = 'effect' AND wb.blocker_id = 'effect-1'",
             vec![],
         ))
@@ -208,7 +208,7 @@ async fn confirmed_success_binds_result_without_rewriting_attempt_fact() {
     .await;
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT response_object_id FROM model_calls WHERE id = 'model-call-1'",
             vec![],
         ))
@@ -256,7 +256,7 @@ async fn abort_resolution_cancels_run_and_keeps_unknown_attempt() {
     .await;
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT status FROM graph_runs WHERE id = ?",
             vec![setup.claimed.run_id.into()],
         ))
@@ -280,7 +280,7 @@ async fn prepare_unknown(store: &SqliteStore) -> UnknownSetup {
     let now = now_ms();
     let snapshot_object_id = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT execution_snapshot_object_id FROM node_instances WHERE id = ?",
             vec![claimed.node_instance_id.clone().into()],
         ))
@@ -424,7 +424,7 @@ async fn assert_projection(
     blocker: &str,
     instance: &str,
 ) {
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT e.status AS effect_status, mc.status AS model_status, ea.status AS attempt_status, w.status AS wait_status, wb.status AS blocker_status, ni.status AS instance_status FROM effects e JOIN model_calls mc ON mc.id = e.model_call_id JOIN effect_attempts ea ON ea.effect_id = e.id JOIN wait_blockers wb ON wb.blocker_kind = 'effect' AND wb.blocker_id = e.id JOIN node_waits w ON w.id = wb.wait_id JOIN node_instances ni ON ni.id = e.node_instance_id WHERE e.id = 'effect-1'",
         vec![],
     )).await.unwrap().unwrap();
@@ -446,7 +446,7 @@ async fn assert_projection(
 }
 
 async fn assert_resume_attempt(store: &SqliteStore, node_instance_id: &str) {
-    let row = store.db.query_one(sql(
+    let row = store.db.query_one_raw(sql(
         "SELECT invocation_kind, status FROM node_attempts WHERE node_instance_id = ? AND attempt_no = 2",
         vec![node_instance_id.into()],
     )).await.unwrap().unwrap();
@@ -460,7 +460,7 @@ async fn assert_resume_attempt(store: &SqliteStore, node_instance_id: &str) {
 async fn load_checkpoint(store: &SqliteStore, node_instance_id: &str) -> LlmLoopCheckpoint {
     let row = store
         .db
-        .query_one(sql(
+        .query_one_raw(sql(
             "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
             vec![node_instance_id.into()],
         ))

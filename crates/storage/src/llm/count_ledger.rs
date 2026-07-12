@@ -57,7 +57,7 @@ impl SqliteStore {
             return Ok(existing);
         }
         let count: i64 = transaction
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT COUNT(*) AS count FROM count_calls WHERE node_instance_id = ?",
                 vec![command.node_instance_id.clone().into()],
             ))
@@ -111,7 +111,7 @@ impl SqliteStore {
             .provider_count_operation_key
             .unwrap_or(command.pin.generation_operation.operation_key);
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO count_calls (id, node_instance_id, originating_attempt_id, count_ordinal, channel_id, channel_revision_id, model_id, operation_key_json, operation_taxonomy_version, adapter_decoder_version, local_counter_id, local_counter_version, fallback_policy_version, safety_margin_tokens, count_execution_pin_digest, trim_candidate_object_id, trim_candidate_digest, request_digest, request_object_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?)",
                 vec![
                     command.count_call_id.clone().into(),
@@ -138,7 +138,7 @@ impl SqliteStore {
             ))
             .await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effects (id, node_instance_id, count_call_id, effect_kind, classification, operation_key, idempotency_key, retry_policy_json, status, created_at) VALUES (?, ?, ?, 'token_count', ?, 'llm.count_tokens', ?, ?, 'pending', ?)",
                 vec![
                     command.effect_id.clone().into(),
@@ -152,7 +152,7 @@ impl SqliteStore {
             ))
             .await?;
         transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "INSERT INTO effect_attempts (id, effect_id, invoking_node_attempt_id, attempt_no, status, request_object_id) VALUES (?, ?, ?, 1, 'prepared', ?)",
                 vec![
                     command.effect_attempt_id.clone().into(),
@@ -254,12 +254,12 @@ impl SqliteStore {
         {
             return Err(StorageError::Conflict("count_effect_status"));
         }
-        let attempt = transaction.execute(sql(
+        let attempt = transaction.execute_raw(sql(
             "UPDATE effect_attempts SET status = 'started', provider_request_id = ?, started_at = ? WHERE id = ? AND status = 'prepared'",
             vec![command.provider_request_id.into(), now.into(), command.effect_attempt_id.clone().into()],
         )).await?;
         let count = transaction
-            .execute(sql(
+            .execute_raw(sql(
                 "UPDATE count_calls SET status = 'running' WHERE id = ? AND status = 'prepared'",
                 vec![call.count_call_id.clone().into()],
             ))

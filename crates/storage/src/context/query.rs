@@ -12,7 +12,7 @@ pub(crate) async fn load_context<C: ConnectionTrait>(
     context_id: &str,
     branch_id: &str,
 ) -> StorageResult<WorkingContextView> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT b.head_commit_id, p.projection_json, p.projection_object_id FROM context_branches b JOIN materialized_projections p ON p.aggregate_kind = 'working_context' AND p.aggregate_id = b.context_id AND p.lineage_key = b.id WHERE b.context_id = ? AND b.id = ?",
         vec![context_id.into(), branch_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound {
@@ -38,7 +38,7 @@ pub(crate) async fn load_commit<C: ConnectionTrait>(
     connection: &C,
     commit_id: &str,
 ) -> StorageResult<ContextCommitView> {
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT id, aggregate_id, lineage_key, sequence_no, operation_id, patch_object_id, schema_version, policy_version, author_kind, author_id, origin_run_id, origin_node_instance_id, created_at FROM version_commits WHERE id = ? AND aggregate_kind = 'working_context'",
         vec![commit_id.into()],
     )).await?.ok_or_else(|| StorageError::NotFound {
@@ -46,7 +46,7 @@ pub(crate) async fn load_commit<C: ConnectionTrait>(
         id: commit_id.into(),
     })?;
     let parents = connection
-        .query_all(sql(
+        .query_all_raw(sql(
             "SELECT parent_commit_id FROM commit_parents WHERE commit_id = ? ORDER BY parent_order",
             vec![commit_id.into()],
         ))

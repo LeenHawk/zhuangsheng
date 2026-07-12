@@ -44,7 +44,7 @@ pub(super) async fn reconcile_if_stale<C: ConnectionTrait>(
     {
         return Ok(ReconcileOutcome::Continue);
     }
-    let row = connection.query_one(sql(
+    let row = connection.query_one_raw(sql(
         "SELECT attempt_no, executor_object_id, (SELECT COUNT(*) FROM node_attempts WHERE node_instance_id = ? AND invocation_kind = 'reconcile') AS reconcile_count FROM node_attempts WHERE id = ?",
         vec![attempt.node_instance_id.into(), attempt.attempt_id.into()],
     )).await?.ok_or_else(|| StorageError::Integrity("Router reconcile attempt missing".into()))?;
@@ -70,18 +70,18 @@ pub(super) async fn reconcile_if_stale<C: ConnectionTrait>(
         "retryClass":"reconcile"
     }))?;
     let error_id = put_inline_object(connection, &error, now).await?;
-    let failed = connection.execute(sql(
+    let failed = connection.execute_raw(sql(
         "UPDATE node_attempts SET status = 'failed', result_idempotency_key = ?, error_object_id = ?, worker_id = NULL, lease_until = NULL, finished_at = ? WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_fence = ? AND run_control_epoch = ?",
         vec![attempt.result_idempotency_key.into(), error_id.clone().into(), now.into(), attempt.attempt_id.into(), attempt.worker_id.into(), (attempt.lease_fence as i64).into(), (attempt.run_control_epoch as i64).into()],
     )).await?;
     if failed.rows_affected() != 1 {
         return Err(StorageError::Conflict("attempt_fence"));
     }
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE runtime_timers SET status = 'cancelled' WHERE node_attempt_id = ? AND kind = 'attempt_deadline' AND status = 'pending'",
         vec![attempt.attempt_id.into()],
     )).await?;
-    let ready = connection.execute(sql(
+    let ready = connection.execute_raw(sql(
         "UPDATE node_instances SET status = 'ready', updated_at = ? WHERE id = ? AND status = 'running'",
         vec![now.into(), attempt.node_instance_id.into()],
     )).await?;
@@ -89,12 +89,12 @@ pub(super) async fn reconcile_if_stale<C: ConnectionTrait>(
         return Err(StorageError::Conflict("node_instance_status"));
     }
     let next_attempt = new_id("attempt");
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) VALUES (?, ?, ?, 0, 'reconcile', 'queued', ?, 0, ?, ?)",
         vec![next_attempt.clone().into(), attempt.node_instance_id.into(), (attempt_no + 1).into(), (attempt.run_control_epoch as i64).into(), format!("attempt:{}:{}", attempt.node_instance_id, attempt_no + 1).into(), executor_id.into()],
     )).await?;
     resolve_router_reads(connection, attempt.run_id, &next_attempt, node, now).await?;
-    connection.execute(sql(
+    connection.execute_raw(sql(
         "UPDATE run_execution_counters SET total_attempts = total_attempts + 1 WHERE run_id = ?",
         vec![attempt.run_id.into()],
     )).await?;
@@ -139,7 +139,7 @@ async fn has_conflict<C: ConnectionTrait>(
     attempt_id: &str,
     node: &GraphNode,
 ) -> StorageResult<bool> {
-    let head_changed = connection.query_one(sql(
+    let head_changed = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM node_read_set rs LEFT JOIN context_branches b ON rs.aggregate_kind = 'working_context' AND b.context_id = rs.aggregate_id AND b.id = rs.lineage_key LEFT JOIN memory_records m ON rs.aggregate_kind = 'long_term_memory' AND m.id = rs.aggregate_id WHERE rs.node_attempt_id = ? AND rs.consistency = 'validate_on_commit' AND ((rs.aggregate_kind = 'working_context' AND (b.head_commit_id IS NULL OR b.head_commit_id != rs.commit_id)) OR (rs.aggregate_kind = 'long_term_memory' AND (m.head_commit_id IS NULL OR m.head_commit_id != rs.commit_id))) LIMIT 1",
         vec![attempt_id.into()],
     )).await?.is_some();
@@ -160,13 +160,13 @@ async fn has_conflict<C: ConnectionTrait>(
         if read.consistency != MemoryReadConsistency::ValidateOnCommit {
             continue;
         }
-        let row = connection.query_one(sql(
+        let row = connection.query_one_raw(sql(
             "SELECT scope_snapshot_token FROM node_bound_read_results WHERE node_attempt_id = ? AND binding_id = ?",
             vec![attempt_id.into(), read.id.clone().into()],
         )).await?.ok_or_else(|| StorageError::Integrity("Router scope snapshot missing".into()))?;
         let expected: String = row.try_get("", "scope_snapshot_token")?;
         let scope_row = connection
-            .query_one(sql(
+            .query_one_raw(sql(
                 "SELECT revision_no FROM memory_scopes WHERE id = ?",
                 vec![scope.clone().into()],
             ))

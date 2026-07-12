@@ -199,6 +199,76 @@ pub struct FinishToolCallCommand {
     pub checkpoint: LlmLoopCheckpoint,
 }
 
+pub struct SettleToolBatchCommand {
+    pub node_instance_id: String,
+    pub model_call_id: String,
+    pub fence: EffectAttemptFence,
+    pub checkpoint: LlmLoopCheckpoint,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettledToolBatch {
+    pub checkpoint: LlmLoopCheckpoint,
+    pub transcript: Vec<crate::llm::ir::LlmTurnItemIr>,
+}
+
+pub struct LoadLlmResumeStateCommand {
+    pub node_instance_id: String,
+    pub fence: EffectAttemptFence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmResumeState {
+    pub checkpoint: LlmLoopCheckpoint,
+    pub transcript: Vec<crate::llm::ir::LlmTurnItemIr>,
+    pub output_repairs_used: u64,
+    pub pending_output_repair: Option<super::PendingLlmOutputRepair>,
+    pub retry_ready_model_call: Option<RetryReadyResumeModelCall>,
+    pub prepared_tool_calls: Vec<PreparedResumeToolCall>,
+    pub retry_ready_tool_calls: Vec<RetryReadyResumeToolCall>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryReadyResumeModelCall {
+    pub model_call_id: String,
+    pub effect_id: String,
+    pub channel_id: String,
+    pub operation: super::LlmOperationExecutionPin,
+    pub request_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedResumeToolCall {
+    pub tool_call_id: String,
+    pub effect_id: String,
+    pub effect_attempt_id: String,
+    pub model_call_id: String,
+    pub call_index: u64,
+    pub binding_id: String,
+    pub tool_id: String,
+    pub tool_version: String,
+    pub arguments: serde_json::Value,
+    pub effect_idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryReadyResumeToolCall {
+    pub tool_call_id: String,
+    pub effect_id: String,
+    pub model_call_id: String,
+    pub call_index: u64,
+    pub binding_id: String,
+    pub tool_id: String,
+    pub tool_version: String,
+    pub arguments: serde_json::Value,
+    pub effect_idempotency_key: String,
+}
+
 pub struct PrepareToolCallRetryCommand {
     pub tool_call_id: String,
     pub effect_attempt_id: String,
