@@ -44,6 +44,18 @@ export interface ChannelRevisionView {
   createdAt: number;
 }
 
+export interface ChannelModelDiscoveryView {
+  channelId: string;
+  channelRevisionId: string;
+  operationKey: JsonObject;
+  models: Array<{
+    id: string;
+    name: string | null;
+    contextWindow: number | null;
+    maxOutputTokens: number | null;
+  }>;
+}
+
 export interface PublishPresetInput {
   expectedHeadVersionId: string | null;
   spec: JsonObject;

@@ -48,6 +48,22 @@ describe("HttpConfigClient", () => {
     expect(body).toEqual({ expectedHeadVersionId: null, spec });
   });
 
+  it("discovers temporary models without publishing them", async () => {
+    let path = "";
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      path = String(input);
+      return Response.json({
+        channelId: "channel_1",
+        channelRevisionId: "channelrev_1",
+        operationKey: { operation: "list_models", kind: "open_ai" },
+        models: [{ id: "gpt-a", name: null, contextWindow: null, maxOutputTokens: null }],
+      });
+    });
+    const result = await new HttpConfigClient("https://settings.example").discoverModels("channel_1");
+    expect(path).toBe("https://settings.example/v1/channels/channel_1/model-discovery");
+    expect(result.models).toEqual([{ id: "gpt-a", name: null, contextWindow: null, maxOutputTokens: null }]);
+  });
+
   it("rejects config revisions with unsupported semantic versions", () => {
     expect(() => decodeChannelRevision({
       id: "channelrev_1",

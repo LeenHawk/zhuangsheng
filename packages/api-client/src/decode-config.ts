@@ -1,6 +1,6 @@
 import { boolean, nullableString, number, record, string } from "./decode-helpers";
 import { DecodeError } from "./decode-error";
-import type { ChannelRevisionView, ChannelView, ContextBudgetAction, ContextCountSource, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView } from "./config-types";
+import type { ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextBudgetAction, ContextCountSource, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView } from "./config-types";
 import type { JsonObject } from "./graph-types";
 
 const list = <T>(value: unknown, path: string, decode: (value: unknown, path: string) => T): T[] => {
@@ -45,6 +45,25 @@ export const decodeChannelRevision = (value: unknown): ChannelRevisionView => {
     baseUrl: string(item.baseUrl, "channelRevision.baseUrl"),
     contentHash: string(item.contentHash, "channelRevision.contentHash"),
     createdAt: number(item.createdAt, "channelRevision.createdAt"),
+  };
+};
+
+export const decodeChannelModelDiscovery = (value: unknown): ChannelModelDiscoveryView => {
+  const item = record(value, "channelModelDiscovery");
+  const operationKey = record(item.operationKey, "channelModelDiscovery.operationKey") as JsonObject;
+  return {
+    channelId: string(item.channelId, "channelModelDiscovery.channelId"),
+    channelRevisionId: string(item.channelRevisionId, "channelModelDiscovery.channelRevisionId"),
+    operationKey,
+    models: list(item.models, "channelModelDiscovery.models", (raw, path) => {
+      const model = record(raw, path);
+      return {
+        id: string(model.id, `${path}.id`),
+        name: nullableString(model.name, `${path}.name`),
+        contextWindow: model.contextWindow === null ? null : number(model.contextWindow, `${path}.contextWindow`),
+        maxOutputTokens: model.maxOutputTokens === null ? null : number(model.maxOutputTokens, `${path}.maxOutputTokens`),
+      };
+    }),
   };
 };
 

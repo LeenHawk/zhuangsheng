@@ -1,5 +1,5 @@
-import { decodeChannel, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
-import type { ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, PublishChannelInput, PublishPresetInput } from "./config-types";
+import { decodeChannel, decodeChannelModelDiscovery, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
+import type { ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, PublishChannelInput, PublishPresetInput } from "./config-types";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
 
@@ -12,6 +12,26 @@ export class HttpConfigClient {
 
   async createChannel(name: string, idempotencyKey = createIdempotencyKey()): Promise<ChannelView> {
     return decodeChannel(await this.command("/v1/channels", { name }, idempotencyKey));
+  }
+
+  async discoverModels(
+    channelId: string,
+    input: { revisionId?: string | null; operationKey?: Record<string, unknown> | null } = {},
+    signal?: AbortSignal,
+  ): Promise<ChannelModelDiscoveryView> {
+    return decodeChannelModelDiscovery(await requestJson(
+      this.baseUrl,
+      `/v1/channels/${encodeURIComponent(channelId)}/model-discovery`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          revisionId: input.revisionId ?? null,
+          operationKey: input.operationKey ?? null,
+        }),
+        signal,
+      },
+    ));
   }
 
   async publishChannel(channelId: string, input: PublishChannelInput, idempotencyKey = createIdempotencyKey()): Promise<ChannelRevisionView> {
