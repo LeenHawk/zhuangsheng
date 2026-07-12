@@ -1,11 +1,12 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { CornerDownRight } from "lucide-react";
+import { Check, CircleDashed, CircleX, Clock3, CornerDownRight, Loader2, RotateCw } from "lucide-react";
 
 import type { StudioNode } from "./layout";
 
 export function GraphNode({ data, selected }: NodeProps<StudioNode>) {
+  const overlay = data.overlay;
   return (
-    <div className={`min-w-52 rounded-xl border bg-surface shadow-soft ${selected ? "border-accent ring-2 ring-accent/20" : "border-default"}`}>
+    <div className={`min-w-52 rounded-xl border bg-surface shadow-soft ${selected ? "border-accent ring-2 ring-accent/20" : overlay ? statusBorder[overlay.status] : "border-default"}`}>
       <div className="flex items-center justify-between border-b border-default px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-primary">{data.label}</div>
@@ -13,6 +14,13 @@ export function GraphNode({ data, selected }: NodeProps<StudioNode>) {
         </div>
         {data.isEntry && <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[10px] font-bold text-accent">入口</span>}
       </div>
+      {overlay && (
+        <div className="flex items-center gap-2 border-b border-default px-3 py-2 text-[10px]">
+          <StatusIcon status={overlay.status} />
+          <span className="font-semibold">{statusLabel[overlay.status]}</span>
+          <span className="ml-auto text-muted">{overlay.activationCount} activation · {overlay.attemptCount} attempt</span>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 px-3 py-2.5 text-[11px]">
         <PortList direction="input" ports={data.inputs} />
         <PortList direction="output" ports={data.outputs} />
@@ -20,6 +28,34 @@ export function GraphNode({ data, selected }: NodeProps<StudioNode>) {
     </div>
   );
 }
+
+function StatusIcon({ status }: { status: NonNullable<StudioNode["data"]["overlay"]>["status"] }) {
+  const Icon = status === "completed" ? Check
+    : status === "failed" ? CircleX
+      : status === "running" ? Loader2
+        : status === "waiting" ? Clock3
+          : status === "retrying" ? RotateCw
+            : CircleDashed;
+  return <Icon className={`size-3.5 ${status === "running" || status === "retrying" ? "animate-spin" : ""}`} aria-hidden="true" />;
+}
+
+const statusLabel = {
+  scheduled: "已调度",
+  running: "运行中",
+  waiting: "等待中",
+  retrying: "准备重试",
+  completed: "已完成",
+  failed: "失败",
+} as const;
+
+const statusBorder = {
+  scheduled: "border-info/40",
+  running: "border-running/50",
+  waiting: "border-warning/50",
+  retrying: "border-warning/50",
+  completed: "border-success/50",
+  failed: "border-danger/50",
+} as const;
 
 function PortList({ direction, ports }: { direction: "input" | "output"; ports: string[] }) {
   return (

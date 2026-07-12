@@ -68,7 +68,23 @@ export interface RunTraceEvent {
   timestamp: number;
   nodeInstanceId: string | null;
   attemptId: string | null;
+  graphNodeId: string | null;
   importance: string;
+}
+
+export type RunGraphNodeStatus =
+  | "scheduled"
+  | "running"
+  | "waiting"
+  | "retrying"
+  | "completed"
+  | "failed";
+
+export interface RunGraphNodeOverlay {
+  status: RunGraphNodeStatus;
+  activationCount: number;
+  attemptCount: number;
+  lastDurableSeq: number;
 }
 
 export type RunStreamConnectionState =

@@ -23,6 +23,7 @@ export * from "./http-context-client";
 export * from "./http-tool-client";
 export * from "./idempotency";
 export * from "./run-stream-follow";
+export * from "./run-graph-overlay";
 export * from "./run-stream-reducer";
 export * from "./runtime-invoke";
 export * from "./run-types";

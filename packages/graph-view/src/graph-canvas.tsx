@@ -1,15 +1,21 @@
 import { useMemo } from "react";
 import { Background, Controls, MiniMap, ReactFlow } from "@xyflow/react";
 
-import type { GraphStructureProjection } from "@zhuangsheng/api-client";
+import type { GraphStructureProjection, RunGraphNodeOverlay } from "@zhuangsheng/api-client";
 
 import { GraphNode } from "./graph-node";
 import { graphElements } from "./layout";
 
 const nodeTypes = { studio: GraphNode };
 
-export function GraphCanvas({ graph }: { graph: GraphStructureProjection }) {
-  const elements = useMemo(() => graphElements(graph), [graph]);
+export function GraphCanvas({
+  graph,
+  nodeOverlay = {},
+}: {
+  graph: GraphStructureProjection;
+  nodeOverlay?: Record<string, RunGraphNodeOverlay>;
+}) {
+  const elements = useMemo(() => graphElements(graph, nodeOverlay), [graph, nodeOverlay]);
   if (elements.nodes.length === 0) {
     return <div className="grid h-full min-h-80 place-items-center text-sm text-muted">图中还没有节点。</div>;
   }

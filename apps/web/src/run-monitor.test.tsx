@@ -14,7 +14,10 @@ import { RunDetail, RunList } from "@zhuangsheng/domain-ui";
 import { client } from "./api";
 import { useRunMonitor } from "./use-run-monitor";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("expert run monitor", () => {
   it("renders recent RunViews and opens the selected immutable run", () => {
@@ -26,8 +29,28 @@ describe("expert run monitor", () => {
   });
 
   it("shows durable metadata and uses explicit two-step cancellation", async () => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
     const onControl = vi.fn(async () => undefined);
-    const projection = reduceRunStream(createRunStreamProjection("run_1"), {
+    let projection = reduceRunStream(createRunStreamProjection("run_1"), {
+      kind: "durable",
+      event: {
+        id: "event_3",
+        runId: "run_1",
+        durableSeq: 3,
+        type: "node.scheduled",
+        schemaVersion: 1,
+        timestamp: 3,
+        nodeInstanceId: "node_1",
+        attemptId: null,
+        importance: "critical",
+        payload: { nodeId: "reply" },
+      },
+    });
+    projection = reduceRunStream(projection, {
       kind: "durable",
       event: {
         id: "event_4",
@@ -39,12 +62,25 @@ describe("expert run monitor", () => {
         nodeInstanceId: "node_1",
         attemptId: "attempt_1",
         importance: "critical",
-        payload: { hidden: "not rendered" },
+        payload: { nodeId: "reply", hidden: "not rendered" },
       },
     });
     render(<RunDetail
       run={run()}
-      revision={null}
+      revision={{
+        id: "graphrev_1",
+        graphId: "graph_1",
+        revisionNo: 1,
+        operationTaxonomyVersion: 1,
+        adapterDecoderVersion: 1,
+        definition: {
+          nodes: [{ id: "reply", kind: "llm", name: "Reply", inputs: [], outputs: [] }],
+          edges: [],
+        },
+        contentHash: "sha256:fixed",
+        createdAt: 1,
+        warnings: [],
+      }}
       waits={[]}
       projection={projection}
       connection="live"
@@ -59,6 +95,7 @@ describe("expert run monitor", () => {
     />);
 
     expect(screen.getByText("node.started")).toBeInTheDocument();
+    expect(screen.getByText("1 activation · 1 attempt")).toBeInTheDocument();
     expect(screen.queryByText("not rendered")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
     await waitFor(() => expect(onControl).toHaveBeenCalledWith("interrupt"));

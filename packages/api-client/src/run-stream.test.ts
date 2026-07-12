@@ -8,6 +8,7 @@ import {
   reduceRunStream,
   selectLiveText,
 } from "./run-stream-reducer";
+import { selectRunGraphNodeOverlay } from "./run-graph-overlay";
 import { decodeRunStreamFrame } from "./stream-decode";
 import { RunStreamProtocolError } from "./stream-error";
 import type { DurableRunEvent, RunStreamMessage, RunStreamProjection } from "./stream-types";
@@ -53,6 +54,17 @@ describe("run stream decoding and reduction", () => {
       data: JSON.stringify({ ...ephemeral(1, "x").event, schemaVersion: 2 }),
     }, "run_1")).toThrow(DecodeError);
   });
+
+  it("projects bounded authoritative node status without exposing raw payload", () => {
+    let projection = createRunStreamProjection("run_1");
+    projection = reduceRunStream(projection, durable(1, "node.scheduled", "reply"));
+    projection = reduceRunStream(projection, durable(2, "node.started", "reply"));
+    projection = reduceRunStream(projection, durable(3, "node.completed", "reply"));
+    expect(selectRunGraphNodeOverlay(projection)).toEqual({
+      reply: { status: "completed", activationCount: 1, attemptCount: 1, lastDurableSeq: 3 },
+    });
+    expect(projection.recentEvents[0]).not.toHaveProperty("payload");
+  });
 });
 
 describe("followRunEvents", () => {
@@ -89,7 +101,7 @@ describe("followRunEvents", () => {
   });
 });
 
-const durable = (durableSeq: number, type: string): RunStreamMessage => ({
+const durable = (durableSeq: number, type: string, nodeId?: string): RunStreamMessage => ({
   kind: "durable",
   event: {
     id: `event_${durableSeq}`,
@@ -101,7 +113,7 @@ const durable = (durableSeq: number, type: string): RunStreamMessage => ({
     nodeInstanceId: null,
     attemptId: null,
     importance: "critical",
-    payload: { schemaVersion: 1 },
+    payload: { schemaVersion: 1, ...(nodeId ? { nodeId } : {}) },
   } satisfies DurableRunEvent,
 });
 

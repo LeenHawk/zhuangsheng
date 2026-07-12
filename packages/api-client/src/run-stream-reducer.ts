@@ -68,6 +68,7 @@ const reduceDurable = (
         timestamp: event.timestamp,
         nodeInstanceId: event.nodeInstanceId,
         attemptId: event.attemptId,
+        graphNodeId: graphNodeId(event.payload),
         importance: event.importance,
       },
     ],
@@ -86,6 +87,12 @@ const reduceDurable = (
     next = { ...next, refreshVersion: next.refreshVersion + 1 };
   }
   return next;
+};
+
+const graphNodeId = (payload: unknown): string | null => {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
+  const value = (payload as Record<string, unknown>).nodeId;
+  return typeof value === "string" ? value : null;
 };
 
 const reduceEphemeral = (
