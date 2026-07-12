@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, State, rejection::JsonRejection},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
 use serde::Deserialize;
@@ -9,6 +9,7 @@ use zhuangsheng_core::application::context::{
     CommitContextPatchCommand, ContextCommitView, CreateVersionSnapshotCommand,
     VersionSnapshotView, WorkingContextView,
 };
+use zhuangsheng_core::runtime::{ContextBranchView, ForkContextCommand};
 
 use super::{
     AppState,
@@ -23,12 +24,21 @@ struct SnapshotBody {
     pinned: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ForkContextBody {
+    source_branch_id: String,
+    from_commit_id: String,
+    expected_source_head: Option<String>,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/v1/contexts/{context_id}/branches/{branch_id}",
             get(get_context),
         )
+        .route("/v1/contexts/{context_id}/branches", post(fork_context))
         .route(
             "/v1/contexts/{context_id}/branches/{branch_id}/commits",
             post(commit_patch),
@@ -41,6 +51,26 @@ pub fn routes() -> Router<AppState> {
             "/v1/context-commits/{commit_id}/snapshot",
             post(create_snapshot),
         )
+}
+
+async fn fork_context(
+    State(state): State<AppState>,
+    Path(context_id): Path<String>,
+    headers: HeaderMap,
+    body: Result<Json<ForkContextBody>, JsonRejection>,
+) -> ApiResult<(StatusCode, Json<ContextBranchView>)> {
+    let Json(body) = json_body(body)?;
+    let branch = state
+        .runtime_service
+        .fork_context(ForkContextCommand {
+            context_id,
+            source_branch_id: body.source_branch_id,
+            from_commit_id: body.from_commit_id,
+            expected_source_head: body.expected_source_head,
+            idempotency_key: super::graph::required_header(&headers, "idempotency-key")?,
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(branch)))
 }
 
 async fn get_context(

@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use zhuangsheng_core::{
     application::ApplicationError,
     runtime::{
-        DurableRunEventView, RunControlCommand, RunOutputsView, RunView, RuntimeService,
-        StartRunCommand, SubmitWaitResponseCommand, WaitDeliveryView, WaitView,
+        ContextBranchView, DurableRunEventView, ForkContextCommand, RunControlCommand,
+        RunOutputsView, RunView, RuntimeService, StartRunCommand, SubmitWaitResponseCommand,
+        WaitDeliveryView, WaitView,
     },
 };
 
@@ -46,6 +47,15 @@ impl RuntimeService for SqliteStore {
 
     async fn load_json_value_bytes(&self, value_ref: &str) -> Result<Vec<u8>, ApplicationError> {
         SqliteStore::load_json_value_bytes(self, value_ref)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn fork_context(
+        &self,
+        command: ForkContextCommand,
+    ) -> Result<ContextBranchView, ApplicationError> {
+        self.fork_context_at(command, now_ms())
             .await
             .map_err(Into::into)
     }

@@ -203,6 +203,16 @@ pub struct ContextBranchView {
     pub status: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForkContextCommand {
+    pub context_id: String,
+    pub source_branch_id: String,
+    pub from_commit_id: String,
+    pub expected_source_head: Option<String>,
+    pub idempotency_key: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
@@ -262,6 +272,10 @@ pub trait RuntimeService: Send + Sync {
         limit: u32,
     ) -> Result<Vec<DurableRunEventView>, ApplicationError>;
     async fn load_json_value_bytes(&self, value_ref: &str) -> Result<Vec<u8>, ApplicationError>;
+    async fn fork_context(
+        &self,
+        command: ForkContextCommand,
+    ) -> Result<ContextBranchView, ApplicationError>;
     async fn request_interrupt(
         &self,
         command: RunControlCommand,

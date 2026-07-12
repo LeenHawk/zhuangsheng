@@ -3,6 +3,7 @@ mod artifact_maintenance;
 mod artifact_origin;
 mod artifact_staging;
 mod config;
+mod context_fork;
 mod context_patch;
 mod context_replay;
 mod conversation_projection;
