@@ -4,7 +4,7 @@ import { assertJson, decodeRun, decodeRunList, decodeRunOutputs } from "./decode
 import { DecodeError } from "./decode-error";
 import { requestJson } from "./http-json";
 import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
-import type { SubmitMemoryProposalDecisionInput, SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
+import type { SubmitHumanResponseInput, SubmitMemoryProposalDecisionInput, SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
 import type { EffectResolutionView, ResolveEffectUnknownInput } from "./effect-types";
 import type {
   RunControlInput,
@@ -166,6 +166,30 @@ export class HttpRuntimeClient {
     if (result.waitId !== waitId || result.deliveryId !== input.deliveryId
       || !sameIds(decided, result.decidedMemoryProposalIds)
       || result.preparedToolCallIds.length !== 0 || result.deniedToolCallIds.length !== 0) {
+      throw new DecodeError("waitDelivery");
+    }
+    return result;
+  }
+
+  async submitHumanResponse(
+    waitId: string,
+    input: SubmitHumanResponseInput,
+  ): Promise<WaitDeliveryView> {
+    const result = decodeWaitDelivery(await requestJson(
+      this.baseUrl,
+      `/v1/waits/${encodeURIComponent(waitId)}/responses`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          deliveryId: input.deliveryId,
+          response: { type: "value", value: input.value },
+        }),
+      },
+    ));
+    if (result.waitId !== waitId || result.deliveryId !== input.deliveryId
+      || result.preparedToolCallIds.length !== 0 || result.deniedToolCallIds.length !== 0
+      || result.decidedMemoryProposalIds.length !== 0) {
       throw new DecodeError("waitDelivery");
     }
     return result;

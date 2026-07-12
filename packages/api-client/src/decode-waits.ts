@@ -1,5 +1,5 @@
 import { DecodeError } from "./decode-error";
-import { boolean, nullableString, number, record, string, stringArray } from "./decode-helpers";
+import { boolean, jsonObject, nullableString, number, record, string, stringArray } from "./decode-helpers";
 import { decodeEffectResolutionKind } from "./decode-effect";
 import { decodeMemoryProposal } from "./decode-memory";
 import type {
@@ -10,6 +10,8 @@ import type {
   WaitKind,
   WaitRequestView,
   WaitView,
+  JsonSchemaSpecView,
+  SchemaCompilationView,
 } from "./wait-types";
 
 const waitKinds = new Set<WaitKind>([
@@ -56,6 +58,11 @@ const wait = (value: unknown, path: string, expectedRunId: string): WaitView => 
     kind,
     requestRef: string(item.requestRef, `${path}.requestRef`),
     request: decodeRequest(item.request, `${path}.request`, kind, blockers),
+    responseSchema: decodeNullableSchema(item.responseSchema, `${path}.responseSchema`),
+    responseSchemaCompilation: decodeNullableCompilation(
+      item.responseSchemaCompilation,
+      `${path}.responseSchemaCompilation`,
+    ),
     correlationKey: nullableString(item.correlationKey, `${path}.correlationKey`),
     deadlineAt: nullableNumber(item.deadlineAt, `${path}.deadlineAt`),
     status: item.status,
@@ -95,6 +102,14 @@ const decodeRequest = (
 ): WaitRequestView => {
   const item = record(value, path);
   if (item.schemaVersion !== 1) throw new DecodeError(`${path}.schemaVersion`);
+  if (waitKind === "human_response" && item.kind === "human_response" && blockers.length === 0) {
+    return {
+      kind: item.kind,
+      title: optionalString(item.title, `${path}.title`),
+      description: optionalString(item.description, `${path}.description`),
+      payload: jsonObject(value, path),
+    };
+  }
   if (waitKind === "approval" && item.kind === "tool_approval") {
     if (!Array.isArray(item.calls)) throw new DecodeError(`${path}.calls`);
     const calls = item.calls.map((call, index) => decodeCall(call, `${path}.calls[${index}]`));
@@ -173,6 +188,49 @@ const decodeProposal = (value: unknown, path: string): MemoryProposalReviewItem 
 
 const nullableNumber = (value: unknown, path: string) =>
   value === null ? null : number(value, path);
+
+const optionalString = (value: unknown, path: string) =>
+  value === undefined || value === null ? null : string(value, path);
+
+const decodeNullableSchema = (value: unknown, path: string): JsonSchemaSpecView | null => {
+  if (value === null) return null;
+  const item = record(value, path);
+  if (item.schemaVersion !== 1
+    || item.dialect !== "https://json-schema.org/draft/2020-12/schema"
+    || item.validationProfileVersion !== 1
+    || item.formatPolicyVersion !== 1) {
+    throw new DecodeError(path);
+  }
+  const limits = record(item.limits, `${path}.limits`);
+  const decodedLimits = Object.fromEntries(Object.entries(limits).map(([key, raw]) => {
+    const parsed = number(raw, `${path}.limits.${key}`);
+    if (parsed <= 0) throw new DecodeError(`${path}.limits.${key}`);
+    return [key, parsed];
+  }));
+  return {
+    schemaVersion: 1,
+    dialect: item.dialect,
+    validationProfileVersion: 1,
+    formatPolicyVersion: 1,
+    document: jsonObject(item.document, `${path}.document`),
+    limits: decodedLimits,
+  };
+};
+
+const decodeNullableCompilation = (value: unknown, path: string): SchemaCompilationView | null => {
+  if (value === null) return null;
+  const item = record(value, path);
+  return {
+    canonicalDocumentHash: string(item.canonicalDocumentHash, `${path}.canonicalDocumentHash`),
+    schemaHash: string(item.schemaHash, `${path}.schemaHash`),
+    canonicalSource: string(item.canonicalSource, `${path}.canonicalSource`),
+    compiledPayload: string(item.compiledPayload, `${path}.compiledPayload`),
+    compiledPayloadHash: string(item.compiledPayloadHash, `${path}.compiledPayloadHash`),
+    compilerId: string(item.compilerId, `${path}.compilerId`),
+    compilerVersion: string(item.compilerVersion, `${path}.compilerVersion`),
+    payloadFormatVersion: number(item.payloadFormatVersion, `${path}.payloadFormatVersion`),
+  };
+};
 
 const sameIds = (left: string[], right: string[]) =>
   left.length === right.length && new Set(left).size === left.length && left.every((id) => right.includes(id));

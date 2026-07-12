@@ -14,7 +14,7 @@ impl SqliteStore {
         let rows = self
             .db
             .query_all_raw(sql(
-                "SELECT id, run_id, node_instance_id, node_attempt_id, kind, request_object_id, correlation_key, deadline_at, status, accepted_delivery_id, created_at, resolved_at FROM node_waits WHERE run_id = ? AND status = 'open' ORDER BY created_at, id",
+                "SELECT id, run_id, node_instance_id, node_attempt_id, kind, request_object_id, response_schema_object_id, response_schema_compilation_object_id, correlation_key, deadline_at, status, accepted_delivery_id, created_at, resolved_at FROM node_waits WHERE run_id = ? AND status = 'open' ORDER BY created_at, id",
                 vec![run_id.into()],
             ))
             .await?;
@@ -30,6 +30,16 @@ impl SqliteStore {
                 kind: parse_kind(&row.try_get::<String>("", "kind")?)?,
                 request: load_object_json(&self.db, &request_ref).await?,
                 request_ref,
+                response_schema: load_optional_object(
+                    &self.db,
+                    row.try_get("", "response_schema_object_id")?,
+                )
+                .await?,
+                response_schema_compilation: load_optional_object(
+                    &self.db,
+                    row.try_get("", "response_schema_compilation_object_id")?,
+                )
+                .await?,
                 correlation_key: row.try_get("", "correlation_key")?,
                 deadline_at: row.try_get("", "deadline_at")?,
                 status: parse_status(&row.try_get::<String>("", "status")?)?,
@@ -40,6 +50,20 @@ impl SqliteStore {
             });
         }
         Ok(waits)
+    }
+}
+
+async fn load_optional_object<C, T>(
+    connection: &C,
+    object_id: Option<String>,
+) -> StorageResult<Option<T>>
+where
+    C: ConnectionTrait,
+    T: serde::de::DeserializeOwned,
+{
+    match object_id {
+        Some(object_id) => Ok(Some(load_object_json(connection, &object_id).await?)),
+        None => Ok(None),
     }
 }
 

@@ -59,6 +59,7 @@ struct SubmitWaitResponseBody {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum ExternalWaitResponse {
+    Value { value: Value },
     BlockerDecisions { decisions: Vec<BlockerDecisionBody> },
 }
 
@@ -284,6 +285,7 @@ async fn submit_wait_response(
     let Json(body) =
         body.map_err(|error| ApiError::bad_request("invalid_json_body", error.body_text()))?;
     let payload = match body.response {
+        ExternalWaitResponse::Value { value } => WaitResponsePayload::Value { value },
         ExternalWaitResponse::BlockerDecisions { decisions } => {
             let mut tool_decisions = Vec::new();
             let mut memory_decisions = Vec::new();

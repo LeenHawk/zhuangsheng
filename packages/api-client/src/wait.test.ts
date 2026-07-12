@@ -90,6 +90,30 @@ describe("wait and secret decoders", () => {
     expect(() => decodeOpenWaits([wait], "run_1")).toThrow(DecodeError);
   });
 
+  it("decodes the exact schema binding for a human response wait", () => {
+    const wait = {
+      ...baseWait(),
+      request: { schemaVersion: 1, kind: "human_response", title: "Choose", description: "Pick one" },
+      responseSchema: {
+        schemaVersion: 1,
+        dialect: "https://json-schema.org/draft/2020-12/schema",
+        validationProfileVersion: 1,
+        formatPolicyVersion: 1,
+        document: { type: "string", enum: ["left", "right"] },
+        limits: { maxSchemaBytes: 1024 },
+      },
+      responseSchemaCompilation: {
+        canonicalDocumentHash: "sha256:document", schemaHash: "sha256:schema",
+        canonicalSource: "{}", compiledPayload: "{}", compiledPayloadHash: "sha256:compiled",
+        compilerId: "zhuangsheng-json-schema", compilerVersion: "0.1.0", payloadFormatVersion: 1,
+      },
+    };
+    const decoded = decodeOpenWaits([wait], "run_1")[0];
+    expect(decoded?.request).toMatchObject({ kind: "human_response", title: "Choose" });
+    expect(decoded?.responseSchema?.document).toEqual({ type: "string", enum: ["left", "right"] });
+    expect(decoded?.responseSchemaCompilation?.schemaHash).toBe("sha256:schema");
+  });
+
   it("enforces initialized and locked status invariants", () => {
     expect(decodeSecretStoreStatus({
       initialized: true,
@@ -137,6 +161,8 @@ const baseWait = () => ({
   kind: "human_response",
   requestRef: "object_1",
   request: { schemaVersion: 1, kind: "unknown" },
+  responseSchema: null,
+  responseSchemaCompilation: null,
   correlationKey: null,
   deadlineAt: null,
   status: "open",

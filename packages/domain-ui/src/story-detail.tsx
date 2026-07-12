@@ -12,6 +12,7 @@ import type {
   WaitView,
   EffectResolutionSubmission,
   MemoryProposalDecisionInput,
+  JsonValue,
 } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
 
@@ -64,6 +65,7 @@ export interface StoryDetailProps {
     wait: WaitView,
     submission: EffectResolutionSubmission,
   ) => Promise<void>;
+  onSubmitHumanResponse: (wait: WaitView, value: JsonValue) => Promise<void>;
   onReloadWaits: () => void;
   onInspectRun: (runId: string) => void;
 }
@@ -115,6 +117,7 @@ export function StoryDetail(props: StoryDetailProps) {
           onSubmitMemoryProposals={props.onSubmitMemoryProposals}
           onSubmitSecretPassword={props.onSubmitSecretPassword}
           onResolveEffect={props.onResolveEffect}
+          onSubmitHumanResponse={props.onSubmitHumanResponse}
           onReload={props.onReloadWaits}
         />
         <StoryComposer

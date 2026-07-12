@@ -7,6 +7,7 @@ mod effect_resolution;
 mod effect_resolution_helpers;
 mod effect_resolution_settle;
 mod effect_wait;
+mod generic_wait_delivery;
 mod memory_proposal_tool;
 mod memory_proposal_tool_validation;
 mod memory_proposal_wait;

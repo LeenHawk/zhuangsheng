@@ -27,14 +27,18 @@ impl SqliteStore {
             "SELECT id, run_id, node_instance_id, node_attempt_id, kind, payload_object_id, due_at FROM runtime_timers WHERE status = 'pending' AND due_at <= ? ORDER BY due_at, id LIMIT 1",
             vec![now.into()],
         )).await?;
-        let aggregation_is_first = match (&aggregation, &row) {
-            (Some(aggregation), Some(timer)) => {
-                aggregation.try_get::<i64>("", "due_at")? < timer.try_get::<i64>("", "due_at")?
-            }
-            (Some(_), None) => true,
-            _ => false,
-        };
-        if aggregation_is_first {
+        let wait = transaction.query_one_raw(sql(
+            "SELECT w.id,w.deadline_at AS due_at FROM node_waits w JOIN graph_runs r ON r.id=w.run_id WHERE w.status='open' AND w.deadline_at<=? AND r.status IN ('running','waiting','interrupting','interrupted') ORDER BY w.deadline_at,w.id LIMIT 1",
+            vec![now.into()],
+        )).await?;
+        let aggregation_due = due_at(aggregation.as_ref())?;
+        let timer_due = due_at(row.as_ref())?;
+        let wait_due = due_at(wait.as_ref())?;
+        let first = [(aggregation_due, 0_u8), (timer_due, 1), (wait_due, 2)]
+            .into_iter()
+            .filter_map(|(due, kind)| due.map(|due| (due, kind)))
+            .min();
+        if first.is_some_and(|(_, kind)| kind == 0) {
             let aggregation = aggregation.expect("checked above");
             aggregator_close::close_due(
                 &transaction,
@@ -42,6 +46,13 @@ impl SqliteStore {
                 now,
             )
             .await?;
+            transaction.commit().await?;
+            return Ok(1);
+        }
+        if first.is_some_and(|(_, kind)| kind == 2) {
+            let wait = wait.expect("checked above");
+            super::wait_deadline::fire(&transaction, &wait.try_get::<String>("", "id")?, now)
+                .await?;
             transaction.commit().await?;
             return Ok(1);
         }
@@ -76,6 +87,11 @@ impl SqliteStore {
         transaction.commit().await?;
         Ok(1)
     }
+}
+
+fn due_at(row: Option<&sea_orm::QueryResult>) -> StorageResult<Option<i64>> {
+    row.map(|row| row.try_get("", "due_at").map_err(Into::into))
+        .transpose()
 }
 
 async fn fire_run_deadline<C: ConnectionTrait>(

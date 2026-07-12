@@ -22,6 +22,7 @@ describe("StoryWaitActions", () => {
       onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
       onResolveEffect={async () => undefined}
+      onSubmitHumanResponse={async () => undefined}
       onReload={() => undefined}
     />);
 
@@ -50,6 +51,7 @@ describe("StoryWaitActions", () => {
       onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={onSubmitSecretPassword}
       onResolveEffect={async () => undefined}
+      onSubmitHumanResponse={async () => undefined}
       onReload={() => undefined}
     />);
 
@@ -78,6 +80,7 @@ describe("StoryWaitActions", () => {
       onSubmitMemoryProposals={onSubmitMemoryProposals}
       onSubmitSecretPassword={async () => undefined}
       onResolveEffect={async () => undefined}
+      onSubmitHumanResponse={async () => undefined}
       onReload={() => undefined}
     />);
     const card = within(view.container);
@@ -105,6 +108,7 @@ describe("StoryWaitActions", () => {
       onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
       onResolveEffect={onResolveEffect}
+      onSubmitHumanResponse={async () => undefined}
       onReload={() => undefined}
     />);
 
@@ -141,6 +145,49 @@ describe("StoryWaitActions", () => {
       },
     ));
   });
+
+  it("submits a schema-bound human response instead of using the story composer", async () => {
+    const onSubmitHumanResponse = vi.fn(async () => undefined);
+    const wait = humanWait();
+    render(<StoryWaitActions
+      waits={[wait]} handled={[]} secretStatus={null} pendingWaitId={null}
+      loadError={null} actionErrors={{}}
+      onSubmitApproval={async () => undefined}
+      onSubmitMemoryProposals={async () => undefined}
+      onSubmitSecretPassword={async () => undefined}
+      onResolveEffect={async () => undefined}
+      onSubmitHumanResponse={onSubmitHumanResponse}
+      onReload={() => undefined}
+    />);
+    const submit = screen.getByRole("button", { name: "提交回应" });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "left" } });
+    fireEvent.click(submit);
+    await waitFor(() => expect(onSubmitHumanResponse).toHaveBeenCalledWith(wait, { choice: "left" }));
+  });
+});
+
+const humanWait = (): WaitView => ({
+  ...baseWait(),
+  request: { kind: "human_response", title: "选择道路", description: "此选择会恢复原运行", payload: { schemaVersion: 1, kind: "human_response" } },
+  responseSchema: {
+    schemaVersion: 1,
+    dialect: "https://json-schema.org/draft/2020-12/schema",
+    validationProfileVersion: 1,
+    formatPolicyVersion: 1,
+    document: {
+      type: "object",
+      properties: { choice: { type: "string", title: "道路", enum: ["left", "right"] } },
+      required: ["choice"],
+      additionalProperties: false,
+    },
+    limits: {},
+  },
+  responseSchemaCompilation: {
+    canonicalDocumentHash: "sha256:document", schemaHash: "sha256:schema",
+    canonicalSource: "{}", compiledPayload: "{}", compiledPayloadHash: "sha256:compiled",
+    compilerId: "zhuangsheng-json-schema", compilerVersion: "0.1.0", payloadFormatVersion: 1,
+  },
 });
 
 const approvalWait = (): WaitView => ({
@@ -224,6 +271,8 @@ const baseWait = (): WaitView => ({
   kind: "human_response",
   requestRef: "object_1",
   request: { kind: "unsupported" },
+  responseSchema: null,
+  responseSchemaCompilation: null,
   correlationKey: null,
   deadlineAt: null,
   status: "open",

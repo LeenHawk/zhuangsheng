@@ -73,6 +73,7 @@ describe("StoryDetail", () => {
       onSubmitMemoryProposals: async () => undefined,
       onSubmitSecretPassword: async () => undefined,
       onResolveEffect: async () => undefined,
+      onSubmitHumanResponse: async () => undefined,
       onReloadWaits: () => undefined,
       onInspectRun: () => undefined,
     };
@@ -198,6 +199,7 @@ describe("StoryDetail", () => {
       onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
       onResolveEffect={async () => undefined}
+      onSubmitHumanResponse={async () => undefined}
       onReloadWaits={() => undefined}
       onInspectRun={() => undefined}
     />);

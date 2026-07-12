@@ -18,6 +18,7 @@ use crate::{
 };
 
 use super::{
+    generic_wait_delivery::settle_generic_response,
     memory_proposal_wait::settle_memory_proposal_response,
     tool_approval::ToolApprovalContinuation,
     wait_delivery_io::{
@@ -36,9 +37,9 @@ pub(super) struct WaitContext {
     pub node_id: String,
     pub node_attempt_id: String,
     pub continuation_ref: String,
-    kind: String,
+    pub(super) kind: String,
     wait_status: String,
-    instance_status: String,
+    pub(super) instance_status: String,
 }
 
 impl SqliteStore {
@@ -66,6 +67,20 @@ impl SqliteStore {
         }
         if has_open_effect_blocker(&transaction, &command.wait_id).await? {
             return Err(StorageError::Conflict("effect_resolution_required"));
+        }
+        if matches!(&command.payload, WaitResponsePayload::Value { .. }) {
+            let settled = settle_generic_response(&transaction, &command, &context, now).await?;
+            persist_delivery(
+                &transaction,
+                &command,
+                &payload_digest,
+                &settled.response_ref,
+                &settled.view,
+                now,
+            )
+            .await?;
+            transaction.commit().await?;
+            return Ok(settled.view);
         }
         if context.kind != "approval" || context.instance_status != "waiting" {
             return Err(StorageError::Conflict("wait_response_kind"));
@@ -97,6 +112,7 @@ impl SqliteStore {
         let decisions = match &command.payload {
             WaitResponsePayload::ToolApproval { decisions } => decisions,
             WaitResponsePayload::MemoryProposal { .. } => unreachable!("handled above"),
+            WaitResponsePayload::Value { .. } => unreachable!("handled above"),
         };
         let continuation: ToolApprovalContinuation =
             load_object_json(&transaction, &context.continuation_ref).await?;

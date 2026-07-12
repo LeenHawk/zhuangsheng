@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::application::ApplicationError;
+use crate::{
+    application::ApplicationError,
+    schema::{JsonSchemaSpec, SchemaCompilationDraft},
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -70,6 +73,9 @@ pub struct MemoryProposalDecision {
     rename_all_fields = "camelCase"
 )]
 pub enum WaitResponsePayload {
+    Value {
+        value: Value,
+    },
     ToolApproval {
         decisions: Vec<ToolApprovalDecision>,
     },
@@ -165,6 +171,8 @@ pub struct WaitView {
     pub kind: WaitKind,
     pub request_ref: String,
     pub request: Value,
+    pub response_schema: Option<JsonSchemaSpec>,
+    pub response_schema_compilation: Option<SchemaCompilationDraft>,
     pub correlation_key: Option<String>,
     pub deadline_at: Option<i64>,
     pub status: WaitStatus,

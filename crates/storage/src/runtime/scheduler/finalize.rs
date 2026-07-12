@@ -32,7 +32,7 @@ impl SqliteStore {
     ) -> StorageResult<()> {
         let transaction = self.db.begin().await?;
         let state = load_attempt(&transaction, &command.attempt_id).await?;
-        if state.status == "completed"
+        if matches!(state.status.as_str(), "completed" | "waiting")
             && state.result_key.as_deref() == Some(&command.result_idempotency_key)
         {
             transaction.commit().await?;
@@ -46,6 +46,12 @@ impl SqliteStore {
             .iter()
             .find(|node| node.id == state.node_id)
             .ok_or_else(|| StorageError::Integrity("attempt node missing from revision".into()))?;
+        if let BuiltinResult::Waiting { wait, continuation } = &command.result {
+            super::finalize_wait::finalize(&transaction, &state, &command, wait, continuation, now)
+                .await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
         if let BuiltinResult::Expanded { output, values } = &command.result {
             expand_finalize::finalize(
                 &transaction,
@@ -157,6 +163,7 @@ impl SqliteStore {
                     .collect();
                 (&router_outputs, Some(decision))
             }
+            BuiltinResult::Waiting { .. } => unreachable!("handled above"),
         };
         let output_order = router_decision.map(|decision| decision.selected_ports.as_slice());
         let stored = match prepare_outputs(

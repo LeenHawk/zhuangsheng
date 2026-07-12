@@ -113,4 +113,23 @@ describe("runtime action clients", () => {
       }] },
     });
   });
+
+  it("submits a human response as an exact value delivery", async () => {
+    let body: unknown;
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      body = JSON.parse(init?.body as string);
+      return Response.json({
+        waitId: "wait_1", deliveryId: "delivery_1", status: "resolved",
+        preparedToolCallIds: [], deniedToolCallIds: [], decidedMemoryProposalIds: [], replayed: false,
+      });
+    });
+    await new HttpRuntimeClient("https://roleplay.example").submitHumanResponse("wait_1", {
+      deliveryId: "delivery_1",
+      value: { choice: "left" },
+    });
+    expect(body).toEqual({
+      deliveryId: "delivery_1",
+      response: { type: "value", value: { choice: "left" } },
+    });
+  });
 });

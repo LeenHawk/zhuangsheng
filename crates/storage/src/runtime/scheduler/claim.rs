@@ -1,6 +1,9 @@
 use sea_orm::{ConnectionTrait, TransactionTrait};
 use serde_json::json;
-use zhuangsheng_core::scheduler::{ClaimedAttempt, SchedulerWork};
+use zhuangsheng_core::{
+    runtime::WaitKind,
+    scheduler::{ClaimedAttempt, ClaimedWaitResume, SchedulerWork},
+};
 
 use crate::{
     SqliteStore, StorageError, StorageResult,
@@ -138,7 +141,7 @@ async fn claim_attempt<C: ConnectionTrait>(
     requested_lease_until: i64,
 ) -> StorageResult<Option<SchedulerWork>> {
     let row = connection.query_one_raw(sql(
-        "SELECT a.id AS attempt_id, a.lease_fence, ni.id AS node_instance_id, ni.graph_revision_id, ni.inputs_object_id, r.control_epoch, r.deadline_at FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE ni.run_id = ? AND ni.node_id = ? AND ni.status = 'ready' AND a.status = 'queued' ORDER BY a.attempt_no LIMIT 1",
+                "SELECT a.id AS attempt_id, a.lease_fence, a.invocation_kind, a.idempotency_key, ni.id AS node_instance_id, ni.graph_revision_id, ni.inputs_object_id, r.control_epoch, r.deadline_at FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE ni.run_id = ? AND ni.node_id = ? AND ni.status = 'ready' AND a.status = 'queued' ORDER BY a.attempt_no LIMIT 1",
         vec![run_id.into(), node_id.into()],
     )).await?;
     let Some(row) = row else { return Ok(None) };
@@ -149,6 +152,8 @@ async fn claim_attempt<C: ConnectionTrait>(
     let control_epoch: i64 = row.try_get("", "control_epoch")?;
     let run_deadline: i64 = row.try_get("", "deadline_at")?;
     let old_fence: i64 = row.try_get("", "lease_fence")?;
+    let invocation_kind: String = row.try_get("", "invocation_kind")?;
+    let attempt_key: String = row.try_get("", "idempotency_key")?;
     let revision = load_revision(connection, &revision_id).await?;
     let node = revision
         .definition
@@ -209,6 +214,48 @@ async fn claim_attempt<C: ConnectionTrait>(
         execution_snapshot,
         context_snapshot,
         coordination: load_coordination(connection, &node, &inputs_id).await?,
+        wait_resume: load_wait_resume(connection, &instance_id, &invocation_kind, &attempt_key)
+            .await?,
         node,
     }))))
+}
+
+async fn load_wait_resume<C: ConnectionTrait>(
+    connection: &C,
+    instance_id: &str,
+    invocation_kind: &str,
+    attempt_key: &str,
+) -> StorageResult<Option<ClaimedWaitResume>> {
+    if invocation_kind != "resume" {
+        return Ok(None);
+    }
+    let row = connection.query_one_raw(sql(
+        "SELECT id,kind,continuation_object_id,response_object_id FROM node_waits WHERE node_instance_id=? AND status IN ('resolved','expired') AND ('wait:' || accepted_delivery_id || ':resume')=? ORDER BY resolved_at DESC,id DESC LIMIT 1",
+        vec![instance_id.into(), attempt_key.into()],
+    )).await?;
+    let Some(row) = row else { return Ok(None) };
+    let continuation_ref: String = row.try_get("", "continuation_object_id")?;
+    let response_ref: String = row.try_get("", "response_object_id")?;
+    Ok(Some(ClaimedWaitResume {
+        wait_id: row.try_get("", "id")?,
+        kind: parse_wait_kind(&row.try_get::<String>("", "kind")?)?,
+        continuation: crate::graph::helpers::load_object_json(connection, &continuation_ref)
+            .await?,
+        continuation_ref,
+        response: crate::graph::helpers::load_object_json(connection, &response_ref).await?,
+        response_ref,
+    }))
+}
+
+fn parse_wait_kind(value: &str) -> StorageResult<WaitKind> {
+    match value {
+        "human_response" => Ok(WaitKind::HumanResponse),
+        "approval" => Ok(WaitKind::Approval),
+        "webhook" => Ok(WaitKind::Webhook),
+        "timer" => Ok(WaitKind::Timer),
+        "external_job" => Ok(WaitKind::ExternalJob),
+        "effect_resolution" => Ok(WaitKind::EffectResolution),
+        "secret_store_unlocked" => Ok(WaitKind::SecretStoreUnlocked),
+        _ => Err(StorageError::Integrity("unknown wait kind".into())),
+    }
 }

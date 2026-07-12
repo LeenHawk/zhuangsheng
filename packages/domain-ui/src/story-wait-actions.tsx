@@ -6,6 +6,7 @@ import type {
   SecretStoreStatusView,
   ToolApprovalDecisionInput,
   WaitView,
+  JsonValue,
 } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
 
@@ -14,6 +15,7 @@ import { SecretUnlockCard } from "./secret-unlock-card";
 import { ToolApprovalCard } from "./tool-approval-card";
 import { EffectResolutionCard } from "./effect-resolution-card";
 import { MemoryProposalReviewCard } from "./memory-proposal-review-card";
+import { HumanResponseCard } from "./human-response-card";
 
 interface StoryWaitActionsProps {
   waits: WaitView[];
@@ -26,6 +28,7 @@ interface StoryWaitActionsProps {
   onSubmitMemoryProposals: (wait: WaitView, decisions: MemoryProposalDecisionInput[]) => Promise<void>;
   onSubmitSecretPassword: (wait: WaitView, mode: "initialize" | "unlock", password: string) => Promise<void>;
   onResolveEffect: (wait: WaitView, submission: EffectResolutionSubmission) => Promise<void>;
+  onSubmitHumanResponse: (wait: WaitView, value: JsonValue) => Promise<void>;
   onReload: () => void;
 }
 
@@ -50,6 +53,9 @@ export function StoryWaitActions(props: StoryWaitActionsProps) {
         }
         if (wait.request.kind === "effect_resolution") {
           return <EffectResolutionCard key={wait.id} {...common} onSubmit={props.onResolveEffect} />;
+        }
+        if (wait.request.kind === "human_response") {
+          return <HumanResponseCard key={wait.id} {...common} onSubmit={props.onSubmitHumanResponse} />;
         }
         return (
           <Card key={wait.id} className="border-warning/30 p-5">

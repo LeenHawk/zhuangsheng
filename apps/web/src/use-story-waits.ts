@@ -7,6 +7,7 @@ import {
   type MemoryProposalDecisionInput,
   type ToolApprovalDecisionInput,
   type WaitView,
+  type JsonValue,
 } from "@zhuangsheng/api-client";
 import type { HandledWaitSummary, StoryLiveCandidate } from "@zhuangsheng/domain-ui";
 
@@ -75,6 +76,16 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
     await act(wait, async () => {
       const result = await client.runtime.submitMemoryProposalDecisions(wait.id, { deliveryId, decisions });
       rememberHandled(wait, `已处理 ${result.decidedMemoryProposalIds.length} 项长期记忆提案`);
+      await reload();
+    });
+  };
+
+  const submitHumanResponse = async (wait: WaitView, value: JsonValue) => {
+    const deliveryId = deliveryIds.current[wait.id] ?? createIdempotencyKey();
+    deliveryIds.current[wait.id] = deliveryId;
+    await act(wait, async () => {
+      await client.runtime.submitHumanResponse(wait.id, { deliveryId, value });
+      rememberHandled(wait, "已提交等待中的角色回应");
       await reload();
     });
   };
@@ -156,6 +167,7 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
     actionErrors,
     submitApproval,
     submitMemoryProposals,
+    submitHumanResponse,
     submitSecretPassword,
     resolveEffect,
     reloadWaits: () => void reload(),

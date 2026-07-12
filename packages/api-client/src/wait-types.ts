@@ -21,6 +21,12 @@ export interface MemoryProposalReviewItem {
 }
 
 export type WaitRequestView =
+  | {
+      kind: "human_response";
+      title: string | null;
+      description: string | null;
+      payload: JsonObject;
+    }
   | { kind: "tool_approval"; modelCallId: string; calls: ToolApprovalCallView[] }
   | { kind: "memory_proposal_review"; modelCallId: string; proposals: MemoryProposalReviewItem[] }
   | { kind: "secret_store_unlocked"; reason: string; channelId: string }
@@ -51,6 +57,8 @@ export interface WaitView {
   kind: WaitKind;
   requestRef: string;
   request: WaitRequestView;
+  responseSchema: JsonSchemaSpecView | null;
+  responseSchemaCompilation: SchemaCompilationView | null;
   correlationKey: string | null;
   deadlineAt: number | null;
   status: "open";
@@ -58,6 +66,26 @@ export interface WaitView {
   acceptedDeliveryId: null;
   createdAt: number;
   resolvedAt: null;
+}
+
+export interface JsonSchemaSpecView {
+  schemaVersion: 1;
+  dialect: "https://json-schema.org/draft/2020-12/schema";
+  validationProfileVersion: 1;
+  formatPolicyVersion: 1;
+  document: JsonObject;
+  limits: Record<string, number>;
+}
+
+export interface SchemaCompilationView {
+  canonicalDocumentHash: string;
+  schemaHash: string;
+  canonicalSource: string;
+  compiledPayload: string;
+  compiledPayloadHash: string;
+  compilerId: string;
+  compilerVersion: string;
+  payloadFormatVersion: number;
 }
 
 export interface ToolApprovalDecisionInput {
@@ -82,6 +110,11 @@ export interface SubmitMemoryProposalDecisionInput {
   decisions: MemoryProposalDecisionInput[];
 }
 
+export interface SubmitHumanResponseInput {
+  deliveryId: string;
+  value: JsonValue;
+}
+
 export interface WaitDeliveryView {
   waitId: string;
   deliveryId: string;
@@ -93,3 +126,4 @@ export interface WaitDeliveryView {
 }
 import type { EffectResolutionKind } from "./effect-types";
 import type { MemoryProposalView } from "./memory-types";
+import type { JsonObject, JsonValue } from "./graph-types";

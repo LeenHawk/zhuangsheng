@@ -10,6 +10,8 @@ use crate::{
     graph::{DraftNodeKind, GraphNode, LlmNodeExecutionSnapshot, RetryPolicy},
     llm::context::ResolvedContextBinding,
     router::{RouterControlSnapshot, RouterDecision, RouterDecisionError, evaluate_router},
+    runtime::WaitKind,
+    schema::JsonSchemaSpec,
 };
 
 #[derive(Debug, Clone)]
@@ -43,6 +45,17 @@ pub struct ClaimedAttempt {
     pub execution_snapshot: Option<LlmNodeExecutionSnapshot>,
     pub context_snapshot: Option<ClaimedContextSnapshot>,
     pub coordination: Option<ClaimedCoordinationSnapshot>,
+    pub wait_resume: Option<ClaimedWaitResume>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClaimedWaitResume {
+    pub wait_id: String,
+    pub kind: WaitKind,
+    pub continuation_ref: String,
+    pub continuation: Value,
+    pub response_ref: String,
+    pub response: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -60,11 +73,45 @@ pub struct ClaimedContextSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum BuiltinResult {
-    Completed { outputs: BTreeMap<String, Value> },
-    Expanded { output: String, values: Vec<Value> },
-    Failed { code: String, safe_message: String },
-    RouterDecision { decision: RouterDecision },
-    RouterFailed { error: RouterDecisionError },
+    Completed {
+        outputs: BTreeMap<String, Value>,
+    },
+    Expanded {
+        output: String,
+        values: Vec<Value>,
+    },
+    Failed {
+        code: String,
+        safe_message: String,
+    },
+    RouterDecision {
+        decision: RouterDecision,
+    },
+    RouterFailed {
+        error: RouterDecisionError,
+    },
+    Waiting {
+        wait: Box<ExternalWaitRequest>,
+        continuation: Value,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WaitTimeoutPolicy {
+    Fail,
+    ResumeWithTimeout,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalWaitRequest {
+    pub kind: WaitKind,
+    pub request: Value,
+    pub response_schema: Option<JsonSchemaSpec>,
+    pub correlation_key: Option<String>,
+    pub deadline_at: Option<i64>,
+    pub on_timeout: WaitTimeoutPolicy,
 }
 
 #[derive(Debug, Clone)]

@@ -31,6 +31,7 @@ mod roleplay_provider;
 mod roleplay_template;
 mod run_list;
 mod secret;
+mod wait_response;
 
 fn test_app(store: Arc<SqliteStore>) -> axum::Router {
     let model_discovery = Arc::new(RemoteModelDiscoveryService::new(

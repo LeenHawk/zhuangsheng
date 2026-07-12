@@ -11,6 +11,7 @@ mod emit;
 mod events;
 mod expand_finalize;
 mod finalize;
+mod finalize_wait;
 mod join_by_key;
 mod join_by_key_buffer;
 mod llm_artifact_binding;
@@ -30,6 +31,7 @@ mod service;
 mod settle;
 mod static_writes;
 mod timers;
+mod wait_deadline;
 
 pub(crate) use events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run};
 pub(crate) use llm_context::compute_llm_read_set_digest;
