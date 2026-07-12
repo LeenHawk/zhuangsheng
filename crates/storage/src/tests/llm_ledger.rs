@@ -188,6 +188,7 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
                     }),
                 },
                 checkpoint: completed_checkpoint.clone(),
+                transcript: None,
             },
             now + 5,
         )
@@ -209,6 +210,7 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
                     }),
                 },
                 checkpoint: completed_checkpoint.clone(),
+                transcript: None,
             },
             now + 6,
         )
@@ -230,6 +232,7 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
                     }),
                 },
                 checkpoint: completed_checkpoint,
+                transcript: None,
             },
             now + 7,
         )

@@ -108,6 +108,7 @@ async fn executable_tool_calls_are_fenced_replayed_and_not_digest_deduplicated()
                     LlmLogicalCallStatus::Completed,
                     None,
                 ),
+                transcript: None,
             },
             now + 2,
         )

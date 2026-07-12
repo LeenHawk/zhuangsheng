@@ -1,5 +1,12 @@
 use sea_orm::TransactionTrait;
-use zhuangsheng_core::llm::{FinishModelCallCommand, LlmLogicalCallStatus};
+use serde_json::json;
+use zhuangsheng_core::{
+    canonical,
+    llm::{
+        FinishModelCallCommand, LlmLogicalCallStatus, ModelCallEffectOutcome,
+        ir::validate_transcript_ir,
+    },
+};
 
 use crate::{SqliteStore, StorageError, StorageResult};
 
@@ -19,7 +26,7 @@ use super::{
 impl SqliteStore {
     pub async fn finish_model_call(
         &self,
-        command: FinishModelCallCommand,
+        mut command: FinishModelCallCommand,
         now: i64,
     ) -> StorageResult<()> {
         let transaction = self.db.begin().await?;
@@ -45,6 +52,28 @@ impl SqliteStore {
         }
         if let Some(active) = &mut checkpoint.active_model_effect {
             active.response_ref = fenced.response_object_id.clone();
+        }
+        let transcript = command.transcript.take();
+        if transcript.is_some()
+            && !matches!(command.outcome, ModelCallEffectOutcome::Completed { .. })
+        {
+            return Err(StorageError::InvalidArgument(
+                "only a completed model call can append transcript items".into(),
+            ));
+        }
+        if let Some(items) = transcript {
+            validate_transcript_ir(&items).map_err(|error| {
+                StorageError::InvalidArgument(format!(
+                    "invalid durable LLM transcript: {}",
+                    error.message
+                ))
+            })?;
+            checkpoint.transcript_ref = crate::graph::helpers::put_inline_object(
+                &transaction,
+                &canonical::to_vec(&json!({"schemaVersion":1,"items":items}))?,
+                now,
+            )
+            .await?;
         }
         checkpoint = checkpoint.seal()?;
         let replay = classify_finish(&fenced, &command.outcome, &checkpoint.checksum)?;

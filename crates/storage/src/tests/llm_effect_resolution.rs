@@ -352,6 +352,7 @@ async fn prepare_unknown(store: &SqliteStore) -> UnknownSetup {
                     LlmLogicalCallStatus::OutcomeUnknown,
                     None,
                 ),
+                transcript: None,
             },
             now + 2,
         )
@@ -382,6 +383,7 @@ async fn replay_unknown_finish(store: &SqliteStore, setup: &UnknownSetup) {
                     LlmLogicalCallStatus::OutcomeUnknown,
                     None,
                 ),
+                transcript: None,
             },
             setup.now + 3,
         )

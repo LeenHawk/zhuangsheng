@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     application::ApplicationError,
     graph::{DraftNodeKind, GraphNode, LlmNodeExecutionSnapshot, RetryPolicy},
+    llm::context::ResolvedContextBinding,
     router::{RouterControlSnapshot, RouterDecision, RouterDecisionError, evaluate_router},
 };
 
@@ -40,6 +41,14 @@ pub struct ClaimedAttempt {
     pub memory: BTreeMap<String, Value>,
     pub router_control: Option<RouterControlSnapshot>,
     pub execution_snapshot: Option<LlmNodeExecutionSnapshot>,
+    pub context_snapshot: Option<ClaimedContextSnapshot>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClaimedContextSnapshot {
+    pub bindings: BTreeMap<String, ResolvedContextBinding>,
+    pub read_set_ref: String,
+    pub read_set_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

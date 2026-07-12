@@ -1,4 +1,7 @@
 mod api;
+pub mod llm_executor;
+mod llm_executor_support;
+pub mod provider;
 
 use std::sync::Arc;
 
@@ -53,5 +56,7 @@ pub fn app(
         .with_state(state)
 }
 
+#[cfg(test)]
+mod llm_executor_tests;
 #[cfg(test)]
 mod tests;

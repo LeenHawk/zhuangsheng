@@ -4,6 +4,8 @@ mod claim;
 mod emit;
 mod events;
 mod finalize;
+mod llm_context;
+mod llm_read_set;
 mod llm_snapshot;
 mod load;
 mod long_term_read;
@@ -16,4 +18,5 @@ mod settle;
 mod timers;
 
 pub(crate) use events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run};
+pub(crate) use llm_context::compute_llm_read_set_digest;
 pub(crate) use read_set::copy_attempt_reads;

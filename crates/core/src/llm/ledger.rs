@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     DomainResult, canonical,
     graph::EffectClassification,
-    llm::ir::{LlmUsageIr, OpaqueContinuationRef},
+    llm::ir::{LlmTurnItemIr, LlmUsageIr, OpaqueContinuationRef},
 };
 
 use super::LlmOperationExecutionPin;
@@ -192,6 +192,25 @@ pub struct PrepareModelCallCommand {
     pub checkpoint: LlmLoopCheckpoint,
 }
 
+pub struct PrepareInitialModelCallCommand {
+    pub model_call_id: String,
+    pub effect_id: String,
+    pub effect_attempt_id: String,
+    pub node_instance_id: String,
+    pub originating_attempt_id: String,
+    pub channel_id: String,
+    pub operation: LlmOperationExecutionPin,
+    pub request_bytes: Vec<u8>,
+    pub transcript: Vec<LlmTurnItemIr>,
+    pub registry_snapshot: ToolRegistrySnapshot,
+    pub read_set_digest: String,
+    pub effect_kind: String,
+    pub effect_classification: EffectClassification,
+    pub effect_operation_key: String,
+    pub effect_idempotency_key: String,
+    pub retry_policy: EffectRetryPolicy,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedModelCall {
     pub model_call_id: String,
@@ -201,6 +220,11 @@ pub struct PreparedModelCall {
     pub effect_status: EffectStatus,
     pub attempt_status: EffectAttemptStatus,
     pub replayed: bool,
+}
+
+pub struct PreparedInitialModelCall {
+    pub prepared: PreparedModelCall,
+    pub checkpoint: LlmLoopCheckpoint,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,6 +263,7 @@ pub struct FinishModelCallCommand {
     pub fence: EffectAttemptFence,
     pub outcome: ModelCallEffectOutcome,
     pub checkpoint: LlmLoopCheckpoint,
+    pub transcript: Option<Vec<LlmTurnItemIr>>,
 }
 
 pub struct PrepareModelCallRetryCommand {

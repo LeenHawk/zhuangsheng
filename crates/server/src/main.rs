@@ -13,6 +13,7 @@ use zhuangsheng_core::{
     scheduler::{Scheduler, SchedulerStore},
 };
 use zhuangsheng_server::app;
+use zhuangsheng_server::llm_executor::LocalLlmExecutor;
 use zhuangsheng_storage::SqliteStore;
 
 #[tokio::main]
@@ -34,11 +35,11 @@ async fn main() -> anyhow::Result<()> {
     let memory_service: Arc<dyn MemoryService> = store.clone();
     let runtime_service: Arc<dyn RuntimeService> = store.clone();
     let secret_service: Arc<dyn SecretStoreService> = store.clone();
+    let llm_executor = Arc::new(LocalLlmExecutor::new(store.clone())?);
     let scheduler_store: Arc<dyn SchedulerStore> = store;
-    tokio::spawn(run_scheduler(Scheduler::new(
-        scheduler_store,
-        "server-local-worker",
-    )));
+    tokio::spawn(run_scheduler(
+        Scheduler::new(scheduler_store, "server-local-worker").with_llm_executor(llm_executor),
+    ));
     let listener = tokio::net::TcpListener::bind(&bind_address).await?;
     tracing::info!(address = %listener.local_addr()?, "server listening");
     axum::serve(

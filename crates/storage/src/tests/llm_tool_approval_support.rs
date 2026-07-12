@@ -116,6 +116,7 @@ pub(super) async fn prepare_model_tool_batch(store: &SqliteStore) -> ApprovalSet
                     &transcript_ref,
                     LlmLogicalCallStatus::Completed,
                 ),
+                transcript: None,
             },
             now + 2,
         )

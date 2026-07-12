@@ -13,6 +13,7 @@ mod memory_search_tool_validation;
 mod model_ledger;
 mod model_ledger_finish;
 mod model_ledger_helpers;
+mod model_ledger_initial;
 mod model_ledger_outcome;
 mod model_ledger_replay;
 mod recovery;

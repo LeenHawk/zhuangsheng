@@ -86,6 +86,18 @@ pub fn validate_response_ir(response: &LlmResponseIr) -> Result<(), IrValidation
     bounded_canonical(response)
 }
 
+pub fn validate_transcript_ir(items: &[LlmTurnItemIr]) -> Result<(), IrValidationError> {
+    if items.len() > 4096 {
+        return error(
+            "llm_ir_collection_limit",
+            "LLM transcript has too many items",
+        );
+    }
+    let mut ids = HashSet::new();
+    validate_transcript(items, &mut ids)?;
+    bounded_canonical(&items)
+}
+
 fn validate_instruction(instruction: &InstructionIr) -> Result<(), IrValidationError> {
     validate_content(&instruction.content, true)?;
     bounded_id(&instruction.provenance.id, 128, "invalid_provenance_id")?;

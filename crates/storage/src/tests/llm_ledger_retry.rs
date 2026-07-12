@@ -92,6 +92,7 @@ async fn retryable_unknown_keeps_fact_and_creates_new_fenced_attempt() {
                     "effect-attempt-1",
                     LlmLogicalCallStatus::RetryReady,
                 ),
+                transcript: None,
             },
             now + 2,
         )

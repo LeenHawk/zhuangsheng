@@ -1,6 +1,7 @@
 mod apply;
 mod cycle;
 mod llm;
+mod llm_memory_validation;
 #[cfg(test)]
 mod llm_tests;
 mod llm_validation;

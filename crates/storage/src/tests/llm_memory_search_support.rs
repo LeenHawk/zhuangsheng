@@ -131,6 +131,7 @@ pub(super) async fn prepare_memory_search_setup(store: &SqliteStore) -> MemorySe
                     &transcript_ref,
                     LlmLogicalCallStatus::Completed,
                 ),
+                transcript: None,
             },
             now + 2,
         )

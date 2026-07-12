@@ -61,6 +61,7 @@ pub(super) fn normalize_llm_node(
     normalize_output(config);
     normalize_streaming(config);
     normalize_limits(config, channel, &node.id, issues);
+    super::llm_memory_validation::validate_llm_memory(config, &node.id, issues);
     validate_request(config, &node.id, issues);
     validate_tools(config, channel, &node.id, issues);
     let requirements = llm_model_requirements(config);

@@ -3,7 +3,10 @@ use serde_json::json;
 use zhuangsheng_core::{
     application::memory::MemorySearchCommand,
     canonical,
-    graph::{MemoryRecordStatus, RouterReadBinding, RouterReadSource},
+    graph::{
+        MemoryQuery, MemoryRecordStatus, RouterReadBinding, RouterReadSource, StaticMemoryRead,
+        StaticMemoryReadSource,
+    },
     memory::LongTermMemoryStatus,
 };
 
@@ -20,27 +23,65 @@ pub(super) async fn resolve<C: ConnectionTrait>(
             "long-term read resolver received another source".into(),
         ));
     };
+    resolve_parts(
+        connection,
+        &read.id,
+        read.required,
+        read.limit,
+        read.max_bytes,
+        scope,
+        query.as_ref(),
+    )
+    .await
+}
+
+pub(super) async fn resolve_static<C: ConnectionTrait>(
+    connection: &C,
+    read: &StaticMemoryRead,
+) -> StorageResult<ResolvedBinding> {
+    let StaticMemoryReadSource::LongTermMemory { scope, query } = &read.source else {
+        return Err(StorageError::Integrity(
+            "long-term read resolver received another static source".into(),
+        ));
+    };
+    resolve_parts(
+        connection,
+        &read.id,
+        read.required,
+        read.limit,
+        read.max_bytes,
+        scope,
+        query.as_ref(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn resolve_parts<C: ConnectionTrait>(
+    connection: &C,
+    binding_id: &str,
+    required: bool,
+    limit: Option<u32>,
+    max_bytes: u64,
+    scope: &str,
+    query: Option<&MemoryQuery>,
+) -> StorageResult<ResolvedBinding> {
     let mut search = MemorySearchCommand {
-        scope_id: scope.clone(),
-        text: query.as_ref().map(|query| query.text.clone()),
-        tags: query
-            .as_ref()
-            .map(|query| query.tags.clone())
-            .unwrap_or_default(),
+        scope_id: scope.to_owned(),
+        text: query.map(|query| query.text.clone()),
+        tags: query.map(|query| query.tags.clone()).unwrap_or_default(),
         status: query
-            .as_ref()
             .and_then(|query| query.status)
             .map(|status| match status {
                 MemoryRecordStatus::Active => LongTermMemoryStatus::Active,
                 MemoryRecordStatus::Obsolete => LongTermMemoryStatus::Obsolete,
             }),
-        limit: read.limit.unwrap_or(20),
+        limit: limit.unwrap_or(20),
     };
     let result = search_in(connection, &mut search).await?;
-    if result.records.is_empty() && read.required {
+    if result.records.is_empty() && required {
         return Err(StorageError::InputContract(format!(
-            "required Router memory binding '{}' returned no records",
-            read.id
+            "required memory binding '{binding_id}' returned no records",
         )));
     }
     let mut records = Vec::new();
@@ -69,6 +110,7 @@ pub(super) async fn resolve<C: ConnectionTrait>(
             "commitId":commit_id.clone(),
             "contentHash":content_hash.clone(),
             "summary":content.text,
+            "tags":content.tags,
             "evidenceRefs":evidence,
         }));
         selections.push(ResolvedSelection {
@@ -87,7 +129,7 @@ pub(super) async fn resolve<C: ConnectionTrait>(
             "records":records,
             "truncated":truncated,
         });
-        if canonical::to_vec(&envelope)?.len() as u64 <= read.max_bytes {
+        if canonical::to_vec(&envelope)?.len() as u64 <= max_bytes {
             return Ok(ResolvedBinding {
                 envelope,
                 selections,
@@ -97,8 +139,7 @@ pub(super) async fn resolve<C: ConnectionTrait>(
         }
         if records.pop().is_none() {
             return Err(StorageError::InputContract(format!(
-                "Router memory binding '{}' exceeds maxBytes",
-                read.id
+                "memory binding '{binding_id}' exceeds maxBytes",
             )));
         }
         selections.pop();
