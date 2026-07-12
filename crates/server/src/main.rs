@@ -41,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
     let stream_events = StreamEventHub::new();
     let llm_executor =
         Arc::new(LocalLlmExecutor::new(store.clone())?.with_stream_events(stream_events.clone()));
+    tokio::spawn(run_artifact_maintenance(store.clone()));
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(
         Scheduler::new(scheduler_store, "server-local-worker").with_llm_executor(llm_executor),
@@ -64,6 +65,19 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
     Ok(())
+}
+
+async fn run_artifact_maintenance(store: Arc<SqliteStore>) {
+    const QUARANTINE_GRACE_MS: i64 = 60 * 60 * 1000;
+    loop {
+        if let Err(error) = store
+            .maintain_artifact_staging(now_ms(), QUARANTINE_GRACE_MS, 100)
+            .await
+        {
+            tracing::warn!(%error, "artifact staging maintenance failed");
+        }
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
 }
 
 async fn run_scheduler(scheduler: Scheduler) {
