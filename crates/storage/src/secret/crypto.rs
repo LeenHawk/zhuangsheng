@@ -307,7 +307,7 @@ fn key_wrap_aad(header: &SecretStoreHeader) -> Result<Vec<u8>, SecretStoreError>
     .map_err(|_| SecretStoreError::Crypto)
 }
 
-fn encrypt(
+pub(super) fn encrypt(
     key: &[u8],
     nonce: &[u8; NONCE_BYTES],
     plaintext: &[u8],
@@ -325,7 +325,7 @@ fn encrypt(
         .map_err(|_| SecretStoreError::Crypto)
 }
 
-fn decrypt(
+pub(super) fn decrypt(
     key: &[u8],
     nonce: &[u8; NONCE_BYTES],
     ciphertext: &[u8],
@@ -343,13 +343,13 @@ fn decrypt(
         .map_err(|_| SecretStoreError::Crypto)
 }
 
-fn random_array<const N: usize>() -> Result<[u8; N], SecretStoreError> {
+pub(super) fn random_array<const N: usize>() -> Result<[u8; N], SecretStoreError> {
     let mut value = [0_u8; N];
     getrandom::fill(&mut value).map_err(|_| SecretStoreError::Crypto)?;
     Ok(value)
 }
 
-fn encode(value: &[u8]) -> String {
+pub(super) fn encode(value: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(value)
 }
 
@@ -357,7 +357,7 @@ fn decode(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
     URL_SAFE_NO_PAD.decode(value)
 }
 
-fn decode_array<const N: usize>(value: &str) -> Result<[u8; N], base64::DecodeError> {
+pub(super) fn decode_array<const N: usize>(value: &str) -> Result<[u8; N], base64::DecodeError> {
     let decoded = decode(value)?;
     let length = decoded.len();
     decoded

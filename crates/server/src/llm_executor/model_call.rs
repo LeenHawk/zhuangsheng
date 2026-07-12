@@ -5,10 +5,7 @@ use zhuangsheng_core::{
         ActiveModelEffectCheckpoint, LlmLogicalCallStatus, LlmLoopCheckpoint,
         LlmRequestBuildOutput, PrepareInitialModelCallCommand, PrepareModelCallCommand,
         ResolvedRequestTool,
-        adapter::{
-            AdapterExecutionOptions, AdapterResources, DecodedTerminalDraft,
-            encode_generation_request,
-        },
+        adapter::{AdapterExecutionOptions, DecodedTerminalDraft, encode_generation_request},
     },
     scheduler::{ClaimedAttempt, LlmAttemptExecution},
 };
@@ -18,7 +15,9 @@ use crate::llm_executor_support::{finalize_failure, new_id};
 use super::{
     LocalLlmExecutor,
     model_effect::{model_effect, model_retry_policy},
+    model_request::durable_generation_request,
     model_transport::{PreparedModelCallInput, execute_prepared_model_call},
+    opaque_resources::resolve_opaque_resources,
 };
 
 pub(super) enum ModelCallResult {
@@ -57,17 +56,20 @@ pub(super) async fn run_model_call(
         reserved_output,
         now,
     } = input;
+    let resources =
+        resolve_opaque_resources(executor, &execution.operation, &built.request, now).await?;
+    let options = AdapterExecutionOptions {
+        stream: execution
+            .streaming
+            .as_ref()
+            .is_some_and(|streaming| streaming.enabled),
+        max_output_tokens: reserved_output,
+    };
     let wire = match encode_generation_request(
         &execution.operation,
         &built.request,
-        &AdapterResources::default(),
-        AdapterExecutionOptions {
-            stream: execution
-                .streaming
-                .as_ref()
-                .is_some_and(|streaming| streaming.enabled),
-            max_output_tokens: reserved_output,
-        },
+        &resources,
+        options,
     ) {
         Ok(wire) => wire,
         Err(error) => {
@@ -77,6 +79,8 @@ pub(super) async fn run_model_call(
             )));
         }
     };
+    let durable_request =
+        durable_generation_request(&execution.operation, &built.request, options)?;
     let model_call_id = new_id("modelcall");
     let effect_id = new_id("effect");
     let effect_attempt_id = new_id("effectattempt");
@@ -108,7 +112,7 @@ pub(super) async fn run_model_call(
                     call_no,
                     channel_id: execution.channel.channel_id.clone(),
                     operation: execution.operation.clone(),
-                    request_bytes: wire.body().to_vec(),
+                    request_bytes: durable_request,
                     effect_kind: effect.kind.into(),
                     effect_classification: effect.classification,
                     effect_operation_key: effect.operation_key.into(),
@@ -134,7 +138,7 @@ pub(super) async fn run_model_call(
                     fence: model_fence(attempt),
                     channel_id: execution.channel.channel_id.clone(),
                     operation: execution.operation.clone(),
-                    request_bytes: wire.body().to_vec(),
+                    request_bytes: durable_request,
                     transcript: built.request.transcript.clone(),
                     registry_snapshot: execution.tool_registry.clone(),
                     read_set_digest: attempt

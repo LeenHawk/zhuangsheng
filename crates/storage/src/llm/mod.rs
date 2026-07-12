@@ -16,6 +16,9 @@ mod model_ledger_helpers;
 mod model_ledger_initial;
 mod model_ledger_outcome;
 mod model_ledger_replay;
+mod opaque_bundle;
+mod opaque_bundle_format;
+mod opaque_bundle_rows;
 mod output_repair;
 mod output_repair_resume;
 mod recovery;
@@ -37,6 +40,7 @@ mod wait_delivery;
 mod wait_delivery_settle;
 mod wait_delivery_validation;
 
+pub use opaque_bundle::StoredOpaqueBundleRefs;
 pub(crate) use recovery::supersede_prepared_effect_attempts;
 pub(crate) use recovery_started::{StartedEffectRecovery, recover_started_effects};
 pub(crate) use terminal_fencing::fence_run_effects;

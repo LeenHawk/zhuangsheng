@@ -1,6 +1,7 @@
 mod crypto;
 mod error;
 mod initialize;
+mod internal_bundle_crypto;
 mod lock;
 mod password;
 mod receipt;
@@ -16,6 +17,7 @@ mod unlock;
 
 pub(crate) use crypto::*;
 pub use error::SecretStoreError;
+pub(crate) use internal_bundle_crypto::*;
 pub(crate) use receipt::*;
 pub(crate) use rows::*;
 pub(crate) use session::*;

@@ -127,12 +127,12 @@ pub(super) async fn execute_prepared_model_call(
     finish_decoded_model_call(
         executor,
         CompletedResponseInput {
+            operation: execution.operation.clone(),
             built,
             model_call_id,
             effect_attempt_id,
             checkpoint,
             fence,
-            response_bytes: response.body,
             decoded,
             now,
         },

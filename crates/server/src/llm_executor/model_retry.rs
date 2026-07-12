@@ -4,10 +4,7 @@ use zhuangsheng_core::{
     llm::{
         EffectAttemptFence, LlmLogicalCallStatus, LlmLoopCheckpoint, LlmRequestBuildOutput,
         PrepareModelCallRetryCommand, RetryReadyResumeModelCall,
-        adapter::{
-            AdapterExecutionOptions, AdapterResources, encode_generation_request,
-            restore_generation_request,
-        },
+        adapter::{AdapterExecutionOptions, encode_generation_request},
     },
     scheduler::ClaimedAttempt,
 };
@@ -17,7 +14,9 @@ use crate::llm_executor_support::{finalize_failure, new_id, set_model_status};
 use super::{
     LocalLlmExecutor,
     model_call::ModelCallResult,
+    model_request::durable_generation_request,
     model_transport::{PreparedModelCallInput, execute_prepared_model_call},
+    opaque_resources::resolve_opaque_resources,
 };
 
 pub(super) struct RetryModelCallInput<'a> {
@@ -58,39 +57,29 @@ pub(super) async fn retry_model_call(
         .streaming
         .as_ref()
         .is_some_and(|streaming| streaming.enabled);
-    let rebuilt = match encode_generation_request(
-        &resume.operation,
-        &built.request,
-        &AdapterResources::default(),
-        AdapterExecutionOptions {
-            stream: streaming,
-            max_output_tokens: reserved_output,
-        },
-    ) {
-        Ok(wire) => wire,
-        Err(error) => {
-            return Ok(ModelCallResult::Terminal(finalize_failure(
-                error.code,
-                &error.message,
-            )));
-        }
+    let resources =
+        resolve_opaque_resources(executor, &execution.operation, &built.request, now).await?;
+    let options = AdapterExecutionOptions {
+        stream: streaming,
+        max_output_tokens: reserved_output,
     };
-    if rebuilt.body() != resume.request_bytes {
+    let wire =
+        match encode_generation_request(&resume.operation, &built.request, &resources, options) {
+            Ok(wire) => wire,
+            Err(error) => {
+                return Ok(ModelCallResult::Terminal(finalize_failure(
+                    error.code,
+                    &error.message,
+                )));
+            }
+        };
+    let durable_request = durable_generation_request(&resume.operation, &built.request, options)?;
+    if durable_request != resume.request_bytes {
         return Ok(ModelCallResult::Terminal(finalize_failure(
             "llm_model_retry_request_mismatch",
             "persisted model request cannot be reproduced from the durable transcript",
         )));
     }
-    let wire = match restore_generation_request(&resume.operation, resume.request_bytes, streaming)
-    {
-        Ok(wire) => wire,
-        Err(error) => {
-            return Ok(ModelCallResult::Terminal(finalize_failure(
-                error.code,
-                &error.message,
-            )));
-        }
-    };
     let active = checkpoint
         .active_model_effect
         .as_ref()

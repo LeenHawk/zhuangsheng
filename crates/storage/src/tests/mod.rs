@@ -13,6 +13,7 @@ mod llm_ledger_recovery;
 mod llm_ledger_retry;
 mod llm_memory_search_support;
 mod llm_memory_search_tool;
+mod llm_opaque_bundle;
 mod llm_output_repair;
 mod llm_started_recovery;
 mod llm_static_context;

@@ -32,6 +32,7 @@ use zhuangsheng_core::{
 
 mod hosted_tools;
 mod model_recovery;
+mod opaque_storage;
 mod output_repair;
 mod secret_wait;
 mod streaming;

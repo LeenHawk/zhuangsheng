@@ -20,6 +20,15 @@ pub enum ShapeAdapterKey {
 }
 
 impl ShapeAdapterKey {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAiResponsesV1 => "open_ai_responses_v1",
+            Self::OpenAiChatCompletionsV1 => "open_ai_chat_completions_v1",
+            Self::ClaudeMessagesV1 => "claude_messages_v1",
+            Self::GeminiGenerateContentV1 => "gemini_generate_content_v1",
+        }
+    }
+
     pub const fn generation_kind(self) -> ContentGenerationKind {
         match self {
             Self::OpenAiResponsesV1 => ContentGenerationKind::OpenAiResponses,

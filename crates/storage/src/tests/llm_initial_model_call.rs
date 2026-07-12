@@ -57,7 +57,7 @@ async fn initial_model_call_prepares_transcript_checkpoint_and_effect_atomically
     assert_eq!(replay.checkpoint.checksum, prepared.checkpoint.checksum);
 }
 
-fn command(
+pub(super) fn command(
     claimed: &zhuangsheng_core::scheduler::ClaimedAttempt,
     snapshot: &zhuangsheng_core::graph::LlmNodeExecutionSnapshot,
     read_set_digest: &str,

@@ -246,17 +246,15 @@ pub(super) async fn execute_stream_model_call(
     match finalized.terminal {
         StreamTerminal::Completed(response) => {
             let response = *response;
-            let response_bytes =
-                canonical::to_vec(&response).map_err(|_| ApplicationError::Internal)?;
             finish_decoded_model_call(
                 executor,
                 CompletedResponseInput {
+                    operation: execution.operation.clone(),
                     built,
                     model_call_id,
                     effect_attempt_id,
                     checkpoint,
                     fence,
-                    response_bytes,
                     decoded: Ok(DecodedTerminalDraft {
                         response,
                         sensitive_entries: finalized.sensitive_entries,
