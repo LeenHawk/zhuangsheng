@@ -151,7 +151,7 @@ async fn incompatible_graph_contract_leaves_no_conversation_or_profile_write() {
     assert_eq!(count, 0);
 }
 
-async fn compatible_revision(store: &SqliteStore, key: &str) -> String {
+pub(super) async fn compatible_revision(store: &SqliteStore, key: &str) -> String {
     let graph = graph(store, &format!("create-{key}")).await;
     let current = store.get_graph_draft(&graph.id).await.unwrap();
     let mut draft = valid_draft(&graph.id, "Conversation Graph");
@@ -179,7 +179,7 @@ async fn compatible_revision(store: &SqliteStore, key: &str) -> String {
         .id
 }
 
-fn run_spec(revision_id: &str) -> ConversationRunSpec {
+pub(super) fn run_spec(revision_id: &str) -> ConversationRunSpec {
     ConversationRunSpec {
         graph_revision_id: revision_id.into(),
         reply_output_key: "reply".into(),

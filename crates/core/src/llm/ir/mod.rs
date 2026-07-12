@@ -13,5 +13,6 @@ pub use response::*;
 pub use stream::*;
 pub use transcript::*;
 pub use validate::{
-    IrValidationError, validate_request_ir, validate_response_ir, validate_transcript_ir,
+    IrValidationError, validate_content_parts, validate_request_ir, validate_response_ir,
+    validate_transcript_ir,
 };

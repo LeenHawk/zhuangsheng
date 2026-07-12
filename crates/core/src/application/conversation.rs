@@ -1,7 +1,14 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::conversation::{ConversationRunProfile, ConversationRunSpec, ConversationView};
+use crate::{
+    conversation::{
+        ConversationRunProfile, ConversationRunSpec, ConversationTurnView, ConversationView,
+        TurnCandidateView,
+    },
+    llm::ir::LlmContentPartIr,
+    runtime::RunView,
+};
 
 use super::ApplicationError;
 
@@ -22,6 +29,24 @@ pub struct UpdateConversationRunProfileCommand {
     pub idempotency_key: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitConversationTurnCommand {
+    pub conversation_id: String,
+    pub expected_head_commit_id: String,
+    pub user_content: Vec<LlmContentPartIr>,
+    pub run: ConversationRunSpec,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitConversationTurnResult {
+    pub turn: ConversationTurnView,
+    pub candidate: TurnCandidateView,
+    pub run: RunView,
+}
+
 #[async_trait]
 pub trait ConversationService: Send + Sync {
     async fn create_conversation(
@@ -36,4 +61,8 @@ pub trait ConversationService: Send + Sync {
         &self,
         command: UpdateConversationRunProfileCommand,
     ) -> Result<ConversationRunProfile, ApplicationError>;
+    async fn submit_turn(
+        &self,
+        command: SubmitConversationTurnCommand,
+    ) -> Result<SubmitConversationTurnResult, ApplicationError>;
 }

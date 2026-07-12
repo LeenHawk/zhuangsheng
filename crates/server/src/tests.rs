@@ -16,6 +16,7 @@ mod artifact;
 mod config;
 mod conversation;
 mod conversation_profile;
+mod conversation_turn;
 mod secret;
 
 fn test_app(store: Arc<SqliteStore>) -> axum::Router {

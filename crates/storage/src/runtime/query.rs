@@ -9,7 +9,7 @@ impl SqliteStore {
     }
 }
 
-pub(super) async fn load_run<C: ConnectionTrait>(
+pub(crate) async fn load_run<C: ConnectionTrait>(
     connection: &C,
     run_id: &str,
 ) -> StorageResult<RunView> {

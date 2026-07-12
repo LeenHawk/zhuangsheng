@@ -99,7 +99,7 @@ pub fn validate_transcript_ir(items: &[LlmTurnItemIr]) -> Result<(), IrValidatio
 }
 
 fn validate_instruction(instruction: &InstructionIr) -> Result<(), IrValidationError> {
-    validate_content(&instruction.content, true)?;
+    validate_content_parts(&instruction.content, true)?;
     bounded_id(&instruction.provenance.id, 128, "invalid_provenance_id")?;
     bounded_id(
         &instruction.provenance.item_id,
@@ -144,7 +144,7 @@ fn validate_transcript<'a>(
                 ..
             } => {
                 if *placeholder {
-                    validate_content(content, false)?;
+                    validate_content_parts(content, false)?;
                     if !content.is_empty() {
                         return error(
                             "invalid_message_placeholder",
@@ -152,7 +152,7 @@ fn validate_transcript<'a>(
                         );
                     }
                 } else {
-                    validate_content(content, true)?;
+                    validate_content_parts(content, true)?;
                 }
             }
             LlmTurnItemIr::AssistantToolCall { call, .. } => {
@@ -188,7 +188,7 @@ fn validate_transcript<'a>(
                         "tool result name or cardinality does not match its call",
                     );
                 }
-                validate_content(content, true)?;
+                validate_content_parts(content, true)?;
             }
             LlmTurnItemIr::HostedTool {
                 binding_id,
@@ -199,7 +199,7 @@ fn validate_transcript<'a>(
             } => {
                 bounded_id(binding_id, 128, "invalid_hosted_binding")?;
                 bounded_id(kind, 128, "invalid_hosted_kind")?;
-                validate_content(display_content, false)?;
+                validate_content_parts(display_content, false)?;
                 if let Some(reference) = opaque_item_ref {
                     validate_continuation(reference, None)?;
                 }
@@ -227,7 +227,10 @@ fn validate_transcript<'a>(
     Ok(())
 }
 
-fn validate_content(content: &[LlmContentPartIr], required: bool) -> Result<(), IrValidationError> {
+pub fn validate_content_parts(
+    content: &[LlmContentPartIr],
+    required: bool,
+) -> Result<(), IrValidationError> {
     if content.len() > 256 || required && content.is_empty() {
         return error(
             "content_part_limit",

@@ -6,8 +6,12 @@ use axum::{
 };
 use serde::Deserialize;
 use zhuangsheng_core::{
-    application::conversation::{CreateConversationCommand, UpdateConversationRunProfileCommand},
+    application::conversation::{
+        CreateConversationCommand, SubmitConversationTurnCommand, SubmitConversationTurnResult,
+        UpdateConversationRunProfileCommand,
+    },
     conversation::{ConversationRunProfile, ConversationRunSpec, ConversationView},
+    llm::ir::LlmContentPartIr,
 };
 
 use super::{
@@ -30,6 +34,14 @@ struct UpdateRunProfileBody {
     run: ConversationRunSpec,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubmitTurnBody {
+    expected_head_commit_id: String,
+    user_content: Vec<LlmContentPartIr>,
+    run: ConversationRunSpec,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/conversations", post(create_conversation))
@@ -37,6 +49,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/v1/conversations/{conversation_id}/run-profile",
             put(update_run_profile),
+        )
+        .route(
+            "/v1/conversations/{conversation_id}/turns",
+            post(submit_turn),
         )
 }
 
@@ -75,6 +91,26 @@ async fn update_run_profile(
             })
             .await?,
     ))
+}
+
+async fn submit_turn(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<String>,
+    headers: HeaderMap,
+    body: Result<Json<SubmitTurnBody>, JsonRejection>,
+) -> ApiResult<(StatusCode, Json<SubmitConversationTurnResult>)> {
+    let body = json_body(body)?;
+    let result = state
+        .conversation_service
+        .submit_turn(SubmitConversationTurnCommand {
+            conversation_id,
+            expected_head_commit_id: body.expected_head_commit_id,
+            user_content: body.user_content,
+            run: body.run,
+            idempotency_key: required_header(&headers, "idempotency-key")?,
+        })
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(result)))
 }
 
 async fn get_conversation(

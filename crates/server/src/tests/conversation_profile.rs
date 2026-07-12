@@ -88,7 +88,7 @@ async fn conversation_profile_http_uses_exact_graph_contract_and_revision_cas() 
     assert_eq!(loaded["runProfile"], updated);
 }
 
-async fn compatible_revision(store: &SqliteStore) -> String {
+pub(super) async fn compatible_revision(store: &SqliteStore) -> String {
     let graph = store
         .create_graph(CreateGraphCommand {
             name: "Conversation HTTP Graph".into(),

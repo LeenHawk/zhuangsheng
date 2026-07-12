@@ -3,7 +3,8 @@ use zhuangsheng_core::{
     application::{
         ApplicationError,
         conversation::{
-            ConversationService, CreateConversationCommand, UpdateConversationRunProfileCommand,
+            ConversationService, CreateConversationCommand, SubmitConversationTurnCommand,
+            SubmitConversationTurnResult, UpdateConversationRunProfileCommand,
         },
     },
     conversation::{ConversationRunProfile, ConversationView},
@@ -38,6 +39,15 @@ impl ConversationService for SqliteStore {
         command: UpdateConversationRunProfileCommand,
     ) -> Result<ConversationRunProfile, ApplicationError> {
         self.update_conversation_run_profile_at(command, now_ms())
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn submit_turn(
+        &self,
+        command: SubmitConversationTurnCommand,
+    ) -> Result<SubmitConversationTurnResult, ApplicationError> {
+        self.submit_conversation_turn_at(command, now_ms())
             .await
             .map_err(Into::into)
     }

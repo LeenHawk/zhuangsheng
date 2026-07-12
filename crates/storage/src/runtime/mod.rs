@@ -1,7 +1,7 @@
 mod context;
 mod control;
 mod persist;
-mod query;
+pub(crate) mod query;
 mod resume;
 mod scheduler;
 mod service;

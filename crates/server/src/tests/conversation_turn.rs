@@ -1,0 +1,69 @@
+use std::sync::Arc;
+
+use axum::http::StatusCode;
+use serde_json::json;
+use zhuangsheng_storage::SqliteStore;
+
+use super::{call, conversation_profile::compatible_revision, request, test_app};
+
+#[tokio::test]
+async fn conversation_turn_http_returns_one_durable_candidate_run() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    let revision_id = compatible_revision(&store).await;
+    let app = test_app(store);
+    let conversation = call(
+        &app,
+        request(
+            "POST",
+            "/v1/conversations",
+            json!({}),
+            &[("idempotency-key", "turn-http-conversation".into())],
+        ),
+        StatusCode::CREATED,
+    )
+    .await;
+    let body = json!({
+        "expectedHeadCommitId":conversation["activeHeadCommitId"],
+        "userContent":[{"type":"text","text":"Open the archive"}],
+        "run":{
+            "graphRevisionId":revision_id,
+            "replyOutputKey":"reply",
+            "inputShape":"conversation_message_v1"
+        }
+    });
+    let submitted = call(
+        &app,
+        request(
+            "POST",
+            &format!(
+                "/v1/conversations/{}/turns",
+                conversation["id"].as_str().unwrap()
+            ),
+            body.clone(),
+            &[("idempotency-key", "turn-http-submit".into())],
+        ),
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    assert_eq!(submitted["candidate"]["runId"], submitted["run"]["id"]);
+    assert_eq!(submitted["candidate"]["status"], "running");
+    assert_eq!(
+        submitted["turn"]["userCommitId"],
+        submitted["run"]["inputCommitId"]
+    );
+    let replayed = call(
+        &app,
+        request(
+            "POST",
+            &format!(
+                "/v1/conversations/{}/turns",
+                conversation["id"].as_str().unwrap()
+            ),
+            body,
+            &[("idempotency-key", "turn-http-submit".into())],
+        ),
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    assert_eq!(replayed, submitted);
+}
