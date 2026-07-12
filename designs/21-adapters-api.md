@@ -237,6 +237,7 @@ PUT    /v1/graphs/{graphId}/draft
 POST   /v1/graphs/{graphId}/apply
 GET    /v1/graphs/{graphId}/revisions/{revisionId}
 GET    /v1/graph-revisions/{revisionId}
+GET    /v1/roleplay/graph-options
 GET    /v1/graph-revisions/{revisionId}/roleplay-compatibility
 GET    /v1/graph-revisions/{revisionId}/roleplay-settings
 
@@ -284,7 +285,7 @@ POST   /v1/secret-store/unlock
 POST   /v1/secret-store/lock
 ```
 
-Draft update 使用 revision token，apply 返回 immutable revision ID/content hash/diagnostics。Role Play compatibility/settings query由application service按 `24-agentic-role-play-ui.md` 的versioned profile生成，浏览器不能遍历任意Graph猜主节点或ContextItem；settings view只返回可无损映射字段和locked reasons，实际保存仍写canonical GraphDraft/ContextPreset等资源。提交 Turn 原子写 user commit、Turn、candidate branch 和 run；regenerate 不重复 user message；selection 带 expected conversation head。Conversation create可带default run profile，更新profile使用revision CAS和application receipt，只影响后续Turn。Proposal command 带 expected memory head/policy version。
+Draft update 使用 revision token，apply 返回 immutable revision ID/content hash/diagnostics。`/v1/roleplay/graph-options` 只投影每个 Graph 最新 applied revision，返回 graph/revision identity、合同兼容的 reply output keys、可识别的主 LLM node和 compatibility view；单 revision endpoint返回同一判定。Role Play compatibility/settings query由application service按 `24-agentic-role-play-ui.md` 的versioned profile生成，浏览器不能遍历任意Graph猜主节点或ContextItem；settings view只返回可无损映射字段和locked reasons，实际保存仍写canonical GraphDraft/ContextPreset等资源。提交 Turn 原子写 user commit、Turn、candidate branch 和 run；regenerate 不重复 user message；selection 带 expected conversation head。Conversation create可带default run profile，更新profile使用revision CAS和application receipt，只影响后续Turn。Proposal command 带 expected memory head/policy version。
 
 Turn 与 regeneration body 分别使用 `13-conversation-turn-run.md` 的 `SubmitConversationTurnCommand` 和 `RegenerateConversationCandidateCommand`；两者都必须携带 `{ graphRevisionId, replyOutputKey, inputShape: "conversation_message_v1" }` 的 `ConversationRunSpec`。Adapter 不选第一个/default output，ConversationService 在事务前校验该 key 的 `required + single`、compilation `canonicalDocumentHash` 与内建 `AssistantReplyPayloadV1` 完全相同且每项 effective limit `<=` canonical cap；不执行任意 JSON Schema subsumption。实例仍按 owner 的完整 `schemaHash/compiled payload` exact validate，并把 key 持久化到 candidate run binding。Run input 由 ConversationService 从已提交 user message 构造 canonical `ConversationRunInputV1`；regenerate 重用原 Turn input，不从第二个自由 JSON 字段猜测映射。
 

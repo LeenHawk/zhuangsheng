@@ -124,6 +124,8 @@ type RolePlayCompatibilityView =
 
 `partial` 中只允许保存列出的字段；未知 node/item 原样保留。`expert_only` 仍可用于 Conversation 运行，只是用户设置页显示只读摘要和“在专家模式编辑”。不提供“转换为简单模式”这种有损操作；需要简化时显式从模板创建新 draft。
 
+Graph 选择器调用 `GET /v1/roleplay/graph-options`，只消费服务端对每个 Graph 最新 applied revision生成的投影：graph/revision identity、合同兼容的 reply output keys、唯一主 LLM node和上述 compatibility view。检查固定历史 revision时调用 `GET /v1/graph-revisions/{revisionId}/roleplay-compatibility`。Preset 引用按当前 head分析，因为后续 Run 也在创建 execution snapshot时解析该 head；inline context直接分析 revision内的 spec。缺失 preset head、未知 ContextItem、tool/memory binding或自定义协调节点只降级可编辑范围，不允许浏览器自行“识别后覆盖”。
+
 ## 信息架构
 
 ### 首页

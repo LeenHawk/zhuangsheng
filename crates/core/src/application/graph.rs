@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ValidationIssue,
+    conversation::{RolePlayCompatibilityView, RolePlayGraphOptionView},
     graph::{AppliedGraphDefinition, GraphDraft},
 };
 
@@ -98,4 +99,11 @@ pub trait GraphService: Send + Sync {
         graph_id: &str,
         revision_id: &str,
     ) -> Result<GraphRevisionView, ApplicationError>;
+    async fn list_roleplay_graph_options(
+        &self,
+    ) -> Result<Vec<RolePlayGraphOptionView>, ApplicationError>;
+    async fn get_roleplay_compatibility(
+        &self,
+        revision_id: &str,
+    ) -> Result<RolePlayCompatibilityView, ApplicationError>;
 }

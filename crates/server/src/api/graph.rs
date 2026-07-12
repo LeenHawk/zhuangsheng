@@ -10,6 +10,7 @@ use zhuangsheng_core::{
         ApplyGraphCommand, CreateGraphCommand, CreateGraphResult, GraphDraftView,
         GraphRevisionView, GraphView, UpdateGraphDraftCommand,
     },
+    conversation::{RolePlayCompatibilityView, RolePlayGraphOptionView},
     graph::GraphDraft,
 };
 
@@ -46,6 +47,31 @@ pub fn routes() -> Router<AppState> {
             get(get_nested_revision),
         )
         .route("/v1/graph-revisions/{revision_id}", get(get_revision))
+        .route("/v1/roleplay/graph-options", get(list_roleplay_options))
+        .route(
+            "/v1/graph-revisions/{revision_id}/roleplay-compatibility",
+            get(get_roleplay_compatibility),
+        )
+}
+
+async fn list_roleplay_options(
+    State(state): State<AppState>,
+) -> ApiResult<Json<Vec<RolePlayGraphOptionView>>> {
+    Ok(Json(
+        state.graph_service.list_roleplay_graph_options().await?,
+    ))
+}
+
+async fn get_roleplay_compatibility(
+    State(state): State<AppState>,
+    Path(revision_id): Path<String>,
+) -> ApiResult<Json<RolePlayCompatibilityView>> {
+    Ok(Json(
+        state
+            .graph_service
+            .get_roleplay_compatibility(&revision_id)
+            .await?,
+    ))
 }
 
 async fn create_graph(

@@ -4,6 +4,7 @@ mod draft;
 pub(crate) mod helpers;
 mod llm_dependencies;
 mod query;
+mod roleplay;
 pub(crate) mod schema_bundle;
 mod service;
 mod types;

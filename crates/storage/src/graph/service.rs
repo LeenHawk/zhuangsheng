@@ -1,5 +1,8 @@
 use async_trait::async_trait;
-use zhuangsheng_core::application::{ApplicationError, graph::*};
+use zhuangsheng_core::{
+    application::{ApplicationError, graph::*},
+    conversation::{RolePlayCompatibilityView, RolePlayGraphOptionView},
+};
 
 use crate::SqliteStore;
 
@@ -57,6 +60,23 @@ impl GraphService for SqliteStore {
         revision_id: &str,
     ) -> Result<GraphRevisionView, ApplicationError> {
         SqliteStore::get_graph_revision_for_graph(self, graph_id, revision_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn list_roleplay_graph_options(
+        &self,
+    ) -> Result<Vec<RolePlayGraphOptionView>, ApplicationError> {
+        SqliteStore::list_roleplay_graph_options(self)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn get_roleplay_compatibility(
+        &self,
+        revision_id: &str,
+    ) -> Result<RolePlayCompatibilityView, ApplicationError> {
+        SqliteStore::get_roleplay_compatibility(self, revision_id)
             .await
             .map_err(Into::into)
     }
