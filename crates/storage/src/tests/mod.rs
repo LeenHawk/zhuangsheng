@@ -17,6 +17,7 @@ mod conversation_projection_failure;
 mod conversation_projection_resolution;
 mod conversation_projection_resolution_support;
 mod conversation_projection_support;
+mod conversation_read;
 mod conversation_regenerate;
 mod conversation_root;
 mod conversation_run_profile;

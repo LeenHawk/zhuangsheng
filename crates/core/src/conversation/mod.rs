@@ -3,6 +3,7 @@ mod contracts;
 mod contracts_tests;
 mod selection;
 mod types;
+mod views;
 
 pub use contracts::{
     ASSISTANT_REPLY_PAYLOAD_V1_DOCUMENT_HASH, CONVERSATION_RUN_INPUT_V1_DOCUMENT_HASH,
@@ -11,3 +12,4 @@ pub use contracts::{
 };
 pub use selection::*;
 pub use types::*;
+pub use views::*;

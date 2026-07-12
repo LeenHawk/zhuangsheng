@@ -37,6 +37,26 @@ async fn conversation_http_bootstraps_and_reloads_a_durable_root() {
     )
     .await;
     assert_eq!(loaded, created);
+    let listed = call(
+        &app,
+        request("GET", "/v1/conversations", json!(null), &[]),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(listed["items"][0], created);
+    let timeline = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/conversations/{conversation_id}/turns"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(timeline["messages"], json!([]));
+    assert_eq!(timeline["turns"], json!([]));
     let replayed = call(
         &app,
         request(

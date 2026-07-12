@@ -51,6 +51,23 @@ async fn conversation_turn_http_returns_one_durable_candidate_run() {
         submitted["turn"]["userCommitId"],
         submitted["run"]["inputCommitId"]
     );
+    let timeline = call(
+        &app,
+        request(
+            "GET",
+            &format!(
+                "/v1/conversations/{}/turns",
+                conversation["id"].as_str().unwrap()
+            ),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(timeline["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(timeline["messages"][0]["content"], body["userContent"]);
+    assert_eq!(timeline["turns"][0]["candidates"][0]["status"], "running");
     let replayed = call(
         &app,
         request(

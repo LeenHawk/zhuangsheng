@@ -176,6 +176,8 @@ type ResolveCandidateProjectionResult = {
 }
 ```
 
+Story 读取使用独立 projection DTO：`GET /v1/conversations` 返回按最近更新排序的 `ConversationListView`；`GET /v1/conversations/{conversationId}/turns` 返回 `ConversationTimelineView { conversationId, activeBranchId, activeHeadCommitId, messages, turns }`。`messages` 严格按 active WorkingContext projection 中的 ancestry 顺序展开并解析 immutable content ref，不能按所有 message row 的 `createdAt` 混排分支；`turns` 只包含 active user messages 对应的 Turn，但每个 Turn 的 `candidates` 保留全部 sibling candidate、selection、projection error 安全摘要和 commit provenance，供 regenerate/swipe/conflict UI 使用。任一 projection/message/commit/content/ref 对不上都返回 integrity error，不用缺行或客户端 cache 猜测补齐。
+
 Candidate 以 `(turnId, runId)` 唯一，不需要另一份 candidate ID。Message content 存 content object；message row 是领域索引，commit graph 是 branch/history 权威。Turn 不复制聊天内容或 candidate output。
 
 系统 schema registry 发布唯一内建的 `AssistantReplyPayloadV1` canonical `JsonSchemaSpec`。其 document 是 closed object：只允许且必须包含 `schemaVersion/type/content`，前两项分别为 `const: 1` 和 `const: "assistant_reply"`，`content` item 使用本地 `$defs` 完整嵌入 canonical `LlmContentPartIr`/`ArtifactRef` schema，`additionalProperties=false`，不使用 remote ref。V1 canonical cap vector 恰为 `16-domain-consistency.md` 列出的 phase-one baseline hard caps；Release manifest 固定该 document 的 `canonicalDocumentHash`、profile/format version 和 cap vector，任一变化都要发布新 contract version，不能根据当前默认值在启动时临时生成另一份 schema。

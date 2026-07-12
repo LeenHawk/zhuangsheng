@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
-    routing::{get, post, put},
+    routing::{get, put},
 };
 use serde::Deserialize;
 use zhuangsheng_core::{
@@ -10,7 +10,10 @@ use zhuangsheng_core::{
         CreateConversationCommand, SubmitConversationTurnCommand, SubmitConversationTurnResult,
         UpdateConversationRunProfileCommand,
     },
-    conversation::{ConversationRunProfile, ConversationRunSpec, ConversationView},
+    conversation::{
+        ConversationListView, ConversationRunProfile, ConversationRunSpec,
+        ConversationTimelineView, ConversationView,
+    },
     llm::ir::LlmContentPartIr,
 };
 
@@ -44,7 +47,10 @@ struct SubmitTurnBody {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/v1/conversations", post(create_conversation))
+        .route(
+            "/v1/conversations",
+            get(list_conversations).post(create_conversation),
+        )
         .route("/v1/conversations/{conversation_id}", get(get_conversation))
         .route(
             "/v1/conversations/{conversation_id}/run-profile",
@@ -52,8 +58,26 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/v1/conversations/{conversation_id}/turns",
-            post(submit_turn),
+            get(get_timeline).post(submit_turn),
         )
+}
+
+async fn list_conversations(
+    State(state): State<AppState>,
+) -> ApiResult<Json<ConversationListView>> {
+    Ok(Json(state.conversation_service.list_conversations().await?))
+}
+
+async fn get_timeline(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<String>,
+) -> ApiResult<Json<ConversationTimelineView>> {
+    Ok(Json(
+        state
+            .conversation_service
+            .get_conversation_timeline(&conversation_id)
+            .await?,
+    ))
 }
 
 async fn create_conversation(

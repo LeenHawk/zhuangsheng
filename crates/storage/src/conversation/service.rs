@@ -10,12 +10,15 @@ use zhuangsheng_core::{
             UpdateConversationRunProfileCommand,
         },
     },
-    conversation::{ConversationRunProfile, ConversationSelectionView, ConversationView},
+    conversation::{
+        ConversationListView, ConversationRunProfile, ConversationSelectionView,
+        ConversationTimelineView, ConversationView,
+    },
 };
 
 use crate::{SqliteStore, graph::helpers::now_ms};
 
-use super::read::load_conversation;
+use super::{read::load_conversation, read_list::load_conversations, read_timeline::load_timeline};
 
 #[async_trait]
 impl ConversationService for SqliteStore {
@@ -33,6 +36,19 @@ impl ConversationService for SqliteStore {
         conversation_id: &str,
     ) -> Result<ConversationView, ApplicationError> {
         load_conversation(&self.db, conversation_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn list_conversations(&self) -> Result<ConversationListView, ApplicationError> {
+        load_conversations(&self.db).await.map_err(Into::into)
+    }
+
+    async fn get_conversation_timeline(
+        &self,
+        conversation_id: &str,
+    ) -> Result<ConversationTimelineView, ApplicationError> {
+        load_timeline(&self.db, conversation_id)
             .await
             .map_err(Into::into)
     }
@@ -84,10 +100,21 @@ impl ConversationService for SqliteStore {
 }
 
 impl SqliteStore {
+    pub async fn list_conversation_views(&self) -> crate::StorageResult<ConversationListView> {
+        load_conversations(&self.db).await
+    }
+
     pub async fn get_conversation_view(
         &self,
         conversation_id: &str,
     ) -> crate::StorageResult<ConversationView> {
         load_conversation(&self.db, conversation_id).await
+    }
+
+    pub async fn get_conversation_timeline_view(
+        &self,
+        conversation_id: &str,
+    ) -> crate::StorageResult<ConversationTimelineView> {
+        load_timeline(&self.db, conversation_id).await
     }
 }

@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     conversation::{
-        ConversationRunProfile, ConversationRunSpec, ConversationSelectionView,
-        ConversationTurnView, ConversationView, TurnCandidateView,
+        ConversationListView, ConversationRunProfile, ConversationRunSpec,
+        ConversationSelectionView, ConversationTimelineView, ConversationTurnView,
+        ConversationView, TurnCandidateView,
     },
     llm::ir::LlmContentPartIr,
     runtime::RunView,
@@ -120,6 +121,11 @@ pub trait ConversationService: Send + Sync {
         &self,
         conversation_id: &str,
     ) -> Result<ConversationView, ApplicationError>;
+    async fn list_conversations(&self) -> Result<ConversationListView, ApplicationError>;
+    async fn get_conversation_timeline(
+        &self,
+        conversation_id: &str,
+    ) -> Result<ConversationTimelineView, ApplicationError>;
     async fn update_run_profile(
         &self,
         command: UpdateConversationRunProfileCommand,
