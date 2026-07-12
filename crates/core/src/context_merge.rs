@@ -5,6 +5,10 @@ use serde_json::{Map, Value};
 
 use crate::artifact::ArtifactRef;
 
+mod append;
+
+pub use append::{AppendArrayMerge, MergeAppendItem, merge_append_only_arrays};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MergeSourceDisposition {
@@ -115,16 +119,6 @@ fn merge_value(
         return Some(Value::Object(merge_objects(
             path, base, source, target, conflicts,
         )));
-    }
-    if let (Some(Value::Array(base)), Some(Value::Array(source)), Some(Value::Array(target))) =
-        (base, source, target)
-        && source.starts_with(base)
-        && target.starts_with(base)
-    {
-        let mut merged = base.clone();
-        merged.extend_from_slice(&source[base.len()..]);
-        merged.extend_from_slice(&target[base.len()..]);
-        return Some(Value::Array(merged));
     }
     conflicts.push(MergePathConflict {
         path: path.into(),

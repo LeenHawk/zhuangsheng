@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use zhuangsheng_core::{
     application::ApplicationError,
+    context_merge::{MergeContextCommand, MergeContextView},
     runtime::{
         ContextBranchView, DurableRunEventView, ForkContextCommand, RunControlCommand,
         RunOutputsView, RunView, RuntimeService, StartRunCommand, SubmitWaitResponseCommand,
@@ -56,6 +57,15 @@ impl RuntimeService for SqliteStore {
         command: ForkContextCommand,
     ) -> Result<ContextBranchView, ApplicationError> {
         self.fork_context_at(command, now_ms())
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn merge_context(
+        &self,
+        command: MergeContextCommand,
+    ) -> Result<MergeContextView, ApplicationError> {
+        self.merge_context_at(command, now_ms())
             .await
             .map_err(Into::into)
     }

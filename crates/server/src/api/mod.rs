@@ -2,6 +2,7 @@ pub mod artifact;
 mod artifact_upload;
 pub mod channel;
 pub mod context;
+pub mod context_merge;
 pub mod conversation;
 pub mod conversation_candidate;
 pub mod error;

@@ -64,6 +64,7 @@ pub fn app(services: AppServices) -> Router {
         .merge(api::channel::routes())
         .merge(api::preset::routes())
         .merge(api::context::routes())
+        .merge(api::context_merge::routes())
         .merge(api::conversation::routes())
         .merge(api::conversation_candidate::routes())
         .merge(api::memory::routes())

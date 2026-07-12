@@ -13,7 +13,7 @@ use crate::{
     graph::helpers::{load_object_json, now_ms, sql},
 };
 
-use super::commit::effective_patch;
+use super::{commit::effective_patch, merge_append_history::load_resolution_append_ids};
 
 const MAX_HISTORY_COMMITS: usize = 10_000;
 const MAX_PROJECTION_BYTES: usize = 16 * 1024 * 1024;
@@ -41,7 +41,7 @@ pub(crate) async fn reconstruct<C: ConnectionTrait>(
             ));
         }
         let row = connection.query_one_raw(sql(
-            "SELECT v.aggregate_id, v.lineage_key, v.patch_object_id, v.initial_snapshot_object_id, s.snapshot_object_id AS version_snapshot_id, s.schema_version AS snapshot_schema_version, s.checksum, p.parent_commit_id FROM version_commits v LEFT JOIN version_snapshots s ON s.commit_id = v.id LEFT JOIN commit_parents p ON p.commit_id = v.id AND p.parent_order = 0 WHERE v.id = ? AND v.aggregate_kind = 'working_context'",
+            "SELECT v.aggregate_id, v.lineage_key, v.patch_object_id, v.initial_snapshot_object_id, v.merge_resolution_object_id, s.snapshot_object_id AS version_snapshot_id, s.schema_version AS snapshot_schema_version, s.checksum, p.parent_commit_id FROM version_commits v LEFT JOIN version_snapshots s ON s.commit_id = v.id LEFT JOIN commit_parents p ON p.commit_id = v.id AND p.parent_order = 0 WHERE v.id = ? AND v.aggregate_kind = 'working_context'",
             vec![current.clone().into()],
         )).await?.ok_or_else(|| StorageError::NotFound {
             kind: "context_commit",
@@ -105,10 +105,13 @@ pub(crate) async fn reconstruct<C: ConnectionTrait>(
                 "non-root context commit lacks patch or parent".into(),
             ));
         };
-        patches.push(patch_id);
+        patches.push((
+            patch_id,
+            row.try_get::<Option<String>>("", "merge_resolution_object_id")?,
+        ));
         current = parent;
     };
-    for patch_id in patches.into_iter().rev() {
+    for (patch_id, resolution_id) in patches.into_iter().rev() {
         let patch: StatePatch = load_object_json(connection, &patch_id).await?;
         let effective = effective_patch(&patch, &append_ids);
         if !effective.ops.is_empty() {
@@ -118,6 +121,9 @@ pub(crate) async fn reconstruct<C: ConnectionTrait>(
             if let JsonPatchOp::Append { element_id, .. } = operation {
                 append_ids.insert(element_id);
             }
+        }
+        if let Some(resolution_id) = resolution_id {
+            append_ids.extend(load_resolution_append_ids(connection, &resolution_id).await?);
         }
     }
     if canonical::to_vec(&value)?.len() > MAX_PROJECTION_BYTES {

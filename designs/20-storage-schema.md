@@ -91,14 +91,14 @@ Open `aggregation_windows` 是 coordinator internal blocker：opening built-in a
 - `memory_change_proposals(id PK, memory_id FK, expected_head_commit_id FK NULL, change_kind, change_object_id FK, reason, requested_by_kind, requested_by_id NULL, idempotency_key, schema_version, policy_version, status, retention_until NULL, origin_run_id FK NULL, origin_node_instance_id FK NULL, created_at, resolved_at NULL)`；`UNIQUE(idempotency_key)`；change object 是 `16-domain-consistency.md` 的 versioned discriminated payload。
 - `memory_proposal_evidence(proposal_id FK, evidence_kind, evidence_id, PRIMARY KEY(proposal_id, evidence_kind, evidence_id))`。
 - `memory_proposal_commits(proposal_id PK/FK, commit_id FK UNIQUE, applied_at)`；apply 事务同时写入，domain projection 由此得到 proposal.appliedCommitId / commit.sourceProposalId。
-- `context_merge_operations(id PK, context_id FK, source_branch_id FK, target_branch_id FK, source_head_id FK, target_head_id FK, base_commit_id FK NULL, source_disposition, idempotency_key, request_digest, status, result_commit_id FK NULL, result_object_id FK NULL, created_at, completed_at NULL)`；`UNIQUE(context_id, idempotency_key)`，同 key 不同 digest 返回 conflict。
-- `merge_conflicts(id PK, context_id FK, merge_operation_id FK, source_branch_id FK, target_branch_id FK, base_commit_id FK, source_head_id FK, target_head_id FK, path, values_object_id FK, status, resolution_object_id FK NULL, created_at, resolved_at NULL)`；`UNIQUE(context_id, merge_operation_id, path)`。
+- Context merge 不再单建 operation ledger；每次分析或解决都是一个完整 `mergeContext` command，使用 branch pair scope 下的 `application_command_receipts` 保存 immutable result。相同 key 不同 digest 返回 conflict，新的 resolution 使用新 key。
+- `context_merge_conflicts(id PK, context_id FK, source_branch_id FK, target_branch_id FK, base_commit_id FK, source_head_commit_id FK, target_head_commit_id FK, path, base/source/target_value_object_id FK, status, resolution_object_id FK NULL, created_at, resolved_at NULL)`；ID 和唯一键都由 context、branch pair、base、双 head 与 path 决定，避免把 conflict 身份绑定到某次网络请求。
 
-索引：`context_branches(context_id, status)`、`version_commits(aggregate_kind, aggregate_id, lineage_key, sequence_no DESC)`、`memory_records(scope, status)`、`memory_change_proposals(status, created_at)`、`merge_conflicts(target_branch_id, status)`。
+索引：`context_branches(context_id, status)`、`version_commits(aggregate_kind, aggregate_id, lineage_key, sequence_no DESC)`、`memory_records(scope, status)`、`memory_change_proposals(status, created_at)`、`context_merge_conflicts(target_branch_id, status)`。
 
 `version_commits` 与 parent rows append-only；branch head 和 projection 是可重建缓存。`lineage_key` 对 WorkingContext 是 branch ID，对 LongTermMemory 是 `global`。新建长期记忆时先在 proposal 事务中保留 `memory_records.id` 并置为 proposed，apply create 后写 initial snapshot/root commit、置 active 并推进 head。Replace/obsolete/tombstone 基于 expected head 生成确定 patch；tombstone 清空 current content 与 search projection。
 
-Merge 命令先按 request digest 幂等创建 operation；冲突结果也是该 operation 的持久结果。解决命令在同一事务中验证 conflict/head，写 final patch/merge commit，CAS target，更新 conflict 和 source status，并终结 operation；任一校验或 CAS 失败都不可部分可见。
+Merge 命令先按 request digest 检查或创建 application receipt；冲突结果也是 immutable receipt result。解决命令使用新 receipt，在同一事务中验证 deterministic conflict identity/head，写 final patch/merge commit，CAS target，更新 conflict 和 source status；任一校验或 CAS 失败都不可部分可见。
 
 Root 使用 initial snapshot，普通/merge commit 都必须保存最终 patch；`merge_resolution_object_id` 只保存 provenance，不能代替可 replay 的 merge patch。
 

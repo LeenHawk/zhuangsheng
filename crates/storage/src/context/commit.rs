@@ -16,7 +16,10 @@ use crate::{
     graph::helpers::{load_object_json, new_id, now_ms, put_inline_object, sql},
 };
 
-use super::query::{load_commit, load_context};
+use super::{
+    merge_append_history::load_resolution_append_ids,
+    query::{load_commit, load_context},
+};
 
 const MAX_HISTORY_COMMITS: usize = 10_000;
 const MAX_PATCH_BYTES: usize = 1024 * 1024;
@@ -148,7 +151,7 @@ async fn load_history<C: ConnectionTrait>(
             before_base = false;
         }
         let row = connection.query_one_raw(sql(
-            "SELECT v.patch_object_id, p.parent_commit_id FROM version_commits v LEFT JOIN commit_parents p ON p.commit_id = v.id AND p.parent_order = 0 WHERE v.id = ? AND v.aggregate_kind = 'working_context'",
+            "SELECT v.patch_object_id, v.merge_resolution_object_id, p.parent_commit_id FROM version_commits v LEFT JOIN commit_parents p ON p.commit_id = v.id AND p.parent_order = 0 WHERE v.id = ? AND v.aggregate_kind = 'working_context'",
             vec![commit_id.clone().into()],
         )).await?.ok_or_else(|| StorageError::Integrity("context commit ancestry is broken".into()))?;
         let patch_id: Option<String> = row.try_get("", "patch_object_id")?;
@@ -162,6 +165,10 @@ async fn load_history<C: ConnectionTrait>(
             if before_base {
                 since_base.push(patch);
             }
+        }
+        let resolution_id: Option<String> = row.try_get("", "merge_resolution_object_id")?;
+        if let Some(resolution_id) = resolution_id {
+            append_ids.extend(load_resolution_append_ids(connection, &resolution_id).await?);
         }
         current = row.try_get("", "parent_commit_id")?;
     }

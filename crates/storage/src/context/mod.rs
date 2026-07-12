@@ -1,6 +1,16 @@
 pub(crate) mod commit;
 mod fork;
 mod fork_support;
+mod merge;
+mod merge_append;
+mod merge_append_history;
+mod merge_base;
+mod merge_commit;
+mod merge_conflict;
+mod merge_event;
+mod merge_pointer;
+mod merge_receipt;
+mod merge_selection;
 pub(crate) mod query;
 pub(crate) mod replay;
 mod service;

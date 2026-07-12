@@ -23,6 +23,7 @@ mod m20260712_000022_conversations;
 mod m20260712_000023_conversation_turns;
 mod m20260712_000024_candidate_projection_jobs;
 mod m20260712_000025_conversation_selections;
+mod m20260712_000026_context_merge_conflicts;
 
 use sea_orm_migration::prelude::*;
 
@@ -57,6 +58,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260712_000023_conversation_turns::Migration),
             Box::new(m20260712_000024_candidate_projection_jobs::Migration),
             Box::new(m20260712_000025_conversation_selections::Migration),
+            Box::new(m20260712_000026_context_merge_conflicts::Migration),
         ]
     }
 }

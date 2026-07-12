@@ -276,6 +276,10 @@ pub trait RuntimeService: Send + Sync {
         &self,
         command: ForkContextCommand,
     ) -> Result<ContextBranchView, ApplicationError>;
+    async fn merge_context(
+        &self,
+        command: crate::context_merge::MergeContextCommand,
+    ) -> Result<crate::context_merge::MergeContextView, ApplicationError>;
     async fn request_interrupt(
         &self,
         command: RunControlCommand,

@@ -15,6 +15,8 @@ use crate::{AppServices, StreamEventHub, app};
 mod artifact;
 mod config;
 mod context_fork;
+mod context_merge;
+mod context_merge_resolution;
 mod conversation;
 mod conversation_profile;
 mod conversation_turn;
