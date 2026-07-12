@@ -93,6 +93,20 @@ describe("HttpConfigClient", () => {
     expect(result.items[0]).toMatchObject({ itemId: "character", tokenCount: 12, action: "kept" });
     expect(JSON.stringify(result)).not.toContain("You are Alice");
   });
+
+  it("loads an exact preset identity for settings navigation", async () => {
+    let requested: RequestInfo | URL | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested = input;
+      return Response.json({
+        id: "preset/1", name: "Alice", headVersionId: "presetver_1",
+        createdAt: 1, updatedAt: 2,
+      });
+    });
+    const preset = await new HttpConfigClient("https://settings.example").getPreset("preset/1");
+    expect(requested).toBe("https://settings.example/v1/context-presets/preset%2F1");
+    expect(preset.name).toBe("Alice");
+  });
 });
 
 const preview = () => ({
@@ -131,5 +145,22 @@ describe("HttpSecretClient metadata commands", () => {
     expect(requestBody).toEqual({ name: "Provider", kind: "api_key", value: "plaintext-value", sessionId: "session_1" });
     expect(result).toEqual({ secretRef: { scheme: "secret", id: "provider/key" }, name: "Provider", kind: "api_key", createdAt: 1, updatedAt: 2 });
     expect(JSON.stringify(result)).not.toContain("plaintext-value");
+  });
+
+  it("locks the active session through a non-secret idempotent command", async () => {
+    let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      call = { input, init };
+      return Response.json({ locked: true });
+    });
+    const result = await new HttpSecretClient("https://settings.example").lock({
+      expectedSessionId: "session_1",
+      idempotencyKey: "lock-key",
+    });
+    const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
+    expect(request.input).toBe("https://settings.example/v1/secret-store/lock");
+    expect(request.init.headers).toMatchObject({ "idempotency-key": "lock-key" });
+    expect(JSON.parse(request.init.body as string)).toEqual({ expectedSessionId: "session_1" });
+    expect(result).toEqual({ locked: true });
   });
 });

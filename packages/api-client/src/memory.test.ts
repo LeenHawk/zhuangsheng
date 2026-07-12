@@ -38,4 +38,19 @@ describe("memory API", () => {
     expect(body).toMatchObject({ requestedBy: { kind: "user", id: "local-user" }, schemaVersion: 1, policyVersion: 1 });
     expect(body).not.toHaveProperty("idempotencyKey");
   });
+
+  it("loads an exact memory record without searching a mutable projection", async () => {
+    let requested: RequestInfo | URL | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested = input;
+      return Response.json({
+        id: "memory/1", scopeId: "story_1", status: "active",
+        headCommitId: "commit_1", contentRef: "object_1",
+        content: proposal.proposedContent, createdAt: 1, updatedAt: 2,
+      });
+    });
+    const record = await new HttpMemoryClient("https://memory.example").get("memory/1");
+    expect(requested).toBe("https://memory.example/v1/memories/memory%2F1");
+    expect(record.content?.text).toBe("Alice likes tea");
+  });
 });

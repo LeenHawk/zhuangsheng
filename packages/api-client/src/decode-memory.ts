@@ -43,12 +43,12 @@ export const decodeMemoryProposalList = (value: unknown): MemoryProposalListView
   return { proposals: item.proposals.map((proposal, index) => decodeMemoryProposal(proposal, `memoryProposals.proposals[${index}]`)), nextCursor: cursor ? { updatedAt: number(cursor.updatedAt, "memoryProposals.nextCursor.updatedAt"), id: string(cursor.id, "memoryProposals.nextCursor.id") } : null };
 };
 
-const memoryRecord = (value: unknown, path: string): MemoryRecordView => {
+export const decodeMemoryRecord = (value: unknown, path = "memoryRecord"): MemoryRecordView => {
   const item = record(value, path);
   return { id: string(item.id, `${path}.id`), scopeId: string(item.scopeId, `${path}.scopeId`), status: oneOf<MemoryRecordStatus>(item.status, `${path}.status`, recordStatuses), headCommitId: nullableString(item.headCommitId, `${path}.headCommitId`), contentRef: nullableString(item.contentRef, `${path}.contentRef`), content: nullableContent(item.content, `${path}.content`), createdAt: number(item.createdAt, `${path}.createdAt`), updatedAt: number(item.updatedAt, `${path}.updatedAt`) };
 };
 
 export const decodeMemorySearch = (value: unknown): MemorySearchView => {
   const item = record(value, "memorySearch"); if (!Array.isArray(item.records)) throw new DecodeError("memorySearch.records");
-  return { records: item.records.map((value, index) => memoryRecord(value, `memorySearch.records[${index}]`)), truncated: boolean(item.truncated, "memorySearch.truncated"), scopeSnapshotToken: string(item.scopeSnapshotToken, "memorySearch.scopeSnapshotToken") };
+  return { records: item.records.map((value, index) => decodeMemoryRecord(value, `memorySearch.records[${index}]`)), truncated: boolean(item.truncated, "memorySearch.truncated"), scopeSnapshotToken: string(item.scopeSnapshotToken, "memorySearch.scopeSnapshotToken") };
 };

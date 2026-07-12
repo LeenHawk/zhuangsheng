@@ -17,6 +17,15 @@ export interface SecretPasswordCommandInput {
   idempotencyKey: string;
 }
 
+export interface LockSecretStoreInput {
+  expectedSessionId: string | null;
+  idempotencyKey: string;
+}
+
+export interface LockSecretStoreResult {
+  locked: true;
+}
+
 export interface SecretRef {
   scheme: "secret";
   id: string;

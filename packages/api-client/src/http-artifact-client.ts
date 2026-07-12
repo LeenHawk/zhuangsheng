@@ -19,6 +19,16 @@ export class HttpArtifactClient {
     ));
   }
 
+  async getStaging(stagingId: string, signal?: AbortSignal): Promise<ArtifactStagingView> {
+    const staging = decodeArtifactStaging(await requestJson(
+      this.baseUrl,
+      `/v1/artifacts/staging/${encodeURIComponent(stagingId)}`,
+      { signal },
+    ));
+    if (staging.stagingId !== stagingId) throw new DecodeError("artifactStaging.stagingId");
+    return staging;
+  }
+
   async upload(input: UploadArtifactInput, signal?: AbortSignal): Promise<ArtifactStagingView> {
     const form = new FormData();
     const metadata = {

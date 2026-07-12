@@ -115,6 +115,16 @@ export class HttpConfigClient {
     return decodeContextPresets(await requestJson(this.baseUrl, "/v1/context-presets", { signal }));
   }
 
+  async getPreset(presetId: string, signal?: AbortSignal): Promise<ContextPresetView> {
+    const preset = decodeContextPreset(await requestJson(
+      this.baseUrl,
+      `/v1/context-presets/${encodeURIComponent(presetId)}`,
+      { signal },
+    ));
+    if (preset.id !== presetId) throw new DecodeError("contextPreset.id");
+    return preset;
+  }
+
   async createPreset(name: string, idempotencyKey = createIdempotencyKey()): Promise<ContextPresetView> {
     return decodeContextPreset(await this.command("/v1/context-presets", { name }, idempotencyKey));
   }

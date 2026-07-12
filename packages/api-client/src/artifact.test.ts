@@ -60,6 +60,17 @@ describe("HttpArtifactClient", () => {
     expect(page.items[0]?.metadata.name).toBe("note.txt");
     expect(calls).toEqual(["https://role.example/v1/artifacts?limit=100"]);
   });
+
+  it("reads the exact staging resource before retrying a lifecycle command", async () => {
+    let requested: RequestInfo | URL | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested = input;
+      return Response.json({ ...staging(), stagingId: "staging/1" });
+    });
+    const result = await new HttpArtifactClient("https://role.example").getStaging("staging/1");
+    expect(requested).toBe("https://role.example/v1/artifacts/staging/staging%2F1");
+    expect(result.lifecycleGeneration).toBe(2);
+  });
 });
 
 const staging = () => ({

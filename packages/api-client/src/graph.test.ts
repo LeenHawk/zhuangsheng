@@ -137,6 +137,24 @@ describe("HttpGraphClient", () => {
     ]);
   });
 
+  it("loads a revision through its graph ownership route", async () => {
+    let requested: RequestInfo | URL | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested = input;
+      return Response.json({
+        id: "graphrev/1", graphId: "graph/1", revisionNo: 1,
+        operationTaxonomyVersion: 1, adapterDecoderVersion: 1,
+        definition: { nodes: [], edges: [] }, contentHash: "sha256:abc",
+        createdAt: 12, warnings: [],
+      });
+    });
+    await new HttpGraphClient("https://studio.example")
+      .getGraphRevision("graph/1", "graphrev/1");
+    expect(requested).toBe(
+      "https://studio.example/v1/graphs/graph%2F1/revisions/graphrev%2F1",
+    );
+  });
+
   it("creates a user-mode role play template through the server facade", async () => {
     let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {

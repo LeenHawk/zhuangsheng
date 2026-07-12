@@ -1,7 +1,8 @@
-import { decodeMemoryProposal, decodeMemoryProposalList, decodeMemorySearch } from "./decode-memory";
+import { decodeMemoryProposal, decodeMemoryProposalList, decodeMemoryRecord, decodeMemorySearch } from "./decode-memory";
+import { DecodeError } from "./decode-error";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
-import type { MemoryProposalCursor, MemoryProposalListView, MemoryProposalStatus, MemoryProposalView, MemoryRecordStatus, MemorySearchView, ProposeMemoryInput } from "./memory-types";
+import type { MemoryProposalCursor, MemoryProposalListView, MemoryProposalStatus, MemoryProposalView, MemoryRecordStatus, MemoryRecordView, MemorySearchView, ProposeMemoryInput } from "./memory-types";
 
 export class HttpMemoryClient {
   constructor(private readonly baseUrl = "") {}
@@ -15,6 +16,16 @@ export class HttpMemoryClient {
 
   async search(scopeId: string, status: Extract<MemoryRecordStatus, "active" | "obsolete">, signal?: AbortSignal): Promise<MemorySearchView> {
     return decodeMemorySearch(await requestJson(this.baseUrl, "/v1/memory-search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scopeId, text: null, tags: [], status, limit: 100 }), signal }));
+  }
+
+  async get(memoryId: string, signal?: AbortSignal): Promise<MemoryRecordView> {
+    const record = decodeMemoryRecord(await requestJson(
+      this.baseUrl,
+      `/v1/memories/${encodeURIComponent(memoryId)}`,
+      { signal },
+    ));
+    if (record.id !== memoryId) throw new DecodeError("memoryRecord.id");
+    return record;
   }
 
   async propose(input: ProposeMemoryInput): Promise<MemoryProposalView> {

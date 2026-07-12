@@ -41,6 +41,21 @@ export class HttpGraphClient {
     return revision;
   }
 
+  async getGraphRevision(
+    graphId: string,
+    revisionId: string,
+    signal?: AbortSignal,
+  ): Promise<GraphRevisionView> {
+    const revision = decodeGraphRevision(await this.request(
+      `/v1/graphs/${encodeURIComponent(graphId)}/revisions/${encodeURIComponent(revisionId)}`,
+      { signal },
+    ));
+    if (revision.id !== revisionId || revision.graphId !== graphId) {
+      throw new DecodeError("graphRevision");
+    }
+    return revision;
+  }
+
   async updateDraft(
     graphId: string,
     revisionToken: string,

@@ -1,6 +1,6 @@
 import { DecodeError } from "./decode-error";
 import { boolean, nullableString, number, record, string } from "./decode-helpers";
-import type { SecretMetadataView, SecretStoreSessionView, SecretStoreStatusView } from "./secret-types";
+import type { LockSecretStoreResult, SecretMetadataView, SecretStoreSessionView, SecretStoreStatusView } from "./secret-types";
 
 export const decodeSecretStoreStatus = (value: unknown): SecretStoreStatusView => {
   const item = record(value, "secretStoreStatus");
@@ -27,6 +27,14 @@ export const decodeSecretStoreSession = (value: unknown): SecretStoreSessionView
     sessionId: string(item.sessionId, "secretStoreSession.sessionId"),
     expiresAt: number(item.expiresAt, "secretStoreSession.expiresAt"),
   };
+};
+
+export const decodeLockSecretStore = (value: unknown): LockSecretStoreResult => {
+  const item = record(value, "lockSecretStore");
+  if (boolean(item.locked, "lockSecretStore.locked") !== true) {
+    throw new DecodeError("lockSecretStore.locked");
+  }
+  return { locked: true };
 };
 
 export const decodeSecretMetadata = (value: unknown, path = "secret"): SecretMetadataView => {
