@@ -1,3 +1,4 @@
+pub mod artifact;
 mod config;
 pub mod context;
 mod error;

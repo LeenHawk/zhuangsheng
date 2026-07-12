@@ -108,11 +108,22 @@ pub async fn put_inline_object<C: ConnectionTrait>(
     let content_hash = canonical::hash_bytes(bytes);
     if let Some(row) = connection
         .query_one_raw(sql(
-            "SELECT id FROM content_objects WHERE content_hash = ?",
+            "SELECT id, lifecycle, byte_size, inline_bytes FROM content_objects WHERE content_hash = ?",
             vec![content_hash.clone().into()],
         ))
         .await?
     {
+        let lifecycle: String = row.try_get("", "lifecycle")?;
+        let stored_size: i64 = row.try_get("", "byte_size")?;
+        let stored_bytes: Option<Vec<u8>> = row.try_get("", "inline_bytes")?;
+        if lifecycle != "live" {
+            return Err(StorageError::Conflict("content_object_not_live"));
+        }
+        if stored_size != bytes.len() as i64 || stored_bytes.as_deref() != Some(bytes) {
+            return Err(StorageError::Integrity(
+                "content object hash collision or corruption".into(),
+            ));
+        }
         return Ok(row.try_get("", "id")?);
     }
     let id = new_id("object");

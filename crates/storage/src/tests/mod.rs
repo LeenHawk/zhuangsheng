@@ -1,3 +1,4 @@
+mod artifact_staging;
 mod config;
 mod context_patch;
 mod context_replay;
