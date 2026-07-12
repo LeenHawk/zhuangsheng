@@ -15,6 +15,7 @@ export * from "./http-memory-client";
 export * from "./idempotency";
 export * from "./run-stream-follow";
 export * from "./run-stream-reducer";
+export * from "./runtime-invoke";
 export * from "./run-types";
 export * from "./secret-types";
 export * from "./sse-parser";

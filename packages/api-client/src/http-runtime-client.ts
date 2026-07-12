@@ -1,13 +1,37 @@
 import { decodeOpenWaits, decodeWaitDelivery } from "./decode-waits";
-import { decodeRun, decodeRunList } from "./decode-runs";
+import { assertJson, decodeRun, decodeRunList, decodeRunOutputs } from "./decode-runs";
 import { DecodeError } from "./decode-error";
 import { requestJson } from "./http-json";
 import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
 import type { SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
-import type { RunControlInput, RunListView, RunView } from "./run-types";
+import type {
+  RunControlInput,
+  RunListView,
+  RunOutputsView,
+  RunView,
+  StartRunInput,
+} from "./run-types";
 
 export class HttpRuntimeClient {
   constructor(private readonly baseUrl: string) {}
+
+  async startRun(graphRevisionId: string, input: StartRunInput): Promise<RunView> {
+    const run = decodeRun(await requestJson(
+      this.baseUrl,
+      `/v1/graphs/${encodeURIComponent(graphRevisionId)}/runs`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
+        body: JSON.stringify({
+          input: input.input,
+          context: input.context,
+          deadlineAt: input.deadlineAt ?? null,
+        }),
+      },
+    ));
+    if (run.graphRevisionId !== graphRevisionId) throw new DecodeError("run.graphRevisionId");
+    return run;
+  }
 
   async listRecentRuns(limit = 50, signal?: AbortSignal): Promise<RunListView> {
     return decodeRunList(await requestJson(
@@ -23,6 +47,24 @@ export class HttpRuntimeClient {
       `/v1/runs/${encodeURIComponent(runId)}`,
       { signal },
     ));
+  }
+
+  async getRunOutputs(runId: string, signal?: AbortSignal): Promise<RunOutputsView> {
+    return decodeRunOutputs(await requestJson(
+      this.baseUrl,
+      `/v1/runs/${encodeURIComponent(runId)}/outputs`,
+      { signal },
+    ));
+  }
+
+  async loadJsonValue(valueRef: string, signal?: AbortSignal): Promise<unknown> {
+    const value = await requestJson(
+      this.baseUrl,
+      `/v1/values/${encodeURIComponent(valueRef)}`,
+      { signal },
+    );
+    assertJson(value, "jsonValue");
+    return value;
   }
 
   streamRunEvents(

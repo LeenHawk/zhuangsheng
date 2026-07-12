@@ -33,3 +33,47 @@ export interface RunControlInput {
   idempotencyKey: string;
   reason?: string;
 }
+
+export type RunContextInput =
+  | { mode: "temporary" }
+  | {
+      mode: "existing";
+      contextId: string;
+      branchId: string;
+      expectedHeadCommitId: string;
+    };
+
+export interface StartRunInput {
+  input: unknown;
+  context: RunContextInput;
+  deadlineAt?: number | null;
+  idempotencyKey: string;
+}
+
+export type RunOutputValueView =
+  | {
+      kind: "inline_json";
+      valueRef: string;
+      contentHash: string;
+      sizeBytes: number;
+      value: unknown;
+    }
+  | {
+      kind: "json_value_ref";
+      valueRef: string;
+      contentHash: string;
+      sizeBytes: number;
+      downloadPath: string;
+    };
+
+export interface RunOutputEntryView {
+  collection: "single" | "append";
+  values: RunOutputValueView[];
+}
+
+export type RunOutputsView = Record<string, RunOutputEntryView>;
+
+export interface InvokeRunResult {
+  run: RunView;
+  outputs: RunOutputsView | null;
+}

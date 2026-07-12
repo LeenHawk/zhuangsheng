@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DecodeError } from "./decode-error";
-import { decodeRun } from "./decode-runs";
+import { decodeRun, decodeRunOutputs } from "./decode-runs";
 import { HttpRuntimeClient } from "./http-runtime-client";
 
 describe("RunView client", () => {
@@ -38,6 +38,45 @@ describe("RunView client", () => {
       reason: "inspect state",
     });
   });
+
+  it("starts runs and decodes inline and referenced outputs", async () => {
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      const path = String(input);
+      if (path.endsWith("/runs")) return Response.json(run());
+      if (path.endsWith("/outputs")) return Response.json(outputs());
+      return Response.json({ large: ["value"] });
+    });
+    const client = new HttpRuntimeClient("https://roleplay.example");
+    const started = await client.startRun("graphrev_1", {
+      input: { message: "hello" },
+      context: { mode: "temporary" },
+      idempotencyKey: "start_1",
+    });
+    const decoded = await client.getRunOutputs(started.id);
+    const large = await client.loadJsonValue("object/large");
+
+    expect(decoded.reply?.values[0]).toMatchObject({ kind: "inline_json", value: { text: "ok" } });
+    expect(decoded.archive?.values[0]).toMatchObject({ kind: "json_value_ref", downloadPath: "/v1/values/object_3" });
+    expect(large).toEqual({ large: ["value"] });
+    expect(calls[0]?.input).toBe("https://roleplay.example/v1/graphs/graphrev_1/runs");
+    expect(calls[0]?.init?.headers).toMatchObject({ "idempotency-key": "start_1" });
+    expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
+      input: { message: "hello" },
+      context: { mode: "temporary" },
+      deadlineAt: null,
+    });
+    expect(calls[2]?.input).toBe("https://roleplay.example/v1/values/object%2Flarge");
+  });
+
+  it("rejects unknown output envelopes and invalid collections", () => {
+    expect(() => decodeRunOutputs({ reply: { collection: "future", values: [] } }))
+      .toThrow(DecodeError);
+    expect(() => decodeRunOutputs({
+      reply: { collection: "single", values: [{ ...outputs().reply.values[0], kind: "future" }] },
+    })).toThrow(DecodeError);
+  });
 });
 
 const run = () => ({
@@ -54,4 +93,27 @@ const run = () => ({
   deadlineAt: 100,
   createdAt: 1,
   updatedAt: 2,
+});
+
+const outputs = () => ({
+  reply: {
+    collection: "single",
+    values: [{
+      kind: "inline_json",
+      valueRef: "object_2",
+      contentHash: `sha256:${"a".repeat(64)}`,
+      sizeBytes: 13,
+      value: { text: "ok" },
+    }],
+  },
+  archive: {
+    collection: "append",
+    values: [{
+      kind: "json_value_ref",
+      valueRef: "object_3",
+      contentHash: `sha256:${"b".repeat(64)}`,
+      sizeBytes: 2_000_000,
+      downloadPath: "/v1/values/object_3",
+    }],
+  },
 });
