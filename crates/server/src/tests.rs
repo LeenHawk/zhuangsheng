@@ -10,7 +10,9 @@ use tower::ServiceExt;
 use zhuangsheng_core::scheduler::Scheduler;
 use zhuangsheng_storage::SqliteStore;
 
-use crate::{AppServices, StreamEventHub, app};
+use crate::{
+    AppServices, RemoteModelDiscoveryService, StreamEventHub, app, provider::HttpProviderClient,
+};
 
 mod artifact;
 mod config;
@@ -21,6 +23,7 @@ mod conversation;
 mod conversation_profile;
 mod conversation_projection_resolution;
 mod conversation_turn;
+mod model_discovery;
 mod roleplay_compatibility;
 mod roleplay_journey;
 mod roleplay_provider;
@@ -29,10 +32,23 @@ mod run_list;
 mod secret;
 
 fn test_app(store: Arc<SqliteStore>) -> axum::Router {
+    let model_discovery = Arc::new(RemoteModelDiscoveryService::new(
+        store.clone(),
+        store.clone(),
+        Arc::new(HttpProviderClient::new().unwrap()),
+    ));
+    test_app_with_discovery(store, model_discovery)
+}
+
+fn test_app_with_discovery(
+    store: Arc<SqliteStore>,
+    model_discovery: Arc<dyn zhuangsheng_core::application::channel::ChannelModelDiscoveryService>,
+) -> axum::Router {
     app(AppServices {
         artifact: store.clone(),
         graph: store.clone(),
         channel: store.clone(),
+        model_discovery,
         preset: store.clone(),
         context: store.clone(),
         conversation: store.clone(),

@@ -1,10 +1,12 @@
 mod api;
 pub mod llm_executor;
 mod llm_executor_support;
+mod model_discovery;
 pub mod provider;
 mod stream_events;
 mod tool_executor;
 
+pub use model_discovery::RemoteModelDiscoveryService;
 pub use stream_events::{EphemeralLlmStreamEvent, StreamEventHub};
 
 use std::sync::Arc;
@@ -13,9 +15,15 @@ use axum::{Router, extract::DefaultBodyLimit, routing::get};
 use serde::Serialize;
 use tower_http::trace::TraceLayer;
 use zhuangsheng_core::application::{
-    artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
-    conversation::ConversationService, graph::GraphService, memory::MemoryService,
-    preset::ContextPresetService, secret::SecretStoreService, tool::ToolRegistryService,
+    artifact::ArtifactStagingService,
+    channel::{ChannelModelDiscoveryService, ChannelService},
+    context::ContextService,
+    conversation::ConversationService,
+    graph::GraphService,
+    memory::MemoryService,
+    preset::ContextPresetService,
+    secret::SecretStoreService,
+    tool::ToolRegistryService,
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
@@ -30,6 +38,7 @@ pub struct AppServices {
     pub artifact: Arc<dyn ArtifactStagingService>,
     pub graph: Arc<dyn GraphService>,
     pub channel: Arc<dyn ChannelService>,
+    pub model_discovery: Arc<dyn ChannelModelDiscoveryService>,
     pub preset: Arc<dyn ContextPresetService>,
     pub context: Arc<dyn ContextService>,
     pub conversation: Arc<dyn ConversationService>,
@@ -45,6 +54,7 @@ pub fn app(services: AppServices) -> Router {
         artifact_service: services.artifact,
         graph_service: services.graph,
         channel_service: services.channel,
+        model_discovery_service: services.model_discovery,
         preset_service: services.preset,
         context_service: services.context,
         conversation_service: services.conversation,

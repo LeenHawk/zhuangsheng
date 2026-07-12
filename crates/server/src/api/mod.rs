@@ -17,9 +17,14 @@ pub mod tool;
 use std::sync::Arc;
 
 use zhuangsheng_core::application::{
-    artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
-    conversation::ConversationService, graph::GraphService, memory::MemoryService,
-    preset::ContextPresetService, secret::SecretStoreService,
+    artifact::ArtifactStagingService,
+    channel::{ChannelModelDiscoveryService, ChannelService},
+    context::ContextService,
+    conversation::ConversationService,
+    graph::GraphService,
+    memory::MemoryService,
+    preset::ContextPresetService,
+    secret::SecretStoreService,
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
@@ -30,6 +35,7 @@ pub struct AppState {
     pub artifact_service: Arc<dyn ArtifactStagingService>,
     pub graph_service: Arc<dyn GraphService>,
     pub channel_service: Arc<dyn ChannelService>,
+    pub model_discovery_service: Arc<dyn ChannelModelDiscoveryService>,
     pub preset_service: Arc<dyn ContextPresetService>,
     pub context_service: Arc<dyn ContextService>,
     pub conversation_service: Arc<dyn ConversationService>,

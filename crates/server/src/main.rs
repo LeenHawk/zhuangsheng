@@ -6,15 +6,22 @@ use std::{
 
 use zhuangsheng_core::{
     application::{
-        artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
-        conversation::ConversationService, graph::GraphService, memory::MemoryService,
-        preset::ContextPresetService, secret::SecretStoreService, tool::ToolRegistryService,
+        artifact::ArtifactStagingService,
+        channel::ChannelService,
+        context::ContextService,
+        conversation::ConversationService,
+        graph::GraphService,
+        memory::MemoryService,
+        preset::ContextPresetService,
+        secret::{SecretResolver, SecretStoreService},
+        tool::ToolRegistryService,
     },
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
 };
 use zhuangsheng_server::llm_executor::LocalLlmExecutor;
-use zhuangsheng_server::{AppServices, StreamEventHub, app};
+use zhuangsheng_server::provider::HttpProviderClient;
+use zhuangsheng_server::{AppServices, RemoteModelDiscoveryService, StreamEventHub, app};
 use zhuangsheng_storage::SqliteStore;
 
 #[tokio::main]
@@ -32,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let graph_service: Arc<dyn GraphService> = store.clone();
     let artifact_service: Arc<dyn ArtifactStagingService> = store.clone();
     let channel_service: Arc<dyn ChannelService> = store.clone();
+    let secret_resolver: Arc<dyn SecretResolver> = store.clone();
     let preset_service: Arc<dyn ContextPresetService> = store.clone();
     let context_service: Arc<dyn ContextService> = store.clone();
     let conversation_service: Arc<dyn ConversationService> = store.clone();
@@ -40,6 +48,11 @@ async fn main() -> anyhow::Result<()> {
     let secret_service: Arc<dyn SecretStoreService> = store.clone();
     let tool_registry_service: Arc<dyn ToolRegistryService> = store.clone();
     let stream_events = StreamEventHub::new();
+    let model_discovery = Arc::new(RemoteModelDiscoveryService::new(
+        channel_service.clone(),
+        secret_resolver,
+        Arc::new(HttpProviderClient::new()?),
+    ));
     let llm_executor =
         Arc::new(LocalLlmExecutor::new(store.clone())?.with_stream_events(stream_events.clone()));
     tokio::spawn(run_artifact_maintenance(store.clone()));
@@ -57,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
             artifact: artifact_service,
             graph: graph_service,
             channel: channel_service,
+            model_discovery,
             preset: preset_service,
             context: context_service,
             conversation: conversation_service,

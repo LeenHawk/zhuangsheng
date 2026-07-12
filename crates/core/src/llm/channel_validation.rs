@@ -126,6 +126,14 @@ pub fn is_supported_count_key(key: OperationKey) -> bool {
         )
 }
 
+pub fn is_supported_discovery_key(key: OperationKey) -> bool {
+    key.operation == Operation::ListModels
+        && matches!(
+            key.kind,
+            OperationKind::Provider(Provider::OpenAi | Provider::Claude | Provider::Gemini)
+        )
+}
+
 fn validate_overrides(overrides: &[ModelCapabilityOverride]) -> LlmConfigResult<()> {
     let mut seen = HashSet::new();
     for capability_override in overrides {
@@ -220,11 +228,11 @@ fn normalize_operations(spec: &mut LlmChannelRevisionSpec) -> LlmConfigResult<()
             "operation and wire kind are inconsistent",
         ));
     }
-    if spec
-        .operation_keys
-        .iter()
-        .any(|key| !is_supported_generation_key(*key) && !is_supported_count_key(*key))
-    {
+    if spec.operation_keys.iter().any(|key| {
+        !is_supported_generation_key(*key)
+            && !is_supported_count_key(*key)
+            && !is_supported_discovery_key(*key)
+    }) {
         return Err(LlmConfigError::new(
             "unsupported_channel_operation",
             "the current adapter registry does not support a declared operation shape",

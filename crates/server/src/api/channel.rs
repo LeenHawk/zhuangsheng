@@ -6,8 +6,11 @@ use axum::{
 };
 use serde::Deserialize;
 use zhuangsheng_core::{
-    application::channel::{ChannelView, CreateChannelCommand, PublishChannelRevisionCommand},
-    llm::{LlmChannelRevision, LlmChannelRevisionSpec},
+    application::channel::{
+        ChannelModelDiscoveryView, ChannelView, CreateChannelCommand, DiscoverChannelModelsCommand,
+        PublishChannelRevisionCommand,
+    },
+    llm::{LlmChannelRevision, LlmChannelRevisionSpec, OperationKey},
 };
 
 use super::{
@@ -28,6 +31,13 @@ struct PublishRevisionBody {
     spec: LlmChannelRevisionSpec,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiscoverModelsBody {
+    revision_id: Option<String>,
+    operation_key: Option<OperationKey>,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/channels", post(create_channel).get(list_channels))
@@ -37,7 +47,29 @@ pub fn routes() -> Router<AppState> {
             post(publish_revision),
         )
         .route("/v1/channels/{channel_id}/head", get(get_head))
+        .route(
+            "/v1/channels/{channel_id}/model-discovery",
+            post(discover_models),
+        )
         .route("/v1/channel-revisions/{revision_id}", get(get_revision))
+}
+
+async fn discover_models(
+    State(state): State<AppState>,
+    Path(channel_id): Path<String>,
+    body: Result<Json<DiscoverModelsBody>, JsonRejection>,
+) -> ApiResult<Json<ChannelModelDiscoveryView>> {
+    let body = json_body(body)?;
+    Ok(Json(
+        state
+            .model_discovery_service
+            .discover_models(DiscoverChannelModelsCommand {
+                channel_id,
+                revision_id: body.revision_id,
+                operation_key: body.operation_key,
+            })
+            .await?,
+    ))
 }
 
 async fn create_channel(
