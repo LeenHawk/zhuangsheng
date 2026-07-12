@@ -53,11 +53,14 @@ describe("StoryDetail", () => {
       optionsError: null,
       profileError: null,
       turnError: null,
+      candidateError: null,
       onBack: () => undefined,
       onReload: () => undefined,
       onReloadOptions: () => undefined,
       onSaveRunProfile,
       onSubmitMessage,
+      onRegenerateCandidate: async () => undefined,
+      onSelectCandidate: async () => undefined,
     };
     const view = render(<StoryDetail {...props} story={story} />);
 
@@ -83,5 +86,70 @@ describe("StoryDetail", () => {
     fireEvent.change(composer, { target: { value: "打开最后一卷档案。" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     await waitFor(() => expect(onSubmitMessage).toHaveBeenCalledWith("打开最后一卷档案。"));
+  });
+
+  it("offers regenerate and selection only on the latest durable turn", async () => {
+    const onRegenerateCandidate = vi.fn(async () => undefined);
+    const onSelectCandidate = vi.fn(async () => undefined);
+    render(<StoryDetail
+      story={{
+        ...story,
+        runProfile: {
+          graphRevisionId: option.revisionId,
+          replyOutputKey: "reply",
+          inputShape: "conversation_message_v1",
+          revisionNo: 1,
+        },
+      }}
+      timeline={{
+        conversationId: story.id,
+        activeBranchId: "branch_selected",
+        activeHeadCommitId: "commit_selected",
+        messages: [],
+        turns: [{
+          id: "turn_1",
+          conversationId: story.id,
+          userMessageId: "message_1",
+          userCommitId: "commit_user",
+          createdAt: 1,
+          selectedRunId: "run_1",
+          candidates: [
+            {
+              turnId: "turn_1", runId: "run_1", branchId: "branch_1",
+              baseCommitId: "commit_user", replyOutputKey: "reply", status: "ready",
+              assistantMessageId: "message_a", candidateCommitId: "commit_selected",
+              projectionError: null, createdAt: 2,
+            },
+            {
+              turnId: "turn_1", runId: "run_2", branchId: "branch_2",
+              baseCommitId: "commit_user", replyOutputKey: "reply", status: "ready",
+              assistantMessageId: "message_b", candidateCommitId: "commit_other",
+              projectionError: null, createdAt: 3,
+            },
+          ],
+        }],
+      }}
+      graphOptions={[option]}
+      loading={false}
+      optionsLoading={false}
+      pendingAction={null}
+      error={null}
+      optionsError={null}
+      profileError={null}
+      turnError={null}
+      candidateError={null}
+      onBack={() => undefined}
+      onReload={() => undefined}
+      onReloadOptions={() => undefined}
+      onSaveRunProfile={async () => undefined}
+      onSubmitMessage={async () => undefined}
+      onRegenerateCandidate={onRegenerateCandidate}
+      onSelectCandidate={onSelectCandidate}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "采用这个回复" }));
+    await waitFor(() => expect(onSelectCandidate).toHaveBeenCalledWith("turn_1", "run_2"));
+    fireEvent.click(screen.getByRole("button", { name: "再生成一个" }));
+    await waitFor(() => expect(onRegenerateCandidate).toHaveBeenCalledWith("turn_1", "commit_user"));
   });
 });

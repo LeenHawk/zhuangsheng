@@ -57,4 +57,53 @@ describe("HttpApiClient conversation commands", () => {
     expect(calls[0]?.init?.headers).toMatchObject({ "idempotency-key": "command-key" });
     expect(calls[1]?.init?.headers).toMatchObject({ "idempotency-key": "command-key" });
   });
+
+  it("uses the canonical turn routes for regeneration and selection", async () => {
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal("crypto", { randomUUID: () => "candidate-key" });
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      const payload = calls.length === 1
+        ? {
+            candidate: { turnId: "turn/1", runId: "run_2", status: "running" },
+            run: { id: "run_2" },
+          }
+        : {
+            turnId: "turn/1",
+            selectedRunId: "run_2",
+            selectedBranchId: "branch_2",
+            selectedCommitId: "commit_2",
+            selectedAt: 2,
+          };
+      return new Response(JSON.stringify(payload), { status: calls.length === 1 ? 202 : 200 });
+    });
+    const client = new HttpApiClient("https://roleplay.example");
+    const run = {
+      graphRevisionId: "graphrev_1",
+      replyOutputKey: "reply",
+      inputShape: "conversation_message_v1" as const,
+    };
+
+    await client.regenerateConversationCandidate("turn/1", {
+      expectedUserCommitId: "commit_user",
+      run,
+    });
+    await client.selectConversationCandidate("turn/1", {
+      selectedRunId: "run_2",
+      expectedConversationHeadCommitId: "commit_1",
+    });
+
+    expect(calls.map((call) => call.input)).toEqual([
+      "https://roleplay.example/v1/turns/turn%2F1/regenerations",
+      "https://roleplay.example/v1/turns/turn%2F1/selection",
+    ]);
+    expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
+      expectedUserCommitId: "commit_user",
+      run,
+    });
+    expect(JSON.parse(calls[1]?.init?.body as string)).toEqual({
+      selectedRunId: "run_2",
+      expectedConversationHeadCommitId: "commit_1",
+    });
+  });
 });

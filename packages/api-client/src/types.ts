@@ -123,6 +123,20 @@ export interface SubmitConversationTurnAck {
   status: CandidateStatus;
 }
 
+export interface RegenerateConversationCandidateAck {
+  turnId: string;
+  runId: string;
+  status: CandidateStatus;
+}
+
+export interface ConversationSelectionView {
+  turnId: string;
+  selectedRunId: string;
+  selectedBranchId: string;
+  selectedCommitId: string;
+  selectedAt: number;
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;

@@ -43,12 +43,9 @@ struct ResolveProjectionBody {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/v1/turns/{turn_id}/selection", put(select_candidate))
         .route(
-            "/v1/conversation-turns/{turn_id}/selection",
-            put(select_candidate),
-        )
-        .route(
-            "/v1/conversation-turns/{turn_id}/candidates",
+            "/v1/turns/{turn_id}/regenerations",
             post(regenerate_candidate),
         )
         .route(

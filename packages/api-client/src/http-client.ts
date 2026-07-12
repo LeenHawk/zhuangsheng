@@ -1,6 +1,8 @@
 import {
   decodeConversation,
   decodeConversationList,
+  decodeConversationSelection,
+  decodeRegenerateCandidateAck,
   decodeRunProfile,
   decodeSubmitTurnAck,
   decodeTimeline,
@@ -11,9 +13,11 @@ import type {
   ConversationListView,
   ConversationRunProfile,
   ConversationRunSpec,
+  ConversationSelectionView,
   ConversationTimelineView,
   ConversationView,
   LlmContentPart,
+  RegenerateConversationCandidateAck,
   RolePlayGraphOptionView,
   SubmitConversationTurnAck,
 } from "./types";
@@ -38,6 +42,16 @@ export interface SubmitConversationTurnInput {
   expectedHeadCommitId: string;
   userContent: LlmContentPart[];
   run: ConversationRunSpec;
+}
+
+export interface RegenerateConversationCandidateInput {
+  expectedUserCommitId: string;
+  run: ConversationRunSpec;
+}
+
+export interface SelectConversationCandidateInput {
+  selectedRunId: string;
+  expectedConversationHeadCommitId: string;
 }
 
 export class HttpApiClient {
@@ -88,6 +102,30 @@ export class HttpApiClient {
       headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
       body: JSON.stringify(input),
       signal,
+    }));
+  }
+
+  async regenerateConversationCandidate(
+    turnId: string,
+    input: RegenerateConversationCandidateInput,
+    signal?: AbortSignal,
+  ): Promise<RegenerateConversationCandidateAck> {
+    return decodeRegenerateCandidateAck(await this.request(`/v1/turns/${encodeURIComponent(turnId)}/regenerations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      body: JSON.stringify(input),
+      signal,
+    }));
+  }
+
+  async selectConversationCandidate(
+    turnId: string,
+    input: SelectConversationCandidateInput,
+  ): Promise<ConversationSelectionView> {
+    return decodeConversationSelection(await this.request(`/v1/turns/${encodeURIComponent(turnId)}/selection`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      body: JSON.stringify(input),
     }));
   }
 

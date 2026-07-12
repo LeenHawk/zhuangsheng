@@ -88,7 +88,7 @@ async fn conversation_turn_http_returns_one_durable_candidate_run() {
         request(
             "PUT",
             &format!(
-                "/v1/conversation-turns/{}/selection",
+                "/v1/turns/{}/selection",
                 submitted["turn"]["id"].as_str().unwrap()
             ),
             json!({
@@ -106,7 +106,7 @@ async fn conversation_turn_http_returns_one_durable_candidate_run() {
         request(
             "POST",
             &format!(
-                "/v1/conversation-turns/{}/candidates",
+                "/v1/turns/{}/regenerations",
                 submitted["turn"]["id"].as_str().unwrap()
             ),
             json!({

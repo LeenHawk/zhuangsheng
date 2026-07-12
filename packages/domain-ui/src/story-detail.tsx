@@ -19,16 +19,19 @@ export interface StoryDetailProps {
   graphOptions: RolePlayGraphOptionView[];
   loading: boolean;
   optionsLoading: boolean;
-  pendingAction: "profile" | "turn" | null;
+  pendingAction: "profile" | "turn" | "regenerate" | "selection" | null;
   error: string | null;
   optionsError: string | null;
   profileError: string | null;
   turnError: string | null;
+  candidateError: string | null;
   onBack: () => void;
   onReload: () => void;
   onReloadOptions: () => void;
   onSaveRunProfile: (run: ConversationRunSpec) => Promise<void>;
   onSubmitMessage: (text: string) => Promise<void>;
+  onRegenerateCandidate: (turnId: string, userCommitId: string) => Promise<void>;
+  onSelectCandidate: (turnId: string, runId: string) => Promise<void>;
 }
 
 export function StoryDetail(props: StoryDetailProps) {

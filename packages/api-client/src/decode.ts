@@ -3,9 +3,11 @@ import type {
   ConversationListView,
   ConversationMessageView,
   ConversationRunProfile,
+  ConversationSelectionView,
   ConversationTimelineView,
   ConversationView,
   LlmContentPart,
+  RegenerateConversationCandidateAck,
   SubmitConversationTurnAck,
 } from "./types";
 import { DecodeError } from "./decode-error";
@@ -143,5 +145,37 @@ export const decodeSubmitTurnAck = (value: unknown): SubmitConversationTurnAck =
     turnId: string(turn.id, "submitTurn.turn.id"),
     runId,
     status,
+  };
+};
+
+export const decodeRegenerateCandidateAck = (
+  value: unknown,
+): RegenerateConversationCandidateAck => {
+  const result = record(value, "regenerateCandidate");
+  const candidate = record(result.candidate, "regenerateCandidate.candidate");
+  const run = record(result.run, "regenerateCandidate.run");
+  const status = string(candidate.status, "regenerateCandidate.candidate.status") as CandidateStatus;
+  if (!candidateStatuses.has(status)) {
+    throw new DecodeError("regenerateCandidate.candidate.status");
+  }
+  const runId = string(candidate.runId, "regenerateCandidate.candidate.runId");
+  if (string(run.id, "regenerateCandidate.run.id") !== runId) {
+    throw new DecodeError("regenerateCandidate.run.id");
+  }
+  return {
+    turnId: string(candidate.turnId, "regenerateCandidate.candidate.turnId"),
+    runId,
+    status,
+  };
+};
+
+export const decodeConversationSelection = (value: unknown): ConversationSelectionView => {
+  const selection = record(value, "conversationSelection");
+  return {
+    turnId: string(selection.turnId, "conversationSelection.turnId"),
+    selectedRunId: string(selection.selectedRunId, "conversationSelection.selectedRunId"),
+    selectedBranchId: string(selection.selectedBranchId, "conversationSelection.selectedBranchId"),
+    selectedCommitId: string(selection.selectedCommitId, "conversationSelection.selectedCommitId"),
+    selectedAt: number(selection.selectedAt, "conversationSelection.selectedAt"),
   };
 };
