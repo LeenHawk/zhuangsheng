@@ -1,9 +1,11 @@
 use sea_orm::ConnectionTrait;
+use serde_json::Value;
 use zhuangsheng_core::conversation::{
     ConversationContextMessageV1, ConversationTurnView, TurnCandidateView,
 };
 
 use crate::{StorageError, StorageResult, graph::helpers::sql};
+use zhuangsheng_core::canonical;
 
 pub(super) async fn advance_conversation<C: ConnectionTrait>(
     connection: &C,
@@ -69,6 +71,28 @@ pub(super) async fn fork_candidate<C: ConnectionTrait>(
     if projection.rows_affected() != 1 {
         return Err(StorageError::Conflict("candidate_projection_base"));
     }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn fork_candidate_from_commit<C: ConnectionTrait>(
+    connection: &C,
+    context_id: &str,
+    parent_branch_id: &str,
+    branch_id: &str,
+    commit_id: &str,
+    run_id: &str,
+    value: &Value,
+    now: i64,
+) -> StorageResult<()> {
+    connection.execute_raw(sql(
+        "INSERT INTO context_branches (id, context_id, parent_branch_id, fork_commit_id, head_commit_id, creation_operation_id, status, pinned, audit_hold, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, ?)",
+        vec![branch_id.into(), context_id.into(), parent_branch_id.into(), commit_id.into(), commit_id.into(), format!("conversation-candidate-branch:{run_id}").into(), now.into(), now.into()],
+    )).await?;
+    connection.execute_raw(sql(
+        "INSERT INTO materialized_projections (aggregate_kind, aggregate_id, lineage_key, head_commit_id, projection_json, schema_version, updated_at) VALUES ('working_context', ?, ?, ?, ?, 1, ?)",
+        vec![context_id.into(), branch_id.into(), commit_id.into(), canonical::to_string(value)?.into(), now.into()],
+    )).await?;
     Ok(())
 }
 

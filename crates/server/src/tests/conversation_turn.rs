@@ -84,4 +84,30 @@ async fn conversation_turn_http_returns_one_durable_candidate_run() {
     )
     .await;
     assert_eq!(not_ready["error"]["code"], "candidate_not_ready");
+    let regenerated = call(
+        &app,
+        request(
+            "POST",
+            &format!(
+                "/v1/conversation-turns/{}/candidates",
+                submitted["turn"]["id"].as_str().unwrap()
+            ),
+            json!({
+                "expectedUserCommitId":submitted["turn"]["userCommitId"],
+                "run":{
+                    "graphRevisionId":revision_id,
+                    "replyOutputKey":"reply",
+                    "inputShape":"conversation_message_v1"
+                }
+            }),
+            &[("idempotency-key", "turn-http-regenerate".into())],
+        ),
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    assert_ne!(regenerated["run"]["id"], submitted["run"]["id"]);
+    assert_eq!(
+        regenerated["run"]["inputCommitId"],
+        submitted["turn"]["userCommitId"]
+    );
 }

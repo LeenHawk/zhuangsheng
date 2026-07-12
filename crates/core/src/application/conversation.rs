@@ -56,6 +56,22 @@ pub struct SelectConversationCandidateCommand {
     pub idempotency_key: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegenerateConversationCandidateCommand {
+    pub turn_id: String,
+    pub expected_user_commit_id: String,
+    pub run: ConversationRunSpec,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegenerateConversationCandidateResult {
+    pub candidate: TurnCandidateView,
+    pub run: RunView,
+}
+
 #[async_trait]
 pub trait ConversationService: Send + Sync {
     async fn create_conversation(
@@ -78,4 +94,8 @@ pub trait ConversationService: Send + Sync {
         &self,
         command: SelectConversationCandidateCommand,
     ) -> Result<ConversationSelectionView, ApplicationError>;
+    async fn regenerate_candidate(
+        &self,
+        command: RegenerateConversationCandidateCommand,
+    ) -> Result<RegenerateConversationCandidateResult, ApplicationError>;
 }

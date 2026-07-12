@@ -1,5 +1,5 @@
 pub(crate) mod commit;
 pub(crate) mod query;
-mod replay;
+pub(crate) mod replay;
 mod service;
 mod snapshot;

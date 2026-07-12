@@ -3,6 +3,7 @@ mod artifact_upload;
 pub mod channel;
 pub mod context;
 pub mod conversation;
+pub mod conversation_candidate;
 pub mod error;
 pub mod graph;
 pub mod memory;

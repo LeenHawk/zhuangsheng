@@ -3,7 +3,8 @@ use zhuangsheng_core::{
     application::{
         ApplicationError,
         conversation::{
-            ConversationService, CreateConversationCommand, SelectConversationCandidateCommand,
+            ConversationService, CreateConversationCommand, RegenerateConversationCandidateCommand,
+            RegenerateConversationCandidateResult, SelectConversationCandidateCommand,
             SubmitConversationTurnCommand, SubmitConversationTurnResult,
             UpdateConversationRunProfileCommand,
         },
@@ -58,6 +59,15 @@ impl ConversationService for SqliteStore {
         command: SelectConversationCandidateCommand,
     ) -> Result<ConversationSelectionView, ApplicationError> {
         self.select_conversation_candidate_at(command, now_ms())
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn regenerate_candidate(
+        &self,
+        command: RegenerateConversationCandidateCommand,
+    ) -> Result<RegenerateConversationCandidateResult, ApplicationError> {
+        self.regenerate_conversation_candidate_at(command, now_ms())
             .await
             .map_err(Into::into)
     }
