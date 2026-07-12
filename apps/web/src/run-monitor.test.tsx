@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createRunStreamProjection,
@@ -10,6 +10,11 @@ import {
   type RunView,
 } from "@zhuangsheng/api-client";
 import { RunDetail, RunList } from "@zhuangsheng/domain-ui";
+
+import { client } from "./api";
+import { useRunMonitor } from "./use-run-monitor";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("expert run monitor", () => {
   it("renders recent RunViews and opens the selected immutable run", () => {
@@ -39,6 +44,7 @@ describe("expert run monitor", () => {
     });
     render(<RunDetail
       run={run()}
+      revision={null}
       waits={[]}
       projection={projection}
       connection="live"
@@ -60,6 +66,35 @@ describe("expert run monitor", () => {
     expect(onControl).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "确认取消" }));
     await waitFor(() => expect(onControl).toHaveBeenCalledWith("cancel"));
+  });
+
+  it("loads the immutable graph revision pinned by the RunView", async () => {
+    const fixedRun = { ...run(), graphRevisionId: "graphrev/fixed" };
+    const getRevision = vi.spyOn(client.graphs, "getRevision").mockResolvedValue({
+      id: "graphrev/fixed",
+      graphId: "graph_1",
+      revisionNo: 3,
+      operationTaxonomyVersion: 1,
+      adapterDecoderVersion: 1,
+      definition: { nodes: [], edges: [] },
+      contentHash: "sha256:fixed",
+      createdAt: 3,
+      warnings: [],
+    });
+    vi.spyOn(client.runtime, "getRun").mockResolvedValue(fixedRun);
+    vi.spyOn(client.runtime, "listOpenWaits").mockResolvedValue([]);
+    vi.spyOn(client.runtime, "streamRunEvents").mockImplementation(
+      (_runId, _after, signal) => new Promise((resolve) => {
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      }),
+    );
+
+    const { result, unmount } = renderHook(() => useRunMonitor("run/encoded"));
+    await waitFor(() => expect(result.current.revision?.id).toBe("graphrev/fixed"));
+
+    expect(getRevision).toHaveBeenCalledWith("graphrev/fixed", expect.any(AbortSignal));
+    expect(client.runtime.getRun).toHaveBeenCalledWith("run/encoded", expect.any(AbortSignal));
+    unmount();
   });
 });
 

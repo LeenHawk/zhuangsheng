@@ -4,6 +4,7 @@ import {
   createIdempotencyKey,
   createRunStreamProjection,
   followRunEvents,
+  type GraphRevisionView,
   type RunControlInput,
   type RunStreamConnectionState,
   type RunStreamProjection,
@@ -17,6 +18,7 @@ type ControlAction = "interrupt" | "resume" | "cancel";
 
 export function useRunMonitor(runId: string) {
   const [run, setRun] = useState<RunView | null>(null);
+  const [revision, setRevision] = useState<GraphRevisionView | null>(null);
   const [waits, setWaits] = useState<WaitView[]>([]);
   const [projection, setProjection] = useState<RunStreamProjection>(() =>
     createRunStreamProjection(runId));
@@ -32,11 +34,13 @@ export function useRunMonitor(runId: string) {
     if (showLoading) setLoading(true);
     setError(null);
     try {
-      const [nextRun, nextWaits] = await Promise.all([
-        client.runtime.getRun(runId, signal),
+      const nextRun = await client.runtime.getRun(runId, signal);
+      const [nextRevision, nextWaits] = await Promise.all([
+        client.graphs.getRevision(nextRun.graphRevisionId, signal),
         client.runtime.listOpenWaits(runId, signal),
       ]);
       setRun(nextRun);
+      setRevision(nextRevision);
       setWaits(nextWaits);
     } catch (cause) {
       if (!signal?.aborted) setError(messageFor(cause));
@@ -48,6 +52,9 @@ export function useRunMonitor(runId: string) {
   useEffect(() => {
     const controller = new AbortController();
     let seenRefresh = 0;
+    setRun(null);
+    setRevision(null);
+    setWaits([]);
     setProjection(createRunStreamProjection(runId));
     setStreamError(null);
     void load(controller.signal);
@@ -98,6 +105,7 @@ export function useRunMonitor(runId: string) {
 
   return {
     run,
+    revision,
     waits,
     projection,
     connection,

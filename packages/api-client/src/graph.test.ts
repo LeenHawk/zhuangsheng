@@ -111,6 +111,32 @@ describe("HttpGraphClient", () => {
     expect(JSON.parse(calls[1]?.init?.body as string)).toEqual({ operationTaxonomyVersion: 1, adapterDecoderVersion: 1 });
   });
 
+  it("loads the exact immutable revision path and rejects identity drift", async () => {
+    const requested: Array<RequestInfo | URL> = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested.push(input);
+      return new Response(JSON.stringify({
+        id: requested.length === 1 ? "graphrev/1" : "graphrev_other",
+        graphId: "graph_1",
+        revisionNo: 1,
+        operationTaxonomyVersion: 1,
+        adapterDecoderVersion: 1,
+        definition: { nodes: [], edges: [] },
+        contentHash: "sha256:abc",
+        createdAt: 12,
+        warnings: [],
+      }), { status: 200 });
+    });
+    const client = new HttpGraphClient("https://studio.example");
+
+    await expect(client.getRevision("graphrev/1")).resolves.toMatchObject({ id: "graphrev/1" });
+    await expect(client.getRevision("graphrev/1")).rejects.toBeInstanceOf(DecodeError);
+    expect(requested).toEqual([
+      "https://studio.example/v1/graph-revisions/graphrev%2F1",
+      "https://studio.example/v1/graph-revisions/graphrev%2F1",
+    ]);
+  });
+
   it("creates a user-mode role play template through the server facade", async () => {
     let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {

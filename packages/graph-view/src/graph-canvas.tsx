@@ -11,7 +11,7 @@ const nodeTypes = { studio: GraphNode };
 export function GraphCanvas({ graph }: { graph: GraphStructureProjection }) {
   const elements = useMemo(() => graphElements(graph), [graph]);
   if (elements.nodes.length === 0) {
-    return <div className="grid h-full min-h-80 place-items-center text-sm text-muted">草稿还没有节点。</div>;
+    return <div className="grid h-full min-h-80 place-items-center text-sm text-muted">图中还没有节点。</div>;
   }
   return (
     <div className="h-full min-h-[480px] overflow-hidden rounded-xl bg-canvas">

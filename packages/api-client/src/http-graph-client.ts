@@ -1,4 +1,5 @@
 import { decodeCreateGraph, decodeGraphDraft, decodeGraphList, decodeGraphRevision } from "./decode-graphs";
+import { DecodeError } from "./decode-error";
 import { decodeRolePlaySettings } from "./decode-roleplay";
 import type { CreateGraphResult, GraphDraftView, GraphRevisionView, GraphSummary, JsonObject } from "./graph-types";
 import type { RolePlaySettingsView } from "./roleplay-types";
@@ -28,6 +29,15 @@ export class HttpGraphClient {
 
   async getDraft(graphId: string, signal?: AbortSignal): Promise<GraphDraftView> {
     return decodeGraphDraft(await this.request(`/v1/graphs/${encodeURIComponent(graphId)}/draft`, { signal }));
+  }
+
+  async getRevision(revisionId: string, signal?: AbortSignal): Promise<GraphRevisionView> {
+    const revision = decodeGraphRevision(await this.request(
+      `/v1/graph-revisions/${encodeURIComponent(revisionId)}`,
+      { signal },
+    ));
+    if (revision.id !== revisionId) throw new DecodeError("graphRevision.id");
+    return revision;
   }
 
   async updateDraft(
