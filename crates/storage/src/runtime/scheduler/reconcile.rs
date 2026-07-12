@@ -140,7 +140,7 @@ async fn has_conflict<C: ConnectionTrait>(
     node: &GraphNode,
 ) -> StorageResult<bool> {
     let head_changed = connection.query_one_raw(sql(
-        "SELECT 1 AS present FROM node_read_set rs LEFT JOIN context_branches b ON rs.aggregate_kind = 'working_context' AND b.context_id = rs.aggregate_id AND b.id = rs.lineage_key LEFT JOIN memory_records m ON rs.aggregate_kind = 'long_term_memory' AND m.id = rs.aggregate_id WHERE rs.node_attempt_id = ? AND rs.consistency = 'validate_on_commit' AND ((rs.aggregate_kind = 'working_context' AND (b.head_commit_id IS NULL OR b.head_commit_id != rs.commit_id)) OR (rs.aggregate_kind = 'long_term_memory' AND (m.head_commit_id IS NULL OR m.head_commit_id != rs.commit_id))) LIMIT 1",
+        "SELECT 1 AS present FROM node_read_set rs LEFT JOIN context_branches b ON rs.aggregate_kind = 'working_context' AND b.context_id = rs.aggregate_id AND b.id = rs.lineage_key LEFT JOIN memory_records m ON rs.aggregate_kind = 'long_term_memory' AND m.id = rs.aggregate_id LEFT JOIN materialized_projections p ON rs.aggregate_kind = 'artifact_metadata' AND p.aggregate_kind = 'artifact_metadata' AND p.aggregate_id = rs.aggregate_id AND p.lineage_key = rs.lineage_key WHERE rs.node_attempt_id = ? AND rs.consistency = 'validate_on_commit' AND ((rs.aggregate_kind = 'working_context' AND (b.head_commit_id IS NULL OR b.head_commit_id != rs.commit_id)) OR (rs.aggregate_kind = 'long_term_memory' AND (m.head_commit_id IS NULL OR m.head_commit_id != rs.commit_id)) OR (rs.aggregate_kind = 'artifact_metadata' AND (p.head_commit_id IS NULL OR p.head_commit_id != rs.commit_id))) LIMIT 1",
         vec![attempt_id.into()],
     )).await?.is_some();
     if head_changed {

@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use crate::llm::ir::{ContextSensitivity, ContextTrust, LlmContentPartIr, MessageRole};
 
 use super::{
-    ContextAssemblyError, ContextAssemblyInput, ContextAssemblyResult, ContextItem,
+    ArtifactView, ContextAssemblyError, ContextAssemblyInput, ContextAssemblyResult, ContextItem,
     ContextProvenance, ContextRole, ContextSource, HistoryStrategy, ResolvedContextBinding,
     ResolvedContextValue, TagMatch, WorldInfoSelector,
     candidate::{CandidateGroup, ContextCandidate},
@@ -250,8 +250,21 @@ fn data_candidates(
                 format!("data binding contains history values: {binding_id}"),
             ));
         };
-        if !world_info_matches(source, tags) {
+        if !world_info_matches(source, tags) || !artifact_view_matches(source, tags) {
             continue;
+        }
+        if let ContextSource::Artifact { selector, .. } = source {
+            let limit = selector
+                .as_ref()
+                .expect("normalized artifact selector")
+                .max_bytes;
+            let size = artifact_content_size(content)?;
+            if size > limit {
+                return Err(ContextAssemblyError::new(
+                    "context_artifact_too_large",
+                    format!("artifact binding exceeds maxBytes: {binding_id}"),
+                ));
+            }
         }
         let mut transformations = Vec::new();
         let role = authorized_data_role(
@@ -275,6 +288,12 @@ fn data_candidates(
         if source_limit(source).is_some_and(|limit| data.len() >= limit) {
             break;
         }
+    }
+    if matches!(source, ContextSource::Artifact { .. }) && data.is_empty() && item.budget.required {
+        return Err(ContextAssemblyError::new(
+            "context_artifact_view_unavailable",
+            format!("artifact view is unavailable: {binding_id}"),
+        ));
     }
     Ok(data)
 }
@@ -315,6 +334,38 @@ fn world_info_matches(source: &ContextSource, tags: &[String]) -> bool {
         TagMatch::Any => required.iter().any(|tag| actual.contains(tag.as_str())),
         TagMatch::All => required.iter().all(|tag| actual.contains(tag.as_str())),
     }
+}
+
+fn artifact_view_matches(source: &ContextSource, tags: &[String]) -> bool {
+    let ContextSource::Artifact { selector, .. } = source else {
+        return true;
+    };
+    let tag = match selector
+        .as_ref()
+        .expect("normalized artifact selector")
+        .view
+    {
+        ArtifactView::Text => "artifact_view:text",
+        ArtifactView::Metadata => "artifact_view:metadata",
+    };
+    tags.iter().any(|value| value == tag)
+}
+
+fn artifact_content_size(content: &[LlmContentPartIr]) -> ContextAssemblyResult<u64> {
+    content.iter().try_fold(0_u64, |total, part| {
+        let size = match part {
+            LlmContentPartIr::Text { text } => text.len() as u64,
+            LlmContentPartIr::Image { artifact_ref } | LlmContentPartIr::File { artifact_ref } => {
+                artifact_ref.byte_size
+            }
+        };
+        total.checked_add(size).ok_or_else(|| {
+            ContextAssemblyError::new(
+                "context_artifact_invalid",
+                "artifact content size overflowed",
+            )
+        })
+    })
 }
 
 fn source_limit(source: &ContextSource) -> Option<usize> {

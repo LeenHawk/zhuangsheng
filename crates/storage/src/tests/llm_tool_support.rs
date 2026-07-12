@@ -45,13 +45,29 @@ pub(super) fn echo_grant() -> ToolGrant {
 }
 
 pub(super) async fn prepare_running_tool_attempt(store: &SqliteStore) -> ClaimedAttempt {
-    prepare_running_tool_attempt_with_bindings(store, vec![echo_grant()], None, descriptor()).await
+    prepare_running_tool_attempt_with_bindings(store, vec![echo_grant()], None, descriptor())
+        .await
+        .expect("tool LLM attempt was not scheduled")
 }
 
 pub(super) async fn prepare_running_tool_attempt_with_memory(
     store: &SqliteStore,
     memory: LlmMemoryBinding,
 ) -> ClaimedAttempt {
+    prepare_running_tool_attempt_with_bindings(
+        store,
+        vec![echo_grant()],
+        Some(memory),
+        descriptor(),
+    )
+    .await
+    .expect("tool LLM attempt was not scheduled")
+}
+
+pub(super) async fn try_prepare_running_tool_attempt_with_memory(
+    store: &SqliteStore,
+    memory: LlmMemoryBinding,
+) -> Option<ClaimedAttempt> {
     prepare_running_tool_attempt_with_bindings(
         store,
         vec![echo_grant()],
@@ -83,6 +99,7 @@ pub(super) async fn prepare_running_approval_tool_attempt_with_classification(
         descriptor_with_classification(classification),
     )
     .await
+    .expect("approval tool LLM attempt was not scheduled")
 }
 
 async fn prepare_running_tool_attempt_with_bindings(
@@ -90,7 +107,7 @@ async fn prepare_running_tool_attempt_with_bindings(
     grants: Vec<ToolGrant>,
     memory: Option<LlmMemoryBinding>,
     tool_descriptor: zhuangsheng_core::llm::ToolDescriptor,
-) -> ClaimedAttempt {
+) -> Option<ClaimedAttempt> {
     store
         .publish_tool(PublishToolCommand {
             descriptor: tool_descriptor,
@@ -200,13 +217,12 @@ async fn prepare_running_tool_attempt_with_bindings(
         let work = store
             .claim_next_work("tool-ledger-worker", now + 1, now + 30_000)
             .await
-            .unwrap()
-            .unwrap();
+            .unwrap()?;
         match work {
             SchedulerWork::Attempt(attempt) => {
                 if attempt.node.id == "generate" {
                     store.mark_attempt_running(&attempt, now + 1).await.unwrap();
-                    return *attempt;
+                    return Some(*attempt);
                 }
                 store.mark_attempt_running(&attempt, now + 1).await.unwrap();
                 panic!("unexpected attempt before tool LLM")
@@ -226,5 +242,5 @@ async fn prepare_running_tool_attempt_with_bindings(
             SchedulerWork::Noop => {}
         }
     }
-    panic!("tool LLM attempt was not scheduled")
+    None
 }

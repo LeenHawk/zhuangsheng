@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use crate::{ValidationIssue, selector};
 
 use super::{
-    FinalValueSource, InputSelector, LlmNodeConfig, MemoryToolCapability, StaticContextWriteOp,
-    StaticMemoryReadSource,
+    FinalValueSource, InputSelector, LlmNodeConfig, MemoryToolCapability, PreExecutionValueSource,
+    StaticContextWriteOp, StaticMemoryReadSource,
 };
 
 pub(super) fn validate_llm_memory(
@@ -53,13 +53,15 @@ pub(super) fn validate_llm_memory(
                                 .any(|tag| tag.trim().is_empty() || tag.len() > 64)
                     })
             }
-            StaticMemoryReadSource::Artifact { .. } => {
-                issues.push(issue(
-                    "unsupported_static_artifact_read",
-                    node_id,
-                    "artifact static reads require the artifact store implementation",
-                ));
-                false
+            StaticMemoryReadSource::Artifact {
+                scope,
+                artifact_ref_from,
+            } => {
+                scope != "run-context"
+                    || read.limit.is_some()
+                    || artifact_ref_from.source != PreExecutionValueSource::Input
+                    || !input_names.contains(&artifact_ref_from.source_name)
+                    || selector::validate(&artifact_ref_from.selector).is_err()
             }
         };
         if invalid_common || invalid_source {

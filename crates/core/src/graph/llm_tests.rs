@@ -220,3 +220,30 @@ fn llm_apply_rejects_custom_tool_name_colliding_with_memory_capability() {
             .any(|issue| issue.code == "invalid_tool_grant")
     );
 }
+
+#[test]
+fn llm_apply_accepts_an_input_selected_run_context_artifact_read() {
+    let draft: GraphDraft = serde_json::from_value(json!({
+        "graphId":"graph_artifact_read",
+        "nodes":[
+            {"id":"input","kind":"input","runInputSelector":{"type":"whole_value"}},
+            {
+                "id":"llm",
+                "kind":"llm",
+                "model":{"channelId":"channel_1","modelId":"model_1","operationKey":{"operation":"generate_content","kind":"open_ai_responses"}},
+                "context":{"type":"inline","spec":{"mode":"chat","items":[]}},
+                "memory":{"reads":[{
+                    "id":"document","as":"document","required":true,"limit":null,"maxBytes":4096,
+                    "source":{"kind":"artifact","scope":"run-context","artifactRefFrom":{"source":"input","sourceName":"default","selector":{"type":"json_pointer","pointer":"/artifact"}}}
+                }],"workingWrites":[],"tools":[]}
+            },
+            {"id":"output","kind":"output","outputKey":"reply"}
+        ],
+        "edges":[
+            {"from":{"nodeId":"input","output":"default"},"to":{"nodeId":"llm","input":"default"}},
+            {"from":{"nodeId":"llm","output":"default"},"to":{"nodeId":"output","input":"default"}}
+        ],
+        "outputContract":[{"key":"reply","collection":"single","required":true}]
+    })).unwrap();
+    apply_graph_with_dependencies(draft, 1, 1, &dependencies(None)).unwrap();
+}

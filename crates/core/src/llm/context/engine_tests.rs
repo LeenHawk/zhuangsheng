@@ -92,6 +92,61 @@ fn binding_role_must_explicitly_authorize_final_role() {
 }
 
 #[test]
+fn artifact_selector_chooses_one_authorized_bounded_view() {
+    let source = ContextSource::Artifact {
+        binding_id: "artifact".into(),
+        selector: Some(ArtifactSelector {
+            view: ArtifactView::Text,
+            max_bytes: 16,
+        }),
+    };
+    let spec = spec(vec![item(
+        "artifact",
+        ContextRole::Context,
+        source,
+        ContextPosition::Start,
+        true,
+        0,
+        None,
+    )]);
+    let mut metadata = data_value(
+        "metadata",
+        "metadata",
+        ContextTrust::ExternalUntrusted,
+        ContextSensitivity::Private,
+        vec![ContextRole::Context],
+        None,
+    );
+    let mut text = data_value(
+        "text",
+        "artifact text",
+        ContextTrust::ExternalUntrusted,
+        ContextSensitivity::Private,
+        vec![ContextRole::Context],
+        None,
+    );
+    for (value, tag) in [
+        (&mut metadata, "artifact_view:metadata"),
+        (&mut text, "artifact_view:text"),
+    ] {
+        let ResolvedContextValue::Data { tags, .. } = value else {
+            unreachable!()
+        };
+        tags.push(tag.into());
+    }
+    let bindings = BTreeMap::from([(
+        "artifact".into(),
+        data_binding("artifact", vec![metadata, text]),
+    )]);
+    let output = assemble_context(
+        &assembly_input(spec, json!(null), bindings, 100),
+        &ScalarCounter,
+    )
+    .unwrap();
+    assert_eq!(instruction_text(&output.instructions[0]), "artifact text");
+}
+
+#[test]
 fn history_is_stable_and_keep_recent_uses_newest_fitting_suffix() {
     let source = ContextSource::History {
         binding_id: "history".into(),

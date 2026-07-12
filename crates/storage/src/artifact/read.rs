@@ -16,6 +16,14 @@ pub(super) async fn load_artifact_view<C: ConnectionTrait>(
     connection: &C,
     artifact_id: &str,
 ) -> StorageResult<ArtifactView> {
+    let (view, _, _) = load_artifact_binding(connection, artifact_id).await?;
+    Ok(view)
+}
+
+pub(crate) async fn load_artifact_binding<C: ConnectionTrait>(
+    connection: &C,
+    artifact_id: &str,
+) -> StorageResult<(ArtifactView, Vec<u8>, Option<String>)> {
     let (view, object_id) = load_artifact_metadata_view(connection, artifact_id).await?;
     let bytes = load_object_bytes(connection, &object_id).await?;
     if canonical::hash_bytes(&bytes) != view.metadata.content.content_hash
@@ -25,7 +33,15 @@ pub(super) async fn load_artifact_view<C: ConnectionTrait>(
             "artifact content is corrupt".into(),
         ));
     }
-    Ok(view)
+    let context_id = connection
+        .query_one_raw(sql(
+            "SELECT context_id FROM artifacts WHERE id = ? AND status = 'active'",
+            vec![artifact_id.into()],
+        ))
+        .await?
+        .ok_or_else(|| StorageError::Integrity("active artifact row is missing".into()))?
+        .try_get("", "context_id")?;
+    Ok((view, bytes, context_id))
 }
 
 pub(super) async fn load_artifact_metadata_view<C: ConnectionTrait>(

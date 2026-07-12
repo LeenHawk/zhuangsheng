@@ -13,6 +13,10 @@ mod expand_finalize;
 mod finalize;
 mod join_by_key;
 mod join_by_key_buffer;
+mod llm_artifact_binding;
+mod llm_artifact_read;
+#[cfg(test)]
+mod llm_artifact_read_tests;
 mod llm_context;
 mod llm_read_set;
 mod llm_snapshot;

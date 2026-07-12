@@ -17,6 +17,8 @@ use crate::{
     graph::helpers::{load_object_json, sql},
 };
 
+use super::llm_artifact_binding::artifact_binding;
+
 pub(super) async fn load_llm_context_snapshot<C: ConnectionTrait>(
     connection: &C,
     attempt_id: &str,
@@ -34,7 +36,7 @@ pub(super) async fn load_llm_context_snapshot<C: ConnectionTrait>(
     let mut bindings = BTreeMap::new();
     for read in reads {
         let binding = load_binding(connection, attempt_id, read).await?;
-        bindings.insert(read.id.clone(), binding);
+        bindings.insert(read.alias.clone(), binding);
     }
     let read_set_digest = compute_llm_read_set_digest(connection, attempt_id).await?;
     Ok(Some(ClaimedContextSnapshot {
@@ -81,10 +83,7 @@ async fn load_binding<C: ConnectionTrait>(
         StaticMemoryReadSource::LongTermMemory { scope, .. } => {
             long_term_binding(read, scope, snapshot_token, envelope)
         }
-        StaticMemoryReadSource::Artifact { .. } => Err(StorageError::InputContract(format!(
-            "artifact context binding '{}' is not available in phase one storage",
-            read.id
-        ))),
+        StaticMemoryReadSource::Artifact { scope, .. } => artifact_binding(read, scope, envelope),
     }
 }
 
@@ -113,7 +112,7 @@ fn conversation_history_binding(
         ));
     }
     Ok(ResolvedContextBinding {
-        binding_id: read.id.clone(),
+        binding_id: read.alias.clone(),
         scope: scope.into(),
         version,
         values,
@@ -145,7 +144,7 @@ fn working_binding(
         Vec::new()
     };
     Ok(ResolvedContextBinding {
-        binding_id: read.id.clone(),
+        binding_id: read.alias.clone(),
         scope: scope.into(),
         version,
         values,
@@ -195,7 +194,7 @@ fn long_term_binding(
         )?);
     }
     Ok(ResolvedContextBinding {
-        binding_id: read.id.clone(),
+        binding_id: read.alias.clone(),
         scope: scope.into(),
         version,
         values,

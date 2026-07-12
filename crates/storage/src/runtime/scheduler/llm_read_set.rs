@@ -1,4 +1,7 @@
+use std::collections::BTreeMap;
+
 use sea_orm::ConnectionTrait;
+use serde_json::Value;
 use serde_json::json;
 use zhuangsheng_core::{
     canonical,
@@ -17,7 +20,7 @@ use crate::{
 use super::{
     conversation_history,
     events::add_object_ref,
-    long_term_read,
+    llm_artifact_read, long_term_read,
     read_set::{ResolvedBinding, ResolvedSelection},
 };
 
@@ -27,6 +30,7 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
     node_instance_id: &str,
     attempt_id: &str,
     node: &GraphNode,
+    inputs: &BTreeMap<String, Value>,
     now: i64,
 ) -> StorageResult<()> {
     let DraftNodeKind::Llm { config } = &node.kind else {
@@ -65,11 +69,18 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
             StaticMemoryReadSource::LongTermMemory { .. } => {
                 long_term_read::resolve_static(connection, read).await?
             }
-            StaticMemoryReadSource::Artifact { .. } => {
-                return Err(StorageError::InputContract(format!(
-                    "artifact context binding '{}' is not available in phase one storage",
-                    read.id
-                )));
+            StaticMemoryReadSource::Artifact {
+                artifact_ref_from, ..
+            } => {
+                llm_artifact_read::resolve(
+                    connection,
+                    read,
+                    &artifact_ref_from.source_name,
+                    &artifact_ref_from.selector,
+                    inputs,
+                    &context_id,
+                )
+                .await?
             }
         };
         persist_binding(connection, attempt_id, read, resolved, now).await?;
