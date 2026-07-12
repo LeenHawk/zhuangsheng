@@ -1,14 +1,15 @@
 use axum::{
     Json, Router,
-    extract::{Path, State, rejection::JsonRejection},
+    extract::{Path, Query, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
 use serde::Deserialize;
 use zhuangsheng_core::{
     application::memory::{
-        ApplyMemoryProposalCommand, DecideMemoryProposalCommand, MemoryProposalDecision,
-        MemorySearchCommand, MemorySearchView, ProposeMemoryChangeCommand,
+        ApplyMemoryProposalCommand, DecideMemoryProposalCommand, ListMemoryProposalsCommand,
+        MemoryProposalCursor, MemoryProposalDecision, MemoryProposalListView, MemorySearchCommand,
+        MemorySearchView, ProposeMemoryChangeCommand,
     },
     memory::{
         LongTermMemoryRecordView, MemoryChangeProposalView, MemoryProposalChangeInput,
@@ -52,13 +53,55 @@ struct ApplyBody {
     expected_status: MemoryProposalStatus,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListQuery {
+    scope_id: String,
+    status: Option<MemoryProposalStatus>,
+    #[serde(default = "default_limit")]
+    limit: u32,
+    before_updated_at: Option<i64>,
+    before_id: Option<String>,
+}
+
+fn default_limit() -> u32 {
+    50
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/v1/memory-proposals", post(propose))
+        .route("/v1/memory-proposals", post(propose).get(list_proposals))
         .route("/v1/memory-proposals/{proposal_id}/decision", post(decide))
         .route("/v1/memory-proposals/{proposal_id}/apply", post(apply))
         .route("/v1/memories/{memory_id}", get(get_record))
         .route("/v1/memory-search", post(search))
+}
+
+async fn list_proposals(
+    State(state): State<AppState>,
+    Query(query): Query<ListQuery>,
+) -> ApiResult<Json<MemoryProposalListView>> {
+    let cursor = match (query.before_updated_at, query.before_id) {
+        (Some(updated_at), Some(id)) => Some(MemoryProposalCursor { updated_at, id }),
+        (None, None) => None,
+        _ => {
+            return Err(ApiError::bad_request(
+                "invalid_memory_proposal_cursor",
+                "both beforeUpdatedAt and beforeId are required",
+            ));
+        }
+    };
+    Ok(Json(
+        state
+            .memory_service
+            .list_memory_proposals(ListMemoryProposalsCommand {
+                scope_id: query.scope_id,
+                status: query.status,
+                limit: query.limit,
+                cursor,
+            })
+            .await?,
+    ))
 }
 
 async fn propose(

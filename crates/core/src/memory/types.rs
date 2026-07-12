@@ -65,6 +65,7 @@ pub struct MemoryChangeProposalView {
     pub expected_head_commit_id: Option<String>,
     pub change_type: MemoryProposalChangeType,
     pub content_ref: Option<String>,
+    pub proposed_content: Option<LongTermMemoryContentV1>,
     pub reason: String,
     pub evidence_refs: Vec<String>,
     pub requested_by: ActorRef,

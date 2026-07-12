@@ -23,14 +23,27 @@ pub(crate) async fn load_proposal<C: ConnectionTrait>(
         kind: "memory_proposal",
         id: proposal_id.into(),
     })?;
+    proposal_from_row(connection, &row).await
+}
+
+pub(crate) async fn proposal_from_row<C: ConnectionTrait>(
+    connection: &C,
+    row: &sea_orm::QueryResult,
+) -> StorageResult<MemoryChangeProposalView> {
     let evidence: String = row.try_get("", "evidence_refs_json")?;
+    let content_ref: Option<String> = row.try_get("", "content_object_id")?;
+    let proposed_content = match &content_ref {
+        Some(object_id) => Some(load_object_json(connection, object_id).await?),
+        None => None,
+    };
     Ok(MemoryChangeProposalView {
         id: row.try_get("", "id")?,
         scope_id: row.try_get("", "scope_id")?,
         memory_id: row.try_get("", "memory_id")?,
         expected_head_commit_id: row.try_get("", "expected_head_commit_id")?,
         change_type: parse_change(&row.try_get::<String>("", "change_type")?)?,
-        content_ref: row.try_get("", "content_object_id")?,
+        content_ref,
+        proposed_content,
         reason: row.try_get("", "reason")?,
         evidence_refs: serde_json::from_str(&evidence)
             .map_err(|error| StorageError::Integrity(error.to_string()))?,

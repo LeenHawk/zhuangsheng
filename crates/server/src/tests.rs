@@ -283,6 +283,23 @@ async fn memory_http_flow_uses_service_contract_and_typed_commands() {
     .await;
     let proposal_id = proposed["id"].as_str().unwrap();
     let memory_id = proposed["memoryId"].as_str().unwrap();
+    let inbox = call(
+        &app,
+        request(
+            "GET",
+            "/v1/memory-proposals?scopeId=roleplay&status=awaiting_review&limit=10",
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(inbox["proposals"][0]["id"], proposal_id);
+    assert_eq!(
+        inbox["proposals"][0]["proposedContent"]["text"],
+        "The moon gate opens at midnight"
+    );
+    assert!(inbox["nextCursor"].is_null());
     call(
         &app,
         request(

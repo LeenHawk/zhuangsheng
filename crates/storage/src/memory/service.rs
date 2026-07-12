@@ -3,8 +3,9 @@ use zhuangsheng_core::{
     application::{
         ApplicationError,
         memory::{
-            ApplyMemoryProposalCommand, DecideMemoryProposalCommand, MemorySearchCommand,
-            MemorySearchView, MemoryService, ProposeMemoryChangeCommand,
+            ApplyMemoryProposalCommand, DecideMemoryProposalCommand, ListMemoryProposalsCommand,
+            MemoryProposalListView, MemorySearchCommand, MemorySearchView, MemoryService,
+            ProposeMemoryChangeCommand,
         },
     },
     memory::{LongTermMemoryRecordView, MemoryChangeProposalView},
@@ -16,6 +17,14 @@ use super::query::load_record;
 
 #[async_trait]
 impl MemoryService for SqliteStore {
+    async fn list_memory_proposals(
+        &self,
+        command: ListMemoryProposalsCommand,
+    ) -> Result<MemoryProposalListView, ApplicationError> {
+        SqliteStore::list_memory_proposals(self, command)
+            .await
+            .map_err(Into::into)
+    }
     async fn propose_memory_change(
         &self,
         command: ProposeMemoryChangeCommand,

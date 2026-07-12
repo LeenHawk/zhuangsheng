@@ -47,6 +47,7 @@ mod llm_tool_ledger;
 mod llm_tool_support;
 mod llm_tool_test_helpers;
 mod memory;
+mod memory_list;
 mod roleplay_compatibility;
 mod runtime_aggregator;
 mod runtime_control;

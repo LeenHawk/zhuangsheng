@@ -8,6 +8,7 @@ import { StoriesRoute } from "./stories-route";
 import { StoryRoute } from "./story-route";
 import { RunRoute, RunsRoute } from "./run-routes";
 import { SettingsRoute } from "./settings-route";
+import { MemoryRoute } from "./memory-route";
 
 const GraphStudioRoute = lazy(async () => {
   const module = await import("./graph-routes");
@@ -35,7 +36,7 @@ export function App() {
         <Route path="/" element={<Navigate to="/stories" replace />} />
         <Route path="/stories" element={<StoriesRoute />} />
         <Route path="/stories/:conversationId" element={<StoryRoute />} />
-        <Route path="/memory" element={<SurfacePlaceholder label="用户功能" title="记忆" description="长期记忆与 proposal 将从 MemoryManager 的权威 projection 加载；当前页面不会直接修改数据库记录。" />} />
+        <Route path="/memory" element={<MemoryRoute />} />
         <Route path="/settings" element={<SettingsRoute />} />
         <Route path="/expert/studio" element={<Suspense fallback={<SurfacePlaceholder label="专家 surface" title="正在加载 Agent Studio" description="正在加载 Graph 编辑能力。" />}><GraphStudioRoute /></Suspense>} />
         <Route path="/expert/runs" element={<RunsRoute />} />

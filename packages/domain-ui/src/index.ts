@@ -1,5 +1,6 @@
 export * from "./app-shell";
 export * from "./graph-studio";
+export * from "./memory-page";
 export * from "./run-detail";
 export * from "./run-list";
 export * from "./settings-setup";

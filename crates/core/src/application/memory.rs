@@ -71,8 +71,35 @@ pub struct MemorySearchView {
     pub scope_snapshot_token: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryProposalCursor {
+    pub updated_at: i64,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListMemoryProposalsCommand {
+    pub scope_id: String,
+    pub status: Option<MemoryProposalStatus>,
+    pub limit: u32,
+    pub cursor: Option<MemoryProposalCursor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryProposalListView {
+    pub proposals: Vec<MemoryChangeProposalView>,
+    pub next_cursor: Option<MemoryProposalCursor>,
+}
+
 #[async_trait]
 pub trait MemoryService: Send + Sync {
+    async fn list_memory_proposals(
+        &self,
+        command: ListMemoryProposalsCommand,
+    ) -> Result<MemoryProposalListView, ApplicationError>;
     async fn propose_memory_change(
         &self,
         command: ProposeMemoryChangeCommand,
