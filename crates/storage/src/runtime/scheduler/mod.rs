@@ -1,4 +1,5 @@
 mod activate;
+mod activation_failure;
 mod attempt_state;
 mod claim;
 mod emit;

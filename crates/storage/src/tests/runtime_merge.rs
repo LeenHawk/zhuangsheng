@@ -4,7 +4,7 @@ use sea_orm::ConnectionTrait;
 use serde_json::{Value, json};
 use zhuangsheng_core::{
     application::graph::{ApplyGraphCommand, GraphRevisionView, UpdateGraphDraftCommand},
-    graph::{DraftNodeKind, GraphDraft},
+    graph::{DraftNodeKind, GraphDraft, InputSelector},
     runtime::{RunContextCommand, RunStatus, StartRunCommand},
     scheduler::{BuiltinResult, FinalizeAttemptCommand, Scheduler, SchedulerWork},
 };
@@ -16,7 +16,7 @@ use super::store;
 #[tokio::test]
 async fn merge_any_selects_global_earliest_and_rechecks_remaining_input() {
     let store = Arc::new(store().await);
-    let revision = merge_graph(&store, "merge-any").await;
+    let revision = merge_graph(&store, "merge-any", false).await;
     let run = store
         .start_run(StartRunCommand {
             graph_revision_id: revision.id,
@@ -100,6 +100,45 @@ async fn merge_any_selects_global_earliest_and_rechecks_remaining_input() {
     );
 }
 
+#[tokio::test]
+async fn merge_selector_failure_is_durable_and_does_not_wedge_the_wakeup() {
+    let store = Arc::new(store().await);
+    let revision = merge_graph(&store, "merge-invalid", true).await;
+    let run = store
+        .start_run(StartRunCommand {
+            graph_revision_id: revision.id,
+            input: json!({"left":"L","right":"R"}),
+            context: RunContextCommand::Temporary,
+            deadline_at: None,
+            idempotency_key: "merge-invalid-run".into(),
+        })
+        .await
+        .unwrap();
+    let scheduler = Scheduler::new(store.clone(), "merge-invalid");
+    scheduler.run_until_idle(now_ms(), 128).await.unwrap();
+    assert_eq!(
+        store.get_run(&run.id).await.unwrap().status,
+        RunStatus::Failed
+    );
+    assert_eq!(scheduler.run_until_idle(now_ms(), 8).await.unwrap(), 0);
+    let row = store.db.query_one_raw(sql(
+        "SELECT ni.status AS instance_status, a.status AS attempt_status FROM node_instances ni JOIN node_attempts a ON a.node_instance_id = ni.id WHERE ni.run_id = ? AND ni.node_id = 'merge'",
+        vec![run.id.clone().into()],
+    )).await.unwrap().unwrap();
+    assert_eq!(
+        row.try_get::<String>("", "instance_status").unwrap(),
+        "failed"
+    );
+    assert_eq!(
+        row.try_get::<String>("", "attempt_status").unwrap(),
+        "failed"
+    );
+    let events = store.list_run_events(&run.id, 0, 200).await.unwrap();
+    assert!(events.iter().any(|event| {
+        event.event_type == "node.failed" && event.payload["code"] == "input_contract_violation"
+    }));
+}
+
 async fn pending_merge_values(store: &crate::SqliteStore, run_id: &str) -> Vec<i64> {
     store
         .db
@@ -142,10 +181,14 @@ async fn selection_payloads(store: &crate::SqliteStore, run_id: &str) -> Vec<Val
     }).collect()
 }
 
-async fn merge_graph(store: &crate::SqliteStore, key: &str) -> GraphRevisionView {
+async fn merge_graph(
+    store: &crate::SqliteStore,
+    key: &str,
+    invalid_left: bool,
+) -> GraphRevisionView {
     let graph = super::graph(store, &format!("create-{key}")).await;
     let current = store.get_graph_draft(&graph.id).await.unwrap();
-    let document: GraphDraft = serde_json::from_value(json!({
+    let mut document: GraphDraft = serde_json::from_value(json!({
         "graphId":graph.id,
         "nodes":[
             {"id":"left","kind":"input","runInputSelector":{"type":"json_pointer","pointer":"/left"}},
@@ -160,6 +203,16 @@ async fn merge_graph(store: &crate::SqliteStore, key: &str) -> GraphRevisionView
         ],
         "outputContract":[{"key":"items","collection":"append","required":true}]
     })).unwrap();
+    if invalid_left {
+        let merge = document
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "merge")
+            .unwrap();
+        merge.inputs[0].binding.selector = InputSelector::JsonPointer {
+            pointer: "/missing".into(),
+        };
+    }
     let draft = store
         .update_graph_draft(UpdateGraphDraftCommand {
             graph_id: graph.id.clone(),

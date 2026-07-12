@@ -13,6 +13,7 @@ use crate::{
 };
 
 use super::{
+    activation_failure::fail_input_activation,
     events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run, finish_wakeup},
     llm_read_set::resolve_llm_reads,
     load::object_metadata,
@@ -29,11 +30,11 @@ struct ValueRef<'a> {
     size_bytes: i64,
 }
 
-struct QueueHead {
-    id: String,
-    port: String,
-    value_object_id: String,
-    enqueue_seq: i64,
+pub(super) struct QueueHead {
+    pub(super) id: String,
+    pub(super) port: String,
+    pub(super) value_object_id: String,
+    pub(super) enqueue_seq: i64,
 }
 
 impl SqliteStore {
@@ -98,8 +99,27 @@ impl SqliteStore {
         }
         let instance_id = new_id("nodeinst");
         let attempt_id = new_id("attempt");
-        let inputs_id = build_inputs(&transaction, node, &heads, &instance_id, now).await?;
         let activation_seq = allocate_activation_seq(&transaction, run_id, node_id).await?;
+        let inputs_id = match build_inputs(&transaction, node, &heads, &instance_id, now).await {
+            Ok(inputs_id) => inputs_id,
+            Err(StorageError::InputContract(_) | StorageError::Domain(_)) => {
+                fail_input_activation(
+                    &transaction,
+                    run_id,
+                    node,
+                    &revision_id,
+                    &heads,
+                    &instance_id,
+                    &attempt_id,
+                    activation_seq,
+                    now,
+                )
+                .await?;
+                transaction.commit().await?;
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        };
         transaction.execute_raw(sql(
             "INSERT INTO node_instances (id, run_id, node_id, activation_seq, status, graph_revision_id, inputs_object_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'ready', ?, ?, ?, ?)",
             vec![instance_id.clone().into(), run_id.into(), node_id.into(), activation_seq.into(), revision_id.into(), inputs_id.clone().into(), now.into(), now.into()],
@@ -236,7 +256,7 @@ async fn build_inputs<C: ConnectionTrait>(
     instance_id: &str,
     now: i64,
 ) -> StorageResult<String> {
-    let mut ports = Map::new();
+    let mut validated = Vec::with_capacity(heads.len());
     for head in heads {
         let input = node
             .inputs
@@ -249,7 +269,10 @@ async fn build_inputs<C: ConnectionTrait>(
         if let Some(spec) = &input.schema {
             schema::validate(spec, &selected)?;
         }
-        let selected_bytes = canonical::to_vec(&selected)?;
+        validated.push((input, head, canonical::to_vec(&selected)?));
+    }
+    let mut ports = Map::new();
+    for (input, head, selected_bytes) in validated {
         let selected_id = put_inline_object(connection, &selected_bytes, now).await?;
         let (raw_hash, raw_size) = object_metadata(connection, &head.value_object_id).await?;
         let selected_hash = canonical::hash_bytes(&selected_bytes);
