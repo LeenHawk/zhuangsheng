@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let llm_executor =
         Arc::new(LocalLlmExecutor::new(store.clone())?.with_stream_events(stream_events.clone()));
     tokio::spawn(run_artifact_maintenance(store.clone()));
+    tokio::spawn(run_conversation_projector(store.clone()));
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(
         Scheduler::new(scheduler_store, "server-local-worker").with_llm_executor(llm_executor),
@@ -79,6 +80,18 @@ async fn run_artifact_maintenance(store: Arc<SqliteStore>) {
             tracing::warn!(%error, "artifact staging maintenance failed");
         }
         tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
+
+async fn run_conversation_projector(store: Arc<SqliteStore>) {
+    loop {
+        if let Err(error) = store
+            .maintain_candidate_projections(now_ms(), "server-conversation-projector", 50)
+            .await
+        {
+            tracing::warn!(%error, "conversation candidate projection failed");
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 

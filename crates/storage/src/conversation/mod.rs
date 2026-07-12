@@ -2,6 +2,7 @@ mod contract;
 mod create;
 mod events;
 mod profile;
+mod projection;
 mod read;
 mod receipt;
 mod service;

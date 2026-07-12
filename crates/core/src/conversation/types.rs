@@ -149,6 +149,25 @@ pub struct ConversationRunInputV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AssistantReplyPayloadV1 {
+    pub schema_version: u32,
+    #[serde(rename = "type")]
+    pub payload_type: String,
+    pub content: Vec<LlmContentPartIr>,
+}
+
+impl AssistantReplyPayloadV1 {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.schema_version != 1 || self.payload_type != "assistant_reply" {
+            return Err("assistant reply payload is invalid");
+        }
+        crate::llm::ir::validate_content_parts(&self.content, true)
+            .map_err(|_| "assistant reply content is invalid")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConversationTurnView {
     pub id: String,
     pub conversation_id: String,
