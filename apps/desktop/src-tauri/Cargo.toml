@@ -22,5 +22,6 @@ serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", default-features = false, features = [], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 zhuangsheng-core = { path = "../../../crates/core" }
+zhuangsheng-server = { path = "../../../crates/server", default-features = false }
 zhuangsheng-storage = { path = "../../../crates/storage" }
 zhuangsheng-tauri-adapter = { path = "../../../crates/adapters/tauri" }

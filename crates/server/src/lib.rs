@@ -1,3 +1,4 @@
+#[cfg(feature = "http")]
 mod api;
 pub mod llm_executor;
 mod llm_executor_support;
@@ -9,11 +10,16 @@ mod tool_executor;
 pub use model_discovery::RemoteModelDiscoveryService;
 pub use stream_events::{EphemeralLlmStreamEvent, StreamEventHub};
 
+#[cfg(feature = "http")]
 use std::sync::Arc;
 
+#[cfg(feature = "http")]
 use axum::{Router, extract::DefaultBodyLimit, routing::get};
+#[cfg(feature = "http")]
 use serde::Serialize;
+#[cfg(feature = "http")]
 use tower_http::trace::TraceLayer;
+#[cfg(feature = "http")]
 use zhuangsheng_core::application::{
     artifact::ArtifactStagingService,
     channel::{ChannelModelDiscoveryService, ChannelService},
@@ -25,15 +31,19 @@ use zhuangsheng_core::application::{
     secret::SecretStoreService,
     tool::ToolRegistryService,
 };
+#[cfg(feature = "http")]
 use zhuangsheng_core::runtime::RuntimeService;
 
+#[cfg(feature = "http")]
 use api::AppState;
 
+#[cfg(feature = "http")]
 #[derive(Serialize)]
 struct Health {
     status: &'static str,
 }
 
+#[cfg(feature = "http")]
 pub struct AppServices {
     pub artifact: Arc<dyn ArtifactStagingService>,
     pub graph: Arc<dyn GraphService>,
@@ -49,6 +59,7 @@ pub struct AppServices {
     pub stream_events: StreamEventHub,
 }
 
+#[cfg(feature = "http")]
 pub fn app(services: AppServices) -> Router {
     let state = AppState {
         artifact_service: services.artifact,

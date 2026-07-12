@@ -6,6 +6,8 @@ use tauri::{Emitter, Manager};
 #[cfg(feature = "tauri-runtime")]
 use zhuangsheng_core::scheduler::{Scheduler, SchedulerStore};
 #[cfg(feature = "tauri-runtime")]
+use zhuangsheng_server::llm_executor::LocalLlmExecutor;
+#[cfg(feature = "tauri-runtime")]
 use zhuangsheng_storage::SqliteStore;
 #[cfg(feature = "tauri-runtime")]
 use zhuangsheng_tauri_adapter::TauriAdapter;
@@ -28,19 +30,29 @@ pub fn run() {
                 database_url,
             ))?);
             tauri::async_runtime::block_on(store.recover_runtime_runs())?;
+            let llm_executor = Arc::new(LocalLlmExecutor::new(store.clone())?);
             let scheduler_store: Arc<dyn SchedulerStore> = store.clone();
             tauri::async_runtime::spawn(async move {
-                let scheduler = Scheduler::new(scheduler_store, "tauri-local-worker");
+                let scheduler = Scheduler::new(scheduler_store, "tauri-local-worker")
+                    .with_llm_executor(llm_executor);
                 loop {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map_or(0, |duration| {
-                            i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
-                        });
-                    let worked = scheduler.run_one(now).await.unwrap_or(false);
+                    let worked = scheduler.run_one(now_ms()).await.unwrap_or(false);
                     if !worked {
                         tokio::time::sleep(Duration::from_millis(25)).await;
                     }
+                }
+            });
+            let projection_store = store.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let _ = projection_store
+                        .maintain_candidate_projections(
+                            now_ms(),
+                            "tauri-conversation-projector",
+                            50,
+                        )
+                        .await;
+                    tokio::time::sleep(Duration::from_millis(250)).await;
                 }
             });
             app.manage(TauriAdapter::new(
@@ -90,4 +102,13 @@ pub fn run() {
 #[cfg(not(feature = "tauri-runtime"))]
 pub fn run() {
     panic!("build with --features tauri-runtime to launch the Tauri shell");
+}
+
+#[cfg(feature = "tauri-runtime")]
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| {
+            i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+        })
 }
