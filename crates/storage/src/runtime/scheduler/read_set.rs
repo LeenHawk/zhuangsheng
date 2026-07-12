@@ -202,7 +202,7 @@ fn consistency(value: MemoryReadConsistency) -> &'static str {
     }
 }
 
-pub(super) async fn copy_attempt_reads<C: ConnectionTrait>(
+pub(crate) async fn copy_attempt_reads<C: ConnectionTrait>(
     connection: &C,
     source_attempt_id: &str,
     target_attempt_id: &str,

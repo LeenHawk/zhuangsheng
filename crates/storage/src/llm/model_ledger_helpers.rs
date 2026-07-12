@@ -13,7 +13,7 @@ use crate::{
     graph::helpers::{put_inline_object, sql},
 };
 
-use super::{model_ledger::StoredOutcome, validation::FencedModelCall};
+use super::{model_ledger_outcome::StoredOutcome, validation::FencedModelCall};
 
 pub(super) fn validate_prepare_fields(command: &PrepareModelCallCommand) -> StorageResult<()> {
     if [
@@ -94,7 +94,7 @@ pub(super) async fn load_existing<C: ConnectionTrait>(
     }))
 }
 
-pub(super) async fn persist_checkpoint<C: ConnectionTrait>(
+pub(crate) async fn persist_checkpoint<C: ConnectionTrait>(
     connection: &C,
     checkpoint: &LlmLoopCheckpoint,
     now: i64,
@@ -220,22 +220,6 @@ pub(super) async fn finish_rows<C: ConnectionTrait>(
         .await?;
     }
     Ok(())
-}
-
-pub(super) fn require_states(
-    fenced: &FencedModelCall,
-    attempt: &str,
-    effect: &str,
-    model: &str,
-) -> StorageResult<()> {
-    if fenced.attempt_status == attempt
-        && fenced.effect_status == effect
-        && fenced.model_status == model
-    {
-        Ok(())
-    } else {
-        Err(StorageError::Conflict("model_effect_status"))
-    }
 }
 
 pub(super) async fn add_ref<C: ConnectionTrait>(

@@ -10,7 +10,7 @@ use zhuangsheng_core::{
     llm::{
         ChannelCredential, ChannelModel, ChannelModelCatalog, ChannelTransportPolicy,
         ContentGenerationKind, LlmChannelRevisionSpec, ModelCapabilities, ModelCatalogPolicy,
-        Operation, OperationKey,
+        Operation, OperationKey, Provider,
         context::{ContextAssemblyMode, ContextAssemblySpec},
     },
     runtime::{RunContextCommand, StartRunCommand},
@@ -24,6 +24,10 @@ pub(super) fn operation() -> OperationKey {
         Operation::GenerateContent,
         ContentGenerationKind::OpenAiResponses,
     )
+}
+
+pub(super) fn count_operation() -> OperationKey {
+    OperationKey::provider(Operation::CountTokens, Provider::OpenAi)
 }
 
 #[tokio::test]
@@ -178,7 +182,7 @@ pub(super) fn channel_spec() -> LlmChannelRevisionSpec {
             allow_unauthenticated: true,
         },
         credential: ChannelCredential::None,
-        operation_keys: vec![operation()],
+        operation_keys: vec![operation(), count_operation()],
         model_catalogs: vec![ChannelModelCatalog {
             operation_key: operation(),
             policy: ModelCatalogPolicy::Allowlist,

@@ -129,12 +129,75 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
         .await
         .unwrap();
 
+    let running_checkpoint = checkpoint(
+        &claimed,
+        &snapshot_object_id,
+        &transcript_ref,
+        LlmLogicalCallStatus::Running,
+        None,
+    );
+    store
+        .start_model_call(
+            StartModelCallCommand {
+                effect_attempt_id: "effect-attempt-1".into(),
+                fence: fence.clone(),
+                provider_request_id: Some("provider-request-1".into()),
+                checkpoint: running_checkpoint.clone(),
+            },
+            now + 4,
+        )
+        .await
+        .unwrap();
+    let conflicting_start = store
+        .start_model_call(
+            StartModelCallCommand {
+                effect_attempt_id: "effect-attempt-1".into(),
+                fence: fence.clone(),
+                provider_request_id: Some("different-provider-request".into()),
+                checkpoint: running_checkpoint,
+            },
+            now + 4,
+        )
+        .await;
+    assert!(matches!(
+        conflicting_start,
+        Err(StorageError::Conflict("model_call_start_replay"))
+    ));
+
     let response_bytes = canonical::to_vec(&json!({"text":"hello"})).unwrap();
+    let completed_checkpoint = checkpoint(
+        &claimed,
+        &snapshot_object_id,
+        &transcript_ref,
+        LlmLogicalCallStatus::Completed,
+        None,
+    );
     store
         .finish_model_call(
             FinishModelCallCommand {
                 effect_attempt_id: "effect-attempt-1".into(),
-                fence,
+                fence: fence.clone(),
+                outcome: ModelCallEffectOutcome::Completed {
+                    response_bytes: response_bytes.clone(),
+                    usage: Some(LlmUsageIr {
+                        input_tokens: Some(10),
+                        output_tokens: Some(5),
+                        total_tokens: Some(15),
+                        cached_input_tokens: None,
+                        reasoning_tokens: None,
+                    }),
+                },
+                checkpoint: completed_checkpoint.clone(),
+            },
+            now + 5,
+        )
+        .await
+        .unwrap();
+    store
+        .finish_model_call(
+            FinishModelCallCommand {
+                effect_attempt_id: "effect-attempt-1".into(),
+                fence: fence.clone(),
                 outcome: ModelCallEffectOutcome::Completed {
                     response_bytes,
                     usage: Some(LlmUsageIr {
@@ -145,18 +208,36 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
                         reasoning_tokens: None,
                     }),
                 },
-                checkpoint: checkpoint(
-                    &claimed,
-                    &snapshot_object_id,
-                    &transcript_ref,
-                    LlmLogicalCallStatus::Completed,
-                    None,
-                ),
+                checkpoint: completed_checkpoint.clone(),
             },
-            now + 5,
+            now + 6,
         )
         .await
         .unwrap();
+    let conflicting_finish = store
+        .finish_model_call(
+            FinishModelCallCommand {
+                effect_attempt_id: "effect-attempt-1".into(),
+                fence,
+                outcome: ModelCallEffectOutcome::Completed {
+                    response_bytes: canonical::to_vec(&json!({"text":"different"})).unwrap(),
+                    usage: Some(LlmUsageIr {
+                        input_tokens: Some(10),
+                        output_tokens: Some(5),
+                        total_tokens: Some(15),
+                        cached_input_tokens: None,
+                        reasoning_tokens: None,
+                    }),
+                },
+                checkpoint: completed_checkpoint,
+            },
+            now + 7,
+        )
+        .await;
+    assert!(matches!(
+        conflicting_finish,
+        Err(StorageError::Conflict("model_call_finish_replay"))
+    ));
     let row = store
         .db
         .query_one(sql(

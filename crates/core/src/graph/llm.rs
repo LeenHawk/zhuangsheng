@@ -265,5 +265,11 @@ pub struct LlmNodeExecutionSnapshot {
     pub channel: LlmChannelRevision,
     pub context: ContextConfigSnapshot,
     pub capability_overrides: Vec<ModelCapabilityOverride>,
+    pub memory: Option<LlmMemoryBinding>,
+    pub tools: Vec<ToolGrant>,
+    pub hosted_tools: Vec<HostedToolBinding>,
+    pub request: Option<LlmRequestOptions>,
+    pub output: Option<LlmOutputSpec>,
+    pub streaming: Option<LlmNodeStreaming>,
     pub limits: LlmNodeLimits,
 }

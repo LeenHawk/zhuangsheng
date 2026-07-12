@@ -132,9 +132,19 @@ pub(super) async fn validate_fence<C: ConnectionTrait>(
     effect_attempt_id: &str,
     fence: &EffectAttemptFence,
 ) -> StorageResult<FencedModelCall> {
+    let fenced = load_model_call_attempt(connection, effect_attempt_id, fence).await?;
+    validate_active_fence(&fenced, fence)?;
+    Ok(fenced)
+}
+
+pub(super) async fn load_model_call_attempt<C: ConnectionTrait>(
+    connection: &C,
+    effect_attempt_id: &str,
+    fence: &EffectAttemptFence,
+) -> StorageResult<FencedModelCall> {
     let row = connection
         .query_one(sql(
-            "SELECT ea.effect_id, ea.status AS attempt_status, e.model_call_id, e.node_instance_id, e.status AS effect_status, e.classification, mc.call_no, mc.status AS model_status, a.status AS node_attempt_status, a.worker_id, a.lease_fence, a.run_control_epoch, r.status AS run_status, r.control_epoch FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN model_calls mc ON mc.id = e.model_call_id JOIN node_attempts a ON a.id = ea.invoking_node_attempt_id JOIN node_instances ni ON ni.id = e.node_instance_id JOIN graph_runs r ON r.id = ni.run_id WHERE ea.id = ? AND ea.invoking_node_attempt_id = ?",
+            "SELECT ea.effect_id, ea.status AS attempt_status, ea.provider_request_id AS attempt_provider_request_id, ea.result_object_id AS attempt_result_object_id, attempt_result.content_hash AS attempt_result_digest, attempt_error.content_hash AS attempt_error_digest, e.model_call_id, e.node_instance_id, e.status AS effect_status, e.classification, mc.call_no, mc.status AS model_status, mc.provider_request_id AS model_provider_request_id, mc.response_object_id, model_response.content_hash AS response_digest, mc.usage_json, cp.checkpoint_digest, a.status AS node_attempt_status, a.worker_id, a.lease_fence, a.run_control_epoch, r.status AS run_status, r.control_epoch FROM effect_attempts ea JOIN effects e ON e.id = ea.effect_id JOIN model_calls mc ON mc.id = e.model_call_id JOIN node_attempts a ON a.id = ea.invoking_node_attempt_id JOIN node_instances ni ON ni.id = e.node_instance_id JOIN graph_runs r ON r.id = ni.run_id LEFT JOIN content_objects attempt_result ON attempt_result.id = ea.result_object_id LEFT JOIN content_objects attempt_error ON attempt_error.id = ea.error_object_id LEFT JOIN content_objects model_response ON model_response.id = mc.response_object_id LEFT JOIN llm_loop_checkpoints cp ON cp.node_instance_id = e.node_instance_id WHERE ea.id = ? AND ea.invoking_node_attempt_id = ?",
             vec![effect_attempt_id.into(), fence.invoking_node_attempt_id.clone().into()],
         ))
         .await?
@@ -142,21 +152,6 @@ pub(super) async fn validate_fence<C: ConnectionTrait>(
             kind: "effect_attempt",
             id: effect_attempt_id.into(),
         })?;
-    let worker_id: Option<String> = row.try_get("", "worker_id")?;
-    let lease_fence: i64 = row.try_get("", "lease_fence")?;
-    let attempt_epoch: i64 = row.try_get("", "run_control_epoch")?;
-    let control_epoch: i64 = row.try_get("", "control_epoch")?;
-    let node_attempt_status: String = row.try_get("", "node_attempt_status")?;
-    let run_status: String = row.try_get("", "run_status")?;
-    if worker_id.as_deref() != Some(&fence.worker_id)
-        || u64::try_from(lease_fence).ok() != Some(fence.lease_fence)
-        || u64::try_from(attempt_epoch).ok() != Some(fence.run_control_epoch)
-        || attempt_epoch != control_epoch
-        || node_attempt_status != "running"
-        || run_status != "running"
-    {
-        return Err(StorageError::Conflict("effect_attempt_fence"));
-    }
     Ok(FencedModelCall {
         effect_id: row.try_get("", "effect_id")?,
         model_call_id: row.try_get("", "model_call_id")?,
@@ -167,7 +162,54 @@ pub(super) async fn validate_fence<C: ConnectionTrait>(
         effect_status: row.try_get("", "effect_status")?,
         model_status: row.try_get("", "model_status")?,
         classification: row.try_get("", "classification")?,
+        attempt_provider_request_id: row.try_get("", "attempt_provider_request_id")?,
+        model_provider_request_id: row.try_get("", "model_provider_request_id")?,
+        attempt_result_object_id: row.try_get("", "attempt_result_object_id")?,
+        attempt_result_digest: row.try_get("", "attempt_result_digest")?,
+        attempt_error_digest: row.try_get("", "attempt_error_digest")?,
+        response_object_id: row.try_get("", "response_object_id")?,
+        response_digest: row.try_get("", "response_digest")?,
+        usage_json: row.try_get("", "usage_json")?,
+        checkpoint_digest: row.try_get("", "checkpoint_digest")?,
+        node_attempt_status: row.try_get("", "node_attempt_status")?,
+        worker_id: row.try_get("", "worker_id")?,
+        lease_fence: row.try_get("", "lease_fence")?,
+        attempt_epoch: row.try_get("", "run_control_epoch")?,
+        run_status: row.try_get("", "run_status")?,
+        control_epoch: row.try_get("", "control_epoch")?,
     })
+}
+
+pub(super) fn validate_active_fence(
+    fenced: &FencedModelCall,
+    fence: &EffectAttemptFence,
+) -> StorageResult<()> {
+    if fenced.worker_id.as_deref() != Some(&fence.worker_id)
+        || u64::try_from(fenced.lease_fence).ok() != Some(fence.lease_fence)
+        || u64::try_from(fenced.attempt_epoch).ok() != Some(fence.run_control_epoch)
+        || fenced.attempt_epoch != fenced.control_epoch
+        || fenced.node_attempt_status != "running"
+        || fenced.run_status != "running"
+    {
+        return Err(StorageError::Conflict("effect_attempt_fence"));
+    }
+    Ok(())
+}
+
+pub(super) fn validate_replay_fence(
+    fenced: &FencedModelCall,
+    fence: &EffectAttemptFence,
+) -> StorageResult<()> {
+    if fenced
+        .worker_id
+        .as_deref()
+        .is_some_and(|worker| worker != fence.worker_id)
+        || u64::try_from(fenced.lease_fence).ok() != Some(fence.lease_fence)
+        || u64::try_from(fenced.attempt_epoch).ok() != Some(fence.run_control_epoch)
+    {
+        return Err(StorageError::Conflict("effect_attempt_fence"));
+    }
+    Ok(())
 }
 
 pub(super) struct FencedModelCall {
@@ -179,6 +221,21 @@ pub(super) struct FencedModelCall {
     pub effect_status: String,
     pub model_status: String,
     pub classification: String,
+    pub attempt_provider_request_id: Option<String>,
+    pub model_provider_request_id: Option<String>,
+    pub attempt_result_object_id: Option<String>,
+    pub attempt_result_digest: Option<String>,
+    pub attempt_error_digest: Option<String>,
+    pub response_object_id: Option<String>,
+    pub response_digest: Option<String>,
+    pub usage_json: Option<String>,
+    pub checkpoint_digest: Option<String>,
+    pub node_attempt_status: String,
+    pub worker_id: Option<String>,
+    pub lease_fence: i64,
+    pub attempt_epoch: i64,
+    pub run_status: String,
+    pub control_epoch: i64,
 }
 
 pub(super) async fn validate_node_attempt_fence<C: ConnectionTrait>(

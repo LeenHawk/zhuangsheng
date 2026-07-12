@@ -103,6 +103,12 @@ pub(super) async fn ensure_llm_snapshot<C: ConnectionTrait>(
         channel,
         context,
         capability_overrides: config.capability_overrides.clone(),
+        memory: config.memory.clone(),
+        tools: config.tools.clone(),
+        hosted_tools: config.hosted_tools.clone(),
+        request: config.request.clone(),
+        output: config.output.clone(),
+        streaming: config.streaming.clone(),
         limits,
     };
     verify_snapshot(&snapshot, revision, node)?;
@@ -153,6 +159,12 @@ fn verify_snapshot(
         || snapshot.operation.operation_taxonomy_version != revision.operation_taxonomy_version
         || snapshot.operation.adapter_decoder_version != revision.adapter_decoder_version
         || snapshot.capability_overrides != config.capability_overrides
+        || snapshot.memory != config.memory
+        || snapshot.tools != config.tools
+        || snapshot.hosted_tools != config.hosted_tools
+        || snapshot.request != config.request
+        || snapshot.output != config.output
+        || snapshot.streaming != config.streaming
         || snapshot.limits != config.limits.clone().unwrap_or_default()
     {
         return Err(StorageError::Integrity(

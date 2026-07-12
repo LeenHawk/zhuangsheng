@@ -248,6 +248,48 @@ pub struct PrepareModelCallRetryCommand {
     pub checkpoint: LlmLoopCheckpoint,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectResolutionKind {
+    ConfirmSucceeded,
+    ConfirmFailedRetrySafe,
+    AbortRun,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectResolutionActorKind {
+    Human,
+    Coordinator,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveEffectUnknownCommand {
+    pub resolution_id: String,
+    pub effect_id: String,
+    pub expected_effect_attempt_id: String,
+    pub expected_run_control_epoch: u64,
+    pub command_idempotency_key: String,
+    pub kind: EffectResolutionKind,
+    pub decision: serde_json::Value,
+    pub result_object_id: Option<String>,
+    pub evidence_object_id: Option<String>,
+    pub actor_kind: EffectResolutionActorKind,
+    pub actor_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectResolutionView {
+    pub resolution_id: String,
+    pub effect_id: String,
+    pub effect_attempt_id: String,
+    pub wait_id: String,
+    pub kind: EffectResolutionKind,
+    pub replayed: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

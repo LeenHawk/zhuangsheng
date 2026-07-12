@@ -16,3 +16,4 @@ mod settle;
 mod timers;
 
 pub(crate) use events::{Event, add_object_ref, append_event, enqueue_wakeup};
+pub(crate) use read_set::copy_attempt_reads;

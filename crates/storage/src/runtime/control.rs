@@ -8,6 +8,7 @@ use zhuangsheng_core::{
 use crate::{
     SqliteStore, StorageError, StorageResult,
     graph::helpers::{load_object_json, new_id, now_ms, put_inline_object, sql},
+    llm::fence_run_effects,
 };
 
 use super::{
@@ -251,8 +252,15 @@ async fn apply_cancel<C: ConnectionTrait>(
     if updated.rows_affected() != 1 {
         return Err(StorageError::Conflict("run_control_epoch"));
     }
+    fence_run_effects(
+        connection,
+        &command.run_id,
+        command.expected_epoch.saturating_add(1),
+        now,
+    )
+    .await?;
     connection.execute(sql(
-        "UPDATE node_attempts SET status = 'cancelled', worker_id = NULL, lease_until = NULL, finished_at = ? WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('queued','leased','running')",
+        "UPDATE node_attempts SET status = 'cancelled', worker_id = NULL, lease_until = NULL, finished_at = ? WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('queued','leased','running','waiting')",
         vec![now.into(), command.run_id.clone().into()],
     )).await?;
     connection.execute(sql(
@@ -267,6 +275,16 @@ async fn apply_cancel<C: ConnectionTrait>(
         "UPDATE runtime_timers SET status = 'cancelled' WHERE run_id = ? AND status IN ('pending','ready')",
         vec![command.run_id.clone().into()],
     )).await?;
+    connection.execute(sql(
+        "UPDATE node_waits SET status = 'cancelled', resolved_at = ? WHERE run_id = ? AND status = 'open'",
+        vec![now.into(), command.run_id.clone().into()],
+    )).await?;
+    connection
+        .execute(sql(
+            "UPDATE run_execution_counters SET open_waits = 0 WHERE run_id = ?",
+            vec![command.run_id.clone().into()],
+        ))
+        .await?;
     append_event(
         connection,
         Event {

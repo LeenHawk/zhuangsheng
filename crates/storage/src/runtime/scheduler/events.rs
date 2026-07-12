@@ -5,6 +5,7 @@ use zhuangsheng_core::canonical;
 use crate::{
     StorageError, StorageResult,
     graph::helpers::{new_id, sql},
+    llm::fence_run_effects,
 };
 
 pub(crate) struct Event<'a> {
@@ -111,6 +112,16 @@ pub(super) async fn fail_run<C: ConnectionTrait>(
     if updated.rows_affected() == 0 {
         return Ok(());
     }
+    let epoch_row = connection
+        .query_one(sql(
+            "SELECT control_epoch FROM graph_runs WHERE id = ?",
+            vec![run_id.into()],
+        ))
+        .await?
+        .ok_or_else(|| StorageError::Integrity("failed run disappeared".into()))?;
+    let terminal_epoch = u64::try_from(epoch_row.try_get::<i64>("", "control_epoch")?)
+        .map_err(|_| StorageError::Integrity("invalid terminal run epoch".into()))?;
+    fence_run_effects(connection, run_id, terminal_epoch, now).await?;
     connection.execute(sql(
         "UPDATE node_attempts SET status = 'cancelled', worker_id = NULL, lease_until = NULL, finished_at = ? WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('queued','leased','running')",
         vec![now.into(), run_id.into()],
@@ -127,6 +138,16 @@ pub(super) async fn fail_run<C: ConnectionTrait>(
         "UPDATE runtime_timers SET status = 'cancelled' WHERE run_id = ? AND status IN ('pending','ready')",
         vec![run_id.into()],
     )).await?;
+    connection.execute(sql(
+        "UPDATE node_waits SET status = 'cancelled', resolved_at = ? WHERE run_id = ? AND status = 'open'",
+        vec![now.into(), run_id.into()],
+    )).await?;
+    connection
+        .execute(sql(
+            "UPDATE run_execution_counters SET open_waits = 0 WHERE run_id = ?",
+            vec![run_id.into()],
+        ))
+        .await?;
     add_object_ref(
         connection,
         &error_id,

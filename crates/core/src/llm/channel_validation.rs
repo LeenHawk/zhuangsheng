@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use gproxy_protocol::{ContentGenerationKind, Operation, OperationKey, OperationKind};
+use gproxy_protocol::{ContentGenerationKind, Operation, OperationKey, OperationKind, Provider};
 use url::{Host, Url};
 
 use crate::{canonical, compatibility::supports_operation_versions};
@@ -118,6 +118,14 @@ pub fn is_supported_generation_key(key: OperationKey) -> bool {
     )
 }
 
+pub fn is_supported_count_key(key: OperationKey) -> bool {
+    key.operation == Operation::CountTokens
+        && matches!(
+            key.kind,
+            OperationKind::Provider(Provider::OpenAi | Provider::Claude | Provider::Gemini)
+        )
+}
+
 fn validate_overrides(overrides: &[ModelCapabilityOverride]) -> LlmConfigResult<()> {
     let mut seen = HashSet::new();
     for capability_override in overrides {
@@ -215,11 +223,11 @@ fn normalize_operations(spec: &mut LlmChannelRevisionSpec) -> LlmConfigResult<()
     if spec
         .operation_keys
         .iter()
-        .any(|key| !is_supported_generation_key(*key))
+        .any(|key| !is_supported_generation_key(*key) && !is_supported_count_key(*key))
     {
         return Err(LlmConfigError::new(
             "unsupported_channel_operation",
-            "the current adapter registry supports only the four generation wire shapes",
+            "the current adapter registry does not support a declared operation shape",
         ));
     }
     let mut keyed = spec

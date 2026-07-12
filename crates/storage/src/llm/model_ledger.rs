@@ -2,9 +2,8 @@ use sea_orm::{ConnectionTrait, TransactionTrait};
 use zhuangsheng_core::{
     canonical,
     llm::{
-        EffectAttemptStatus, EffectStatus, FinishModelCallCommand, LlmLogicalCallStatus,
-        ModelCallEffectOutcome, PrepareModelCallCommand, PrepareModelCallRetryCommand,
-        PreparedModelCall, StartModelCallCommand,
+        EffectAttemptStatus, EffectStatus, LlmLogicalCallStatus, PrepareModelCallCommand,
+        PrepareModelCallRetryCommand, PreparedModelCall, StartModelCallCommand,
     },
 };
 
@@ -14,9 +13,9 @@ use crate::{
 };
 
 use super::model_ledger_helpers::{
-    add_ref, classification_name, finish_rows, load_existing, persist_checkpoint, require_states,
-    validate_prepare_fields,
+    add_ref, classification_name, load_existing, persist_checkpoint, validate_prepare_fields,
 };
+use super::model_ledger_replay::{ReplayDecision, classify_start, load_retry_replay};
 use super::validation::{
     CheckpointExpectation, load_ledger_context, validate_checkpoint, validate_fence,
     validate_node_attempt_fence, validate_operation,
@@ -180,7 +179,6 @@ impl SqliteStore {
         let transaction = self.db.begin().await?;
         let fenced =
             validate_fence(&transaction, &command.effect_attempt_id, &command.fence).await?;
-        require_states(&fenced, "prepared", "pending", "prepared")?;
         let context = load_ledger_context(
             &transaction,
             &fenced.node_instance_id,
@@ -201,6 +199,17 @@ impl SqliteStore {
                 response_ref: None,
             },
         )?;
+        match classify_start(
+            &fenced,
+            &command.provider_request_id,
+            &command.checkpoint.checksum,
+        )? {
+            ReplayDecision::Replayed => {
+                transaction.commit().await?;
+                return Ok(());
+            }
+            ReplayDecision::Fresh => {}
+        }
         let updated = transaction
             .execute(sql(
                 "UPDATE effect_attempts SET status = 'started', provider_request_id = ?, started_at = ? WHERE id = ? AND status = 'prepared' AND invoking_node_attempt_id = ?",
@@ -235,6 +244,40 @@ impl SqliteStore {
             ));
         }
         let transaction = self.db.begin().await?;
+        if let Some(replay) = load_retry_replay(&transaction, &command).await? {
+            validate_node_attempt_fence(&transaction, &replay.node_instance_id, &command.fence)
+                .await?;
+            let context = load_ledger_context(
+                &transaction,
+                &replay.node_instance_id,
+                &command.fence.invoking_node_attempt_id,
+            )
+            .await?;
+            validate_checkpoint(
+                &command.checkpoint,
+                CheckpointExpectation {
+                    context: &context,
+                    node_instance_id: &replay.node_instance_id,
+                    updater_attempt_id: &command.fence.invoking_node_attempt_id,
+                    call_no: replay.call_no,
+                    model_call_id: &command.model_call_id,
+                    effect_id: &replay.effect_id,
+                    effect_attempt_id: &command.effect_attempt_id,
+                    status: LlmLogicalCallStatus::Prepared,
+                    response_ref: None,
+                },
+            )?;
+            transaction.commit().await?;
+            return Ok(PreparedModelCall {
+                model_call_id: command.model_call_id,
+                effect_id: replay.effect_id,
+                effect_attempt_id: command.effect_attempt_id,
+                model_status: LlmLogicalCallStatus::Prepared,
+                effect_status: EffectStatus::Pending,
+                attempt_status: EffectAttemptStatus::Prepared,
+                replayed: true,
+            });
+        }
         let row = transaction
             .query_one(sql(
                 "SELECT mc.node_instance_id, mc.call_no, mc.request_object_id, mc.status AS model_status, e.id AS effect_id, e.status AS effect_status, e.classification, e.retry_policy_json, COALESCE(MAX(ea.attempt_no), 0) AS attempt_count FROM model_calls mc JOIN effects e ON e.model_call_id = mc.id LEFT JOIN effect_attempts ea ON ea.effect_id = e.id WHERE mc.id = ? GROUP BY mc.id, e.id",
@@ -327,134 +370,5 @@ impl SqliteStore {
             attempt_status: EffectAttemptStatus::Prepared,
             replayed: false,
         })
-    }
-
-    pub async fn finish_model_call(
-        &self,
-        command: FinishModelCallCommand,
-        now: i64,
-    ) -> StorageResult<()> {
-        let transaction = self.db.begin().await?;
-        let fenced =
-            validate_fence(&transaction, &command.effect_attempt_id, &command.fence).await?;
-        require_states(&fenced, "started", "pending", "running")?;
-        let context = load_ledger_context(
-            &transaction,
-            &fenced.node_instance_id,
-            &command.fence.invoking_node_attempt_id,
-        )
-        .await?;
-        let stored = store_outcome(&transaction, &command.outcome, now).await?;
-        if stored.logical_status == LlmLogicalCallStatus::RetryReady
-            && fenced.classification == "non_idempotent"
-        {
-            return Err(StorageError::InvalidArgument(
-                "non-idempotent started effect cannot become retry-ready".into(),
-            ));
-        }
-        let mut checkpoint = command.checkpoint;
-        if let Some(active) = &mut checkpoint.active_model_effect {
-            active.response_ref = stored.result_object_id.clone();
-        }
-        checkpoint = checkpoint.seal()?;
-        validate_checkpoint(
-            &checkpoint,
-            CheckpointExpectation {
-                context: &context,
-                node_instance_id: &fenced.node_instance_id,
-                updater_attempt_id: &command.fence.invoking_node_attempt_id,
-                call_no: fenced.call_no,
-                model_call_id: &fenced.model_call_id,
-                effect_id: &fenced.effect_id,
-                effect_attempt_id: &command.effect_attempt_id,
-                status: stored.logical_status,
-                response_ref: stored.result_object_id.as_deref(),
-            },
-        )?;
-        finish_rows(
-            &transaction,
-            &fenced,
-            &command.effect_attempt_id,
-            &stored,
-            now,
-        )
-        .await?;
-        persist_checkpoint(&transaction, &checkpoint, now).await?;
-        if let Some(object_id) = &stored.result_object_id {
-            add_ref(
-                &transaction,
-                object_id,
-                "model_call",
-                &fenced.model_call_id,
-                "response",
-                now,
-            )
-            .await?;
-        }
-        transaction.commit().await?;
-        Ok(())
-    }
-}
-
-pub(super) struct StoredOutcome {
-    pub logical_status: LlmLogicalCallStatus,
-    pub model_status: &'static str,
-    pub effect_status: &'static str,
-    pub attempt_status: &'static str,
-    pub result_object_id: Option<String>,
-    pub error_object_id: Option<String>,
-    pub usage_json: Option<String>,
-    pub effect_completed: bool,
-}
-
-async fn store_outcome<C: ConnectionTrait>(
-    connection: &C,
-    outcome: &ModelCallEffectOutcome,
-    now: i64,
-) -> StorageResult<StoredOutcome> {
-    match outcome {
-        ModelCallEffectOutcome::Completed {
-            response_bytes,
-            usage,
-        } => Ok(StoredOutcome {
-            logical_status: LlmLogicalCallStatus::Completed,
-            model_status: "completed",
-            effect_status: "succeeded",
-            attempt_status: "succeeded",
-            result_object_id: Some(put_inline_object(connection, response_bytes, now).await?),
-            error_object_id: None,
-            usage_json: usage.as_ref().map(canonical::to_string).transpose()?,
-            effect_completed: true,
-        }),
-        ModelCallEffectOutcome::Failed { error_bytes } => Ok(StoredOutcome {
-            logical_status: LlmLogicalCallStatus::Failed,
-            model_status: "failed",
-            effect_status: "failed",
-            attempt_status: "failed",
-            result_object_id: None,
-            error_object_id: Some(put_inline_object(connection, error_bytes, now).await?),
-            usage_json: None,
-            effect_completed: true,
-        }),
-        ModelCallEffectOutcome::OutcomeUnknown { error_bytes } => Ok(StoredOutcome {
-            logical_status: LlmLogicalCallStatus::OutcomeUnknown,
-            model_status: "outcome_unknown",
-            effect_status: "outcome_unknown",
-            attempt_status: "outcome_unknown",
-            result_object_id: None,
-            error_object_id: Some(put_inline_object(connection, error_bytes, now).await?),
-            usage_json: None,
-            effect_completed: true,
-        }),
-        ModelCallEffectOutcome::RetryReady { error_bytes } => Ok(StoredOutcome {
-            logical_status: LlmLogicalCallStatus::RetryReady,
-            model_status: "retry_ready",
-            effect_status: "pending",
-            attempt_status: "outcome_unknown",
-            result_object_id: None,
-            error_object_id: Some(put_inline_object(connection, error_bytes, now).await?),
-            usage_json: None,
-            effect_completed: false,
-        }),
     }
 }

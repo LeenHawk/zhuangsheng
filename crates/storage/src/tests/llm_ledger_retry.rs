@@ -9,6 +9,7 @@ use zhuangsheng_core::{
 };
 
 use crate::{
+    StorageError,
     graph::helpers::{put_inline_object, sql},
     tests::{
         llm_ledger::{checkpoint, now_ms, prepare_command, prepare_running_llm_attempt},
@@ -130,23 +131,58 @@ async fn retryable_unknown_keeps_fact_and_creates_new_fenced_attempt() {
         lease_fence: 1,
         run_control_epoch: claimed.run_control_epoch,
     };
-    store
+    let retry_checkpoint = transition_checkpoint(
+        &prepared_checkpoint,
+        "node-attempt-2",
+        "effect-attempt-2",
+        LlmLogicalCallStatus::Prepared,
+    );
+    let prepared = store
         .prepare_model_call_retry(
             PrepareModelCallRetryCommand {
                 model_call_id: "model-call-1".into(),
                 effect_attempt_id: "effect-attempt-2".into(),
-                fence: retry_fence,
-                checkpoint: transition_checkpoint(
-                    &prepared_checkpoint,
-                    "node-attempt-2",
-                    "effect-attempt-2",
-                    LlmLogicalCallStatus::Prepared,
-                ),
+                fence: retry_fence.clone(),
+                checkpoint: retry_checkpoint.clone(),
             },
             now + 4,
         )
         .await
         .unwrap();
+    assert!(!prepared.replayed);
+    let replayed = store
+        .prepare_model_call_retry(
+            PrepareModelCallRetryCommand {
+                model_call_id: "model-call-1".into(),
+                effect_attempt_id: "effect-attempt-2".into(),
+                fence: retry_fence.clone(),
+                checkpoint: retry_checkpoint,
+            },
+            now + 5,
+        )
+        .await
+        .unwrap();
+    assert!(replayed.replayed);
+    let conflicting_retry = store
+        .prepare_model_call_retry(
+            PrepareModelCallRetryCommand {
+                model_call_id: "model-call-1".into(),
+                effect_attempt_id: "different-effect-attempt".into(),
+                fence: retry_fence,
+                checkpoint: transition_checkpoint(
+                    &prepared_checkpoint,
+                    "node-attempt-2",
+                    "different-effect-attempt",
+                    LlmLogicalCallStatus::Prepared,
+                ),
+            },
+            now + 6,
+        )
+        .await;
+    assert!(matches!(
+        conflicting_retry,
+        Err(StorageError::Conflict("model_call_retry_replay"))
+    ));
     let rows = store
         .db
         .query_all(sql(
