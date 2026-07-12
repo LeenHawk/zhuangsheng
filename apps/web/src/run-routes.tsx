@@ -36,6 +36,7 @@ export function RunRoute() {
       {...monitor}
       onBack={() => navigate("/expert/runs")}
       onControl={monitor.control}
+      onOpenContext={(contextId, branchId) => navigate(`/expert/contexts/${encodeURIComponent(contextId)}?branch=${encodeURIComponent(branchId)}`)}
     />
   );
 }

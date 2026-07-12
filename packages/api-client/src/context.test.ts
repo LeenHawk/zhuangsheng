@@ -146,4 +146,37 @@ describe("HttpContextClient", () => {
       selections: [],
     });
   });
+
+  it("loads projections and submits exact patch and snapshot contracts", async () => {
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      if (calls.length <= 2) return Response.json({
+        contextId: "context/1", branchId: "branch/1", headCommitId: "commit/2", value: { lore: true },
+      });
+      if (calls.length === 3) return Response.json({ ...commit, branchId: "branch/1", id: "commit_3", operationId: "operation_3" });
+      return Response.json({
+        commitId: "commit/2", snapshotRef: "object_2", checksum: "sha256:snapshot",
+        schemaVersion: 1, retentionUntil: null, pinned: true, createdAt: 3,
+      });
+    });
+    const client = new HttpContextClient("https://runtime.example");
+    await client.getBranch("context/1", "branch/1");
+    await client.getCommit("commit/2");
+    await client.commitPatch("context/1", "branch/1", {
+      baseCommitId: "commit/2", operationId: "operation_3",
+      ops: [{ op: "append", path: "/lore", elementId: "entry_1", value: { text: "moon" } }],
+      schemaVersion: 1, policyVersion: 1, author: { kind: "user", id: "local-user" },
+    });
+    await client.createSnapshot("commit/2", { pinned: true });
+    expect(calls.map((call) => call.input)).toEqual([
+      "https://runtime.example/v1/contexts/context%2F1/branches/branch%2F1",
+      "https://runtime.example/v1/context-commits/commit%2F2",
+      "https://runtime.example/v1/contexts/context%2F1/branches/branch%2F1/commits",
+      "https://runtime.example/v1/context-commits/commit%2F2/snapshot",
+    ]);
+    expect(JSON.parse(calls[2]?.init?.body as string).patch.ops[0]).toEqual({
+      op: "append", path: "/lore", element_id: "entry_1", value: { text: "moon" },
+    });
+  });
 });

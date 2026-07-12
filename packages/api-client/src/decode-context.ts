@@ -1,5 +1,5 @@
 import { DecodeError } from "./decode-error";
-import { jsonValue, nullableString, number, record, string, stringArray } from "./decode-helpers";
+import { boolean, jsonValue, nullableString, number, record, string, stringArray } from "./decode-helpers";
 import type {
   ContextActorKind,
   ContextBranchStatus,
@@ -7,6 +7,8 @@ import type {
   ContextCommitView,
   ContextDiffView,
   MergeContextView,
+  VersionSnapshotView,
+  WorkingContextView,
 } from "./context-types";
 
 const branchStatuses = new Set<ContextBranchStatus>(["active", "merged", "abandoned"]);
@@ -112,5 +114,31 @@ export const decodeMergeContext = (value: unknown): MergeContextView => {
     status,
     conflicts,
     mergeCommitId,
+  };
+};
+
+export const decodeWorkingContext = (value: unknown, path = "workingContext"): WorkingContextView => {
+  const item = record(value, path);
+  return {
+    contextId: string(item.contextId, `${path}.contextId`),
+    branchId: string(item.branchId, `${path}.branchId`),
+    headCommitId: string(item.headCommitId, `${path}.headCommitId`),
+    value: jsonValue(item.value, `${path}.value`),
+  };
+};
+
+export const decodeContextCommit = (value: unknown, path = "contextCommit") => commit(value, path);
+
+export const decodeVersionSnapshot = (value: unknown): VersionSnapshotView => {
+  const path = "versionSnapshot";
+  const item = record(value, path);
+  return {
+    commitId: string(item.commitId, `${path}.commitId`),
+    snapshotRef: string(item.snapshotRef, `${path}.snapshotRef`),
+    checksum: string(item.checksum, `${path}.checksum`),
+    schemaVersion: number(item.schemaVersion, `${path}.schemaVersion`),
+    retentionUntil: item.retentionUntil === null ? null : number(item.retentionUntil, `${path}.retentionUntil`),
+    pinned: boolean(item.pinned, `${path}.pinned`),
+    createdAt: number(item.createdAt, `${path}.createdAt`),
   };
 };

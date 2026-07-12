@@ -35,6 +35,7 @@ describe("expert run monitor", () => {
       disconnect() {}
     });
     const onControl = vi.fn(async () => undefined);
+    const onOpenContext = vi.fn();
     let projection = reduceRunStream(createRunStreamProjection("run_1"), {
       kind: "durable",
       event: {
@@ -92,11 +93,14 @@ describe("expert run monitor", () => {
       reload={() => undefined}
       onBack={() => undefined}
       onControl={onControl}
+      onOpenContext={onOpenContext}
     />);
 
     expect(screen.getByText("node.started")).toBeInTheDocument();
     expect(screen.getByText("1 activation · 1 attempt")).toBeInTheDocument();
     expect(screen.queryByText("not rendered")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "打开 Context" }));
+    expect(onOpenContext).toHaveBeenCalledWith("context_1", "branch_1");
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
     await waitFor(() => expect(onControl).toHaveBeenCalledWith("interrupt"));
     fireEvent.click(screen.getByRole("button", { name: "取消运行" }));

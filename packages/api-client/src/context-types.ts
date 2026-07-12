@@ -41,6 +41,44 @@ export interface ContextDiffView {
   changes: ContextDiffEntry[];
 }
 
+export interface WorkingContextView {
+  contextId: string;
+  branchId: string;
+  headCommitId: string;
+  value: JsonValue;
+}
+
+export interface VersionSnapshotView {
+  commitId: string;
+  snapshotRef: string;
+  checksum: string;
+  schemaVersion: number;
+  retentionUntil: number | null;
+  pinned: boolean;
+  createdAt: number;
+}
+
+export type ContextPatchOperation =
+  | { op: "add" | "replace" | "test"; path: string; value: JsonValue }
+  | { op: "remove"; path: string }
+  | { op: "append"; path: string; elementId: string; value: JsonValue };
+
+export interface CommitContextPatchInput {
+  baseCommitId: string;
+  operationId: string;
+  ops: ContextPatchOperation[];
+  schemaVersion: number;
+  policyVersion: number;
+  author: { kind: ContextActorKind; id: string | null };
+  originRunId?: string | null;
+  originNodeInstanceId?: string | null;
+}
+
+export interface CreateVersionSnapshotInput {
+  retentionUntil?: number | null;
+  pinned: boolean;
+}
+
 export interface ForkContextInput {
   sourceBranchId: string;
   fromCommitId: string;

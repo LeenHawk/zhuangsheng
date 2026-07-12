@@ -4,7 +4,7 @@ import { BookOpen, Brain, FileArchive, GitBranch, Orbit, Settings, Sparkles, Wor
 import type { UiExperienceMode } from "@zhuangsheng/api-client";
 import { Badge, cn } from "@zhuangsheng/ui";
 
-type Section = "stories" | "memory" | "artifacts" | "studio" | "runs" | "settings";
+type Section = "stories" | "memory" | "artifacts" | "studio" | "runs" | "contexts" | "settings";
 
 interface AppShellProps {
   mode: UiExperienceMode;
@@ -22,6 +22,7 @@ const userNavigation = [
 
 const expertNavigation = [
   ...userNavigation,
+  { id: "contexts" as const, label: "Context", icon: GitBranch },
   { id: "studio" as const, label: "Agent Studio", icon: Workflow },
   { id: "runs" as const, label: "运行与 Trace", icon: GitBranch },
   { id: "artifacts" as const, label: "Artifacts", icon: FileArchive },
