@@ -5,6 +5,7 @@ import type {
   ConversationTimelineView,
   ConversationView,
   RolePlayGraphOptionView,
+  RunStreamConnectionState,
 } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
 
@@ -25,6 +26,7 @@ export interface StoryDetailProps {
   profileError: string | null;
   turnError: string | null;
   candidateError: string | null;
+  liveCandidates: StoryLiveCandidate[];
   onBack: () => void;
   onReload: () => void;
   onReloadOptions: () => void;
@@ -32,6 +34,14 @@ export interface StoryDetailProps {
   onSubmitMessage: (text: string) => Promise<void>;
   onRegenerateCandidate: (turnId: string, userCommitId: string) => Promise<void>;
   onSelectCandidate: (turnId: string, runId: string) => Promise<void>;
+}
+
+export interface StoryLiveCandidate {
+  runId: string;
+  connection: RunStreamConnectionState;
+  text: string;
+  truncated: boolean;
+  error: string | null;
 }
 
 export function StoryDetail(props: StoryDetailProps) {
@@ -54,7 +64,7 @@ export function StoryDetail(props: StoryDetailProps) {
           </Button>
         </header>
         {props.error && <Card className="mt-5 border-danger/30 p-4 text-sm text-danger">{props.error}</Card>}
-        <StoryMessages timeline={timeline} loading={props.loading} />
+        <StoryMessages timeline={timeline} loading={props.loading} liveCandidates={props.liveCandidates} />
         <StoryComposer
           enabled={story?.runProfile !== null && story?.runProfile !== undefined}
           pending={props.pendingAction !== null || hasRunningCandidate(timeline)}

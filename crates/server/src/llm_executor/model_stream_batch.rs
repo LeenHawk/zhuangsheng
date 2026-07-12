@@ -153,6 +153,7 @@ fn publish(
     };
     if visible {
         executor.stream_events.publish(EphemeralLlmStreamEvent {
+            schema_version: 1,
             run_id: attempt.run_id.clone(),
             node_instance_id: attempt.node_instance_id.clone(),
             attempt_id: attempt.attempt_id.clone(),

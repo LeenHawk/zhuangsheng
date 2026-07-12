@@ -4,13 +4,16 @@ import type { ConversationTimelineView, LlmContentPart } from "@zhuangsheng/api-
 import { Badge, Card, cn } from "@zhuangsheng/ui";
 
 import { shortId } from "./story-format";
+import type { StoryLiveCandidate } from "./story-detail";
 
 export function StoryMessages({
   timeline,
   loading,
+  liveCandidates,
 }: {
   timeline: ConversationTimelineView | null;
   loading: boolean;
+  liveCandidates: StoryLiveCandidate[];
 }) {
   return (
     <div className="mx-auto mt-8 max-w-3xl space-y-5" aria-live="polite">
@@ -43,9 +46,36 @@ export function StoryMessages({
           </article>
         ))
       )}
+      <div className="space-y-3" aria-live="off">
+        {liveCandidates.map((live) => (
+          <Card key={live.runId} className="border-running/30 bg-accent-soft/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <Badge tone="running">未提交实时预览</Badge>
+              <span className="text-xs text-muted">{connectionText(live.connection)}</span>
+            </div>
+            {live.text ? (
+              <p className="mt-3 whitespace-pre-wrap leading-7 text-secondary">{live.text}</p>
+            ) : (
+              <p className="mt-3 text-sm text-muted">角色正在组织回复…</p>
+            )}
+            {live.truncated && <p className="mt-2 text-xs text-warning">实时预览已达到本地上限，最终回复不受影响。</p>}
+            {live.error && <p className="mt-2 text-xs text-warning">{live.error}</p>}
+            <p className="mt-2 font-mono text-[11px] text-muted">Run {shortId(live.runId)}</p>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
+
+const connectionText = (state: StoryLiveCandidate["connection"]) => ({
+  idle: "未连接",
+  connecting: "正在连接",
+  live: "实时连接",
+  reconnecting: "正在恢复连接",
+  incompatible: "事件版本不兼容",
+  closed: "等待正式结果",
+}[state]);
 
 function ContentPart({ part }: { part: LlmContentPart }) {
   if (part.type === "text") return <p className="whitespace-pre-wrap leading-7">{part.text}</p>;

@@ -5,6 +5,7 @@ use zhuangsheng_core::{graph::StreamingAudience, llm::ir::LlmStreamEventIr};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EphemeralLlmStreamEvent {
+    pub schema_version: u32,
     pub run_id: String,
     pub node_instance_id: String,
     pub attempt_id: String,

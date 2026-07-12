@@ -54,6 +54,7 @@ describe("StoryDetail", () => {
       profileError: null,
       turnError: null,
       candidateError: null,
+      liveCandidates: [],
       onBack: () => undefined,
       onReload: () => undefined,
       onReloadOptions: () => undefined,
@@ -138,6 +139,13 @@ describe("StoryDetail", () => {
       profileError={null}
       turnError={null}
       candidateError={null}
+      liveCandidates={[{
+        runId: "run_live",
+        connection: "reconnecting",
+        text: "月光落在档案封面上。",
+        truncated: false,
+        error: null,
+      }]}
       onBack={() => undefined}
       onReload={() => undefined}
       onReloadOptions={() => undefined}
@@ -151,5 +159,8 @@ describe("StoryDetail", () => {
     await waitFor(() => expect(onSelectCandidate).toHaveBeenCalledWith("turn_1", "run_2"));
     fireEvent.click(screen.getByRole("button", { name: "再生成一个" }));
     await waitFor(() => expect(onRegenerateCandidate).toHaveBeenCalledWith("turn_1", "commit_user"));
+    expect(screen.getByText("未提交实时预览")).toBeInTheDocument();
+    expect(screen.getByText("月光落在档案封面上。")).toBeInTheDocument();
+    expect(screen.getByText("正在恢复连接")).toBeInTheDocument();
   });
 });

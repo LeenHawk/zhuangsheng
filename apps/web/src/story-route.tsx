@@ -10,6 +10,7 @@ import { StoryDetail } from "@zhuangsheng/domain-ui";
 
 import { client, messageFor } from "./api";
 import { useStoryActions } from "./use-story-actions";
+import { useStoryStreams } from "./use-story-streams";
 
 export function StoryRoute() {
   const { conversationId = "" } = useParams();
@@ -22,6 +23,7 @@ export function StoryRoute() {
   const [error, setError] = useState<string | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const actions = useStoryActions({ conversationId, story, timeline, setStory, setTimeline });
+  const liveCandidates = useStoryStreams(conversationId, timeline, setTimeline);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -68,6 +70,7 @@ export function StoryRoute() {
       profileError={actions.profileError}
       turnError={actions.turnError}
       candidateError={actions.candidateError}
+      liveCandidates={liveCandidates}
       onBack={() => navigate("/stories")}
       onReload={() => void reload()}
       onReloadOptions={() => void reloadOptions()}

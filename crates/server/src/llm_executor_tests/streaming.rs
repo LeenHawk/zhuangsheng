@@ -99,6 +99,7 @@ async fn streaming_model_call_emits_live_events_and_persists_bounded_chunks() {
     ));
     let mut live_types = Vec::new();
     while let Ok(event) = live.try_recv() {
+        assert_eq!(event.schema_version, 1);
         live_types.push(event.event_type());
     }
     assert!(live_types.contains(&"llm.stream.started"));

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 
 import type {
   ConversationRunProfile,
@@ -9,7 +9,6 @@ import type {
 } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
-import { isAbort, pollTimeline } from "./timeline-poll";
 
 type PendingAction = "profile" | "turn" | "regenerate" | "selection" | null;
 
@@ -22,16 +21,10 @@ interface StoryActionsInput {
 }
 
 export function useStoryActions(input: StoryActionsInput) {
-  const polling = useRef<AbortController | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [turnError, setTurnError] = useState<string | null>(null);
   const [candidateError, setCandidateError] = useState<string | null>(null);
-  useEffect(() => {
-    polling.current?.abort();
-    return () => polling.current?.abort();
-  }, [input.conversationId]);
-
   const saveRunProfile = async (run: ConversationRunSpec) => {
     setPendingAction("profile");
     setProfileError(null);
@@ -51,30 +44,23 @@ export function useStoryActions(input: StoryActionsInput) {
 
   const runCandidate = async (
     kind: "turn" | "regenerate",
-    command: (signal: AbortSignal) => Promise<SubmitConversationTurnAck>,
+    command: () => Promise<SubmitConversationTurnAck>,
   ) => {
-    polling.current?.abort();
-    const controller = new AbortController();
-    polling.current = controller;
     const setError = kind === "turn" ? setTurnError : setCandidateError;
     setPendingAction(kind);
     setError(null);
     try {
-      const ack = await command(controller.signal);
+      await command();
       try {
-        await pollTimeline(input.conversationId, ack.runId, controller.signal, input.setTimeline);
+        input.setTimeline(await client.getTimeline(input.conversationId));
       } catch (cause) {
-        if (!isAbort(cause)) setError(`命令已保存，但状态刷新失败：${messageFor(cause)}`);
+        setError(`命令已保存，但状态刷新失败：${messageFor(cause)}`);
       }
     } catch (cause) {
-      if (isAbort(cause)) return;
       setError(messageFor(cause));
       throw cause;
     } finally {
-      if (polling.current === controller) {
-        polling.current = null;
-        setPendingAction(null);
-      }
+      setPendingAction(null);
     }
   };
 
@@ -82,20 +68,20 @@ export function useStoryActions(input: StoryActionsInput) {
     if (!input.story?.runProfile || !input.timeline) throw new Error("故事运行设置尚未就绪。");
     const profile = input.story.runProfile;
     const head = input.timeline.activeHeadCommitId;
-    await runCandidate("turn", (signal) => client.submitConversationTurn(input.conversationId, {
+    await runCandidate("turn", () => client.submitConversationTurn(input.conversationId, {
       expectedHeadCommitId: head,
       userContent: [{ type: "text", text }],
       run: runSpec(profile),
-    }, signal));
+    }));
   };
 
   const regenerateCandidate = async (turnId: string, userCommitId: string) => {
     if (!input.story?.runProfile) throw new Error("故事运行设置尚未就绪。");
     const profile = input.story.runProfile;
-    await runCandidate("regenerate", (signal) => client.regenerateConversationCandidate(turnId, {
+    await runCandidate("regenerate", () => client.regenerateConversationCandidate(turnId, {
       expectedUserCommitId: userCommitId,
       run: runSpec(profile),
-    }, signal));
+    }));
   };
 
   const selectCandidate = async (turnId: string, runId: string) => {

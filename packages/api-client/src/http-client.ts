@@ -8,8 +8,9 @@ import {
   decodeTimeline,
 } from "./decode";
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
+import { apiErrorFromPayload } from "./api-error";
+import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
 import type {
-  ApiErrorBody,
   ConversationListView,
   ConversationRunProfile,
   ConversationRunSpec,
@@ -21,13 +22,6 @@ import type {
   RolePlayGraphOptionView,
   SubmitConversationTurnAck,
 } from "./types";
-
-export class ApiError extends Error {
-  constructor(readonly status: number, readonly body: ApiErrorBody) {
-    super(body.message);
-    this.name = "ApiError";
-  }
-}
 
 export interface CreateConversationInput {
   title?: string;
@@ -129,19 +123,20 @@ export class HttpApiClient {
     }));
   }
 
+  streamRunEvents(
+    runId: string,
+    afterDurableSeq: number,
+    signal: AbortSignal,
+    observer: RunEventStreamObserver,
+  ): Promise<void> {
+    return streamRunEvents(this.baseUrl, runId, afterDurableSeq, signal, observer);
+  }
+
   private async request(path: string, init: RequestInit): Promise<unknown> {
     const response = await fetch(`${this.baseUrl}${path}`, init);
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      const envelope = payload as { error?: Partial<ApiErrorBody> } | null;
-      const error = envelope?.error;
-      throw new ApiError(response.status, {
-        code: typeof error?.code === "string" ? error.code : "invalid_error_response",
-        message: typeof error?.message === "string" ? error.message : "The server returned an invalid error.",
-        retryable: error?.retryable === true,
-        traceId: typeof error?.traceId === "string" ? error.traceId : "trace_unavailable",
-        details: error?.details,
-      });
+      throw apiErrorFromPayload(response.status, payload);
     }
     return payload;
   }
