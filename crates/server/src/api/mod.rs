@@ -6,6 +6,7 @@ pub mod memory;
 pub mod preset;
 pub mod runtime;
 pub mod secret;
+pub mod tool;
 
 use std::sync::Arc;
 
@@ -24,4 +25,5 @@ pub struct AppState {
     pub memory_service: Arc<dyn MemoryService>,
     pub runtime_service: Arc<dyn RuntimeService>,
     pub secret_service: Arc<dyn SecretStoreService>,
+    pub tool_registry_service: Arc<dyn zhuangsheng_core::application::tool::ToolRegistryService>,
 }

@@ -5,7 +5,6 @@ use zhuangsheng_core::{
     llm::{
         ActiveCountEffectCheckpoint, CountExecutionPin, EffectAttemptFence, EffectRetryPolicy,
         LlmLogicalCallStatus, LlmLoopCheckpoint, PrepareCountCallCommand, StartCountCallCommand,
-        ToolRegistrySnapshot,
     },
 };
 
@@ -163,10 +162,12 @@ fn checkpoint(
             .unwrap()
             .graph_revision_id
             .clone(),
-        registry_snapshot: ToolRegistrySnapshot {
-            revision: "empty-registry-v1".into(),
-            entries: vec![],
-        },
+        registry_snapshot: claimed
+            .execution_snapshot
+            .as_ref()
+            .unwrap()
+            .tool_registry
+            .clone(),
         context_snapshot_ref: snapshot_ref.into(),
         read_set_digest: canonical::hash(&json!({})).unwrap(),
         model_call_no: 0,

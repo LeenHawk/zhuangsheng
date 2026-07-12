@@ -267,6 +267,8 @@ pub struct LlmNodeExecutionSnapshot {
     pub capability_overrides: Vec<ModelCapabilityOverride>,
     pub memory: Option<LlmMemoryBinding>,
     pub tools: Vec<ToolGrant>,
+    pub tool_registry: crate::llm::ToolRegistrySnapshot,
+    pub tool_descriptors: Vec<crate::llm::ResolvedToolDescriptor>,
     pub hosted_tools: Vec<HostedToolBinding>,
     pub request: Option<LlmRequestOptions>,
     pub output: Option<LlmOutputSpec>,

@@ -60,6 +60,24 @@ pub struct ChangeMasterPasswordCommand {
     pub idempotency_key: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolveRuntimeSecretCommand {
+    pub run_id: String,
+    pub node_instance_id: String,
+    pub attempt_id: String,
+    pub wakeup_id: String,
+    pub worker_id: String,
+    pub lease_fence: u64,
+    pub run_control_epoch: u64,
+    pub channel_id: String,
+    pub read_set_digest: String,
+}
+
+pub enum RuntimeSecretResolution {
+    Resolved(SecretValue),
+    Waiting { wait_id: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LockSecretStoreCommand {
@@ -138,4 +156,14 @@ pub trait SecretStoreService: Send + Sync {
 pub trait SecretResolver: Send + Sync {
     async fn resolve_secret(&self, secret_ref: &SecretRef)
     -> Result<SecretValue, ApplicationError>;
+}
+
+#[async_trait]
+pub trait RuntimeSecretResolver: Send + Sync {
+    async fn resolve_runtime_secret(
+        &self,
+        secret_ref: &SecretRef,
+        command: ResolveRuntimeSecretCommand,
+        now_ms: i64,
+    ) -> Result<RuntimeSecretResolution, ApplicationError>;
 }

@@ -10,11 +10,8 @@ use zhuangsheng_core::{
 
 use crate::{
     StorageError, StorageResult,
-    graph::{
-        apply::load_revision,
-        helpers::{new_id, put_inline_object, sql},
-    },
-    runtime::copy_attempt_reads,
+    graph::helpers::{put_inline_object, sql},
+    runtime::{ResumeAttempt, create_resume_attempt as create_runtime_resume_attempt},
 };
 
 use super::{
@@ -209,44 +206,19 @@ async fn create_resume_attempt<C: ConnectionTrait>(
     delivery_id: &str,
     now: i64,
 ) -> StorageResult<String> {
-    let row = connection.query_one(sql(
-        "SELECT a.executor_object_id, a.retry_ordinal, ni.graph_revision_id, COALESCE(MAX(all_attempts.attempt_no), 0) AS max_attempt_no FROM node_attempts a JOIN node_instances ni ON ni.id = a.node_instance_id LEFT JOIN node_attempts all_attempts ON all_attempts.node_instance_id = ni.id WHERE a.id = ? GROUP BY a.id, ni.id",
-        vec![context.node_attempt_id.clone().into()],
-    )).await?.ok_or_else(|| StorageError::Integrity("wait attempt is unavailable".into()))?;
-    let revision =
-        load_revision(connection, &row.try_get::<String>("", "graph_revision_id")?).await?;
-    let next_attempt_no = row
-        .try_get::<i64>("", "max_attempt_no")?
-        .checked_add(1)
-        .ok_or_else(|| StorageError::Integrity("node attempt number overflow".into()))?;
-    if u64::try_from(next_attempt_no).ok()
-        > Some(revision.definition.limits.max_attempts_per_activation)
-    {
-        return Err(StorageError::InvalidArgument(
-            "node attempt limit prevents wait resume".into(),
-        ));
-    }
-    let attempt_id = new_id("attempt");
-    connection.execute(sql(
-        "INSERT INTO node_attempts (id, node_instance_id, attempt_no, retry_ordinal, invocation_kind, status, run_control_epoch, lease_fence, idempotency_key, executor_object_id) VALUES (?, ?, ?, ?, 'resume', 'queued', ?, 0, ?, ?)",
-        vec![
-            attempt_id.clone().into(),
-            context.node_instance_id.clone().into(),
-            next_attempt_no.into(),
-            row.try_get::<i64>("", "retry_ordinal")?.into(),
-            i64::try_from(context.control_epoch)
-                .map_err(|_| StorageError::Integrity("run control epoch overflow".into()))?
-                .into(),
-            format!("wait:{delivery_id}:resume").into(),
-            row.try_get::<String>("", "executor_object_id")?.into(),
-        ],
-    )).await?;
-    copy_attempt_reads(connection, &context.node_attempt_id, &attempt_id, now).await?;
-    connection.execute(sql(
-        "UPDATE run_execution_counters SET total_attempts = total_attempts + 1 WHERE run_id = ?",
-        vec![context.run_id.clone().into()],
-    )).await?;
-    Ok(attempt_id)
+    let idempotency_key = format!("wait:{delivery_id}:resume");
+    create_runtime_resume_attempt(
+        connection,
+        ResumeAttempt {
+            node_instance_id: &context.node_instance_id,
+            source_attempt_id: &context.node_attempt_id,
+            run_id: &context.run_id,
+            control_epoch: context.control_epoch,
+            idempotency_key: &idempotency_key,
+        },
+        now,
+    )
+    .await
 }
 
 async fn resolve_wait_owner<C: ConnectionTrait>(

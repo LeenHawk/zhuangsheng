@@ -92,6 +92,7 @@ pub(super) fn validate_count_checkpoint(
         || checkpoint.effect_watermark != expected.effect_attempt_id
         || checkpoint.active_count_effect.as_ref() != Some(&active)
         || checkpoint.registry_snapshot.revision.is_empty()
+        || checkpoint.registry_snapshot != expected.context.snapshot.tool_registry
         || checkpoint.read_set_digest.is_empty()
         || checkpoint.transcript_ref.is_empty()
     {

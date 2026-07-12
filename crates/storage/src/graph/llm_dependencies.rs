@@ -8,7 +8,10 @@ use zhuangsheng_core::{
 
 use crate::{
     StorageResult,
-    config::rows::{load_channel_head, load_preset_head},
+    config::{
+        rows::{load_channel_head, load_preset_head},
+        tool_registry_rows::load_tool_dependency_map,
+    },
 };
 
 pub(super) async fn load_llm_dependencies<C: ConnectionTrait>(
@@ -17,6 +20,7 @@ pub(super) async fn load_llm_dependencies<C: ConnectionTrait>(
 ) -> StorageResult<GraphApplyDependencies> {
     let mut channel_ids = HashSet::new();
     let mut preset_ids = HashSet::new();
+    let mut tool_grants = Vec::new();
     for node in &draft.nodes {
         let DraftNodeKind::Llm { config } = &node.kind else {
             continue;
@@ -25,6 +29,7 @@ pub(super) async fn load_llm_dependencies<C: ConnectionTrait>(
         if let ContextAssemblyConfig::Preset { preset_id } = &config.context {
             preset_ids.insert(preset_id.clone());
         }
+        tool_grants.extend(config.tools.clone());
     }
     let mut dependencies = GraphApplyDependencies::default();
     for channel_id in channel_ids {
@@ -35,5 +40,6 @@ pub(super) async fn load_llm_dependencies<C: ConnectionTrait>(
         let version = load_preset_head(connection, &preset_id).await?;
         dependencies.preset_heads.insert(preset_id, version);
     }
+    dependencies.tool_descriptors = load_tool_dependency_map(connection, &tool_grants).await?;
     Ok(dependencies)
 }

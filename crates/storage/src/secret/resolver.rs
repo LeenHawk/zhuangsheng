@@ -20,6 +20,16 @@ impl SqliteStore {
         let now = now_ms();
         let mut sessions = self.secret_sessions.lock().await;
         let active = sessions.active(None, now)?;
+        self.resolve_secret_with_active(secret_ref, &active, now)
+            .await
+    }
+
+    pub(super) async fn resolve_secret_with_active(
+        &self,
+        secret_ref: &SecretRef,
+        active: &ActiveSessionKey,
+        now: i64,
+    ) -> StorageResult<SecretValue> {
         let header = load_header(&self.db)
             .await?
             .ok_or(SecretStoreError::NotInitialized)?;

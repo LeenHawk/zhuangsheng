@@ -5,15 +5,18 @@ use zhuangsheng_core::{
     canonical,
     graph::{DraftNodeKind, GraphNode, LlmNodeExecutionSnapshot, llm_model_requirements},
     llm::{
-        LlmOperationExecutionPin,
+        LlmOperationExecutionPin, build_tool_registry_snapshot,
         context::{CONTEXT_SEMANTIC_POLICY_VERSION, ContextAssemblyConfig, ContextConfigSnapshot},
-        revision_content_hash, validate_generation_model,
+        revision_content_hash, validate_generation_model, validate_tool_grant,
     },
 };
 
 use crate::{
     StorageError, StorageResult,
-    config::rows::{load_channel_head, load_preset_head},
+    config::{
+        rows::{load_channel_head, load_preset_head},
+        tool_registry_rows::load_granted_tools,
+    },
     graph::helpers::{load_object_json, put_inline_object, sql},
 };
 
@@ -88,6 +91,9 @@ pub(super) async fn ensure_llm_snapshot<C: ConnectionTrait>(
         .limits
         .clone()
         .ok_or_else(|| StorageError::Integrity("applied LLM limits are missing".into()))?;
+    let tool_descriptors = load_granted_tools(connection, &config.tools, true).await?;
+    let tool_registry = build_tool_registry_snapshot(&tool_descriptors)
+        .map_err(|error| StorageError::Integrity(error.to_string()))?;
     let snapshot = LlmNodeExecutionSnapshot {
         schema_version: 1,
         graph_revision_id: revision.id.clone(),
@@ -105,6 +111,8 @@ pub(super) async fn ensure_llm_snapshot<C: ConnectionTrait>(
         capability_overrides: config.capability_overrides.clone(),
         memory: config.memory.clone(),
         tools: config.tools.clone(),
+        tool_registry,
+        tool_descriptors,
         hosted_tools: config.hosted_tools.clone(),
         request: config.request.clone(),
         output: config.output.clone(),
@@ -170,6 +178,33 @@ fn verify_snapshot(
         return Err(StorageError::Integrity(
             "LLM execution snapshot does not match its graph node".into(),
         ));
+    }
+    let registry = build_tool_registry_snapshot(&snapshot.tool_descriptors)
+        .map_err(|error| StorageError::Integrity(error.to_string()))?;
+    if registry != snapshot.tool_registry
+        || snapshot.tool_descriptors.len()
+            != config
+                .tools
+                .iter()
+                .map(|grant| (&grant.tool_id, &grant.version))
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+    {
+        return Err(StorageError::Integrity(
+            "pinned tool registry snapshot is inconsistent".into(),
+        ));
+    }
+    for grant in &config.tools {
+        let resolved = snapshot
+            .tool_descriptors
+            .iter()
+            .find(|resolved| {
+                resolved.descriptor.tool_id == grant.tool_id
+                    && resolved.descriptor.version == grant.version
+            })
+            .ok_or_else(|| StorageError::Integrity("pinned tool descriptor is missing".into()))?;
+        validate_tool_grant(grant, resolved)
+            .map_err(|error| StorageError::Integrity(error.to_string()))?;
     }
     let hash = revision_content_hash(&snapshot.channel.spec)
         .map_err(|error| StorageError::Integrity(error.to_string()))?;

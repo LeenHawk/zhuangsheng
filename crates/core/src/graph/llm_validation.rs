@@ -4,11 +4,12 @@ use crate::{
     ValidationIssue, canonical,
     llm::{
         ChannelCapability, LlmChannelRevision, ModelCapabilityRequirements, Provider,
+        ResolvedToolDescriptor,
         context::{
             ContextAssemblyConfig, ContextNormalizationPolicy, ContextPresetVersion,
             normalize_context_spec,
         },
-        validate_generation_model,
+        validate_generation_model, validate_tool_grant,
     },
 };
 
@@ -21,6 +22,7 @@ use super::{
 pub struct GraphApplyDependencies {
     pub channel_heads: HashMap<String, LlmChannelRevision>,
     pub preset_heads: HashMap<String, ContextPresetVersion>,
+    pub tool_descriptors: HashMap<(String, String), ResolvedToolDescriptor>,
 }
 
 pub(super) fn normalize_llm_node(
@@ -63,7 +65,7 @@ pub(super) fn normalize_llm_node(
     normalize_limits(config, channel, &node.id, issues);
     super::llm_memory_validation::validate_llm_memory(config, &node.id, issues);
     validate_request(config, &node.id, issues);
-    validate_tools(config, channel, &node.id, issues);
+    validate_tools(config, channel, dependencies, &node.id, issues);
     let requirements = llm_model_requirements(config);
     if let Err(error) = validate_generation_model(
         &channel.spec,
@@ -309,13 +311,26 @@ fn sensitive_header(name: &str) -> bool {
 fn validate_tools(
     config: &super::LlmNodeConfig,
     channel: &LlmChannelRevision,
+    dependencies: &GraphApplyDependencies,
     node_id: &str,
     issues: &mut Vec<ValidationIssue>,
 ) {
     let mut bindings = HashSet::new();
     let mut names = HashSet::new();
     for grant in &config.tools {
-        let name = grant.exposed_name.as_deref().unwrap_or(&grant.tool_id);
+        let resolved = dependencies
+            .tool_descriptors
+            .get(&(grant.tool_id.clone(), grant.version.clone()));
+        if resolved.is_none() {
+            issues.push(issue(
+                "tool_descriptor_not_registered",
+                node_id,
+                "tool grant has no enabled registered descriptor",
+            ));
+        }
+        let name = grant.exposed_name.as_deref().unwrap_or_else(|| {
+            resolved.map_or(grant.tool_id.as_str(), |tool| tool.descriptor.name.as_str())
+        });
         if !valid_name(&grant.binding_id)
             || !valid_name(&grant.tool_id)
             || !valid_name(&grant.version)
@@ -324,12 +339,26 @@ fn validate_tools(
             || !names.insert(name)
             || grant.artifact.max_objects == 0
             || grant.artifact.max_bytes == 0
+            || grant.failure_policy.as_ref().is_some_and(|policy| {
+                policy.max_attempts == 0
+                    || policy.max_attempts > 32
+                    || policy.retry_backoff_ms.len() as u64 > policy.max_attempts.saturating_sub(1)
+                    || policy
+                        .retry_backoff_ms
+                        .iter()
+                        .any(|delay| *delay > 86_400_000)
+            })
         {
             issues.push(issue(
                 "invalid_tool_grant",
                 node_id,
                 "tool grant is invalid or duplicated",
             ));
+        }
+        if let Some(resolved) = resolved
+            && let Err(error) = validate_tool_grant(grant, resolved)
+        {
+            issues.push(issue(error.code, node_id, &error.message));
         }
     }
     for hosted in &config.hosted_tools {

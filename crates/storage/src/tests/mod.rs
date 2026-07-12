@@ -30,7 +30,9 @@ mod runtime_router_support;
 mod runtime_scheduler;
 mod runtime_start;
 mod runtime_timers;
+mod secret_runtime_wait;
 mod secret_store;
+mod tool_registry;
 
 use serde_json::json;
 use zhuangsheng_core::{

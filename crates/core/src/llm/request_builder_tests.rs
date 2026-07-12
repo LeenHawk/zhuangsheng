@@ -245,6 +245,7 @@ fn fixture_with_tool(requires_approval: bool) -> Fixture {
         descriptor,
         schema_compilation_digests: vec![compilation.compiled_payload_hash],
         implementation_digest: "sha256:implementation".into(),
+        executor_key: "test.echo".into(),
     };
     fixture.descriptors.push(resolved);
     repin(&mut fixture);
@@ -261,6 +262,8 @@ fn repin(fixture: &mut Fixture) {
         schema_compilation_digests: resolved.schema_compilation_digests.clone(),
         implementation_digest: resolved.implementation_digest.clone(),
     }];
+    fixture.execution.tool_registry = fixture.registry.clone();
+    fixture.execution.tool_descriptors = fixture.descriptors.clone();
 }
 
 fn fixture() -> Fixture {
@@ -307,6 +310,11 @@ fn fixture() -> Fixture {
             capability_overrides: Vec::new(),
             memory: None,
             tools: Vec::new(),
+            tool_registry: ToolRegistrySnapshot {
+                revision: "registry-v1".into(),
+                entries: Vec::new(),
+            },
+            tool_descriptors: Vec::new(),
             hosted_tools: Vec::new(),
             request: Some(LlmRequestOptions {
                 generation: Some(GenerationOptionsIr {

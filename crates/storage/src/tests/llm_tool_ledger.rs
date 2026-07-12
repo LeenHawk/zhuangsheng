@@ -16,10 +16,7 @@ use crate::{
     tests::{
         llm_ledger::{now_ms, prepare_command},
         llm_tool_support::prepare_running_tool_attempt,
-        llm_tool_test_helpers::{
-            DESCRIPTOR_DIGEST, IMPLEMENTATION_DIGEST, SCHEMA_DIGEST, digest, registry,
-            tool_checkpoint_call,
-        },
+        llm_tool_test_helpers::{digest, registry, resolved, tool_checkpoint_call},
         store,
     },
 };
@@ -368,6 +365,7 @@ fn tool_command(
     arguments_bytes: Vec<u8>,
     checkpoint: LlmLoopCheckpoint,
 ) -> PrepareToolCallCommand {
+    let pins = resolved();
     PrepareToolCallCommand {
         tool_call_id: tool_call_id.into(),
         effect_id: effect_id.into(),
@@ -382,9 +380,9 @@ fn tool_command(
         tool_version: "1".into(),
         call_digest: call_digest.into(),
         arguments_bytes,
-        descriptor_digest: DESCRIPTOR_DIGEST.into(),
-        schema_compilation_digests: vec![SCHEMA_DIGEST.into()],
-        implementation_digest: IMPLEMENTATION_DIGEST.into(),
+        descriptor_digest: pins.descriptor_digest,
+        schema_compilation_digests: pins.schema_compilation_digests,
+        implementation_digest: pins.implementation_digest,
         effect_classification: EffectClassification::Pure,
         effect_operation_key: "tool.echo".into(),
         descriptor_requires_approval: false,

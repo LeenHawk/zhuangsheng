@@ -6,7 +6,7 @@ use zhuangsheng_core::{
         ActiveCountEffectCheckpoint, CountCallOutcome, CountExecutionPin, CountResultSource,
         EffectAttemptFence, EffectRetryPolicy, FinishCountCallCommand, LlmLogicalCallStatus,
         LlmLoopCheckpoint, PrepareCountCallCommand, PrepareCountCallRetryCommand,
-        StartCountCallCommand, ToolRegistrySnapshot,
+        StartCountCallCommand,
     },
     scheduler::ClaimedAttempt,
 };
@@ -399,10 +399,13 @@ fn count_checkpoint(
             .unwrap()
             .graph_revision_id
             .clone(),
-        registry_snapshot: ToolRegistrySnapshot {
-            revision: "empty-registry-v1".into(),
-            entries: vec![],
-        },
+        registry_snapshot: setup
+            .claimed
+            .execution_snapshot
+            .as_ref()
+            .unwrap()
+            .tool_registry
+            .clone(),
         context_snapshot_ref: setup.snapshot_object_id.clone(),
         read_set_digest: canonical::hash(&json!({})).unwrap(),
         model_call_no: 0,

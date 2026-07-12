@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use zhuangsheng_core::{
     canonical,
     graph::AppliedGraphDefinition,
-    schema::{self, JsonSchemaSpec},
+    schema::{self, JsonSchemaSpec, SchemaCompilationDraft},
 };
 
 use crate::{StorageError, StorageResult};
@@ -12,14 +12,14 @@ use super::helpers::{load_object_bytes, load_object_json};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct StoredSchemaBundle {
+pub(crate) struct StoredSchemaBundle {
     pub schema_version: u32,
     pub compilations: Vec<StoredSchemaCompilation>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct StoredSchemaCompilation {
+pub(crate) struct StoredSchemaCompilation {
     pub canonical_document_hash: String,
     pub schema_hash: String,
     pub compiler_id: String,
@@ -51,6 +51,34 @@ pub(super) async fn verify_schema_bundle<C: ConnectionTrait>(
             || stored.compiler_version != expected.compiler_version
             || stored.payload_format_version != expected.payload_format_version
             || stored.compiled_payload_hash != expected.compiled_payload_hash
+        {
+            return Err(integrity("schema compilation tuple mismatch"));
+        }
+        verify_compilation(connection, stored).await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn verify_compilation_bundle<C: ConnectionTrait>(
+    connection: &C,
+    bundle_id: &str,
+    expected: &[SchemaCompilationDraft],
+) -> StorageResult<()> {
+    let bundle: StoredSchemaBundle = load_object_json(connection, bundle_id).await?;
+    if bundle.schema_version != 1 || bundle.compilations.len() != expected.len() {
+        return Err(integrity("schema bundle envelope mismatch"));
+    }
+    for draft in expected {
+        let stored = bundle
+            .compilations
+            .iter()
+            .find(|item| item.schema_hash == draft.schema_hash)
+            .ok_or_else(|| integrity("schema compilation missing"))?;
+        if stored.canonical_document_hash != draft.canonical_document_hash
+            || stored.compiler_id != draft.compiler_id
+            || stored.compiler_version != draft.compiler_version
+            || stored.payload_format_version != draft.payload_format_version
+            || stored.compiled_payload_hash != draft.compiled_payload_hash
         {
             return Err(integrity("schema compilation tuple mismatch"));
         }

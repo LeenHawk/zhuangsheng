@@ -117,6 +117,7 @@ pub(super) fn validate_checkpoint(
         || checkpoint.effect_watermark != expected.effect_attempt_id
         || checkpoint.active_model_effect.as_ref() != Some(&expected_active)
         || checkpoint.registry_snapshot.revision.is_empty()
+        || checkpoint.registry_snapshot != expected.context.snapshot.tool_registry
         || checkpoint.read_set_digest.is_empty()
         || checkpoint.transcript_ref.is_empty()
     {

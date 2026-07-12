@@ -2,6 +2,12 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use serde_json::json;
+use zhuangsheng_core::{
+    application::tool::PublishToolCommand,
+    graph::{EffectClassification, ToolEffectSpec},
+    llm::{ToolDescriptor, ToolLimits},
+    schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
+};
 use zhuangsheng_storage::SqliteStore;
 
 use super::{app, call, request};
@@ -10,6 +16,7 @@ use super::{app, call, request};
 async fn channel_and_preset_http_flow_publish_immutable_configuration() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
     let app = app(
+        store.clone(),
         store.clone(),
         store.clone(),
         store.clone(),
@@ -108,4 +115,72 @@ async fn channel_and_preset_http_flow_publish_immutable_configuration() {
     .await;
     assert_eq!(version["versionNo"], 1);
     assert_eq!(version["spec"]["preview"]["content"], "metadata_only");
+}
+
+#[tokio::test]
+async fn tool_descriptor_http_listing_excludes_executor_metadata() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    store
+        .publish_tool(PublishToolCommand {
+            descriptor: ToolDescriptor {
+                tool_id: "web-search".into(),
+                version: "1".into(),
+                name: "web_search".into(),
+                description: Some("Search public sources".into()),
+                input_schema: JsonSchemaSpec {
+                    schema_version: 1,
+                    dialect: DIALECT_2020_12.into(),
+                    validation_profile_version: 1,
+                    format_policy_version: 1,
+                    document: json!({
+                        "type":"object",
+                        "required":["query"],
+                        "additionalProperties":false,
+                        "properties":{"query":{"type":"string"}}
+                    }),
+                    limits: JsonSchemaLimits::default(),
+                },
+                binding_config_schema: None,
+                effect: ToolEffectSpec {
+                    classification: EffectClassification::Idempotent,
+                    operation_key: "tool.web_search".into(),
+                    requires_approval: false,
+                },
+                supports_parallel: true,
+                required_scopes: Vec::new(),
+                limits: ToolLimits {
+                    timeout_ms: 5_000,
+                    max_input_bytes: 4096,
+                    max_llm_result_bytes: 16_384,
+                    max_artifact_bytes: 1024 * 1024,
+                },
+            },
+            implementation_digest: "sha256:web-search-implementation".into(),
+            executor_key: "builtin.web-search".into(),
+            enabled: true,
+            idempotency_key: "publish-web-search".into(),
+        })
+        .await
+        .unwrap();
+    let app = app(
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store,
+    );
+    let descriptors = call(
+        &app,
+        request("GET", "/v1/tools/descriptors", json!(null), &[]),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(descriptors[0]["toolId"], "web-search");
+    let encoded = serde_json::to_string(&descriptors).unwrap();
+    assert!(!encoded.contains("executorKey"));
+    assert!(!encoded.contains("implementationDigest"));
+    assert!(!encoded.contains("builtin.web-search"));
 }

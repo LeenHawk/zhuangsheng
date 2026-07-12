@@ -1,5 +1,4 @@
 use sea_orm::ConnectionTrait;
-use zhuangsheng_core::graph::EffectClassification;
 use zhuangsheng_core::llm::{EffectAttemptFence, StartToolCallCommand, ToolCallCheckpointStatus};
 use zhuangsheng_core::runtime::ToolApprovalDecisionKind;
 
@@ -8,7 +7,8 @@ use crate::{
     graph::helpers::sql,
     tests::{
         llm_tool_approval_support::{
-            approval_command, load_checkpoint, prepare_model_tool_batch, response_command,
+            approval_command, load_checkpoint, prepare_model_tool_batch,
+            prepare_non_idempotent_model_tool_batch, response_command,
         },
         store,
     },
@@ -116,9 +116,8 @@ async fn expired_parallel_started_tools_reconcile_as_one_checkpoint_batch() {
 #[tokio::test]
 async fn non_idempotent_tool_blocks_later_siblings_until_terminal() {
     let store = store().await;
-    let setup = prepare_model_tool_batch(&store).await;
-    let mut batch = approval_command(&setup);
-    batch.calls[0].effect_classification = EffectClassification::NonIdempotent;
+    let setup = prepare_non_idempotent_model_tool_batch(&store).await;
+    let batch = approval_command(&setup);
     store
         .prepare_tool_approval_batch(batch, setup.now + 3)
         .await

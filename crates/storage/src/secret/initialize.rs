@@ -48,7 +48,9 @@ impl SqliteStore {
                 &command.master_password,
             )?;
             verify_receipt(&receipt, &request_hmac)?;
-            return load_secret_result(&self.db, &receipt).await;
+            let result = load_secret_result(&self.db, &receipt).await?;
+            self.resolve_secret_unlock_waits(session_id, now).await?;
+            return Ok(result);
         }
         let store_id = new_id("secretstore");
         let session_id = new_id("secretsession");
@@ -113,6 +115,8 @@ impl SqliteStore {
                 "installed secret session differs from receipt".into(),
             ));
         }
+        self.resolve_secret_unlock_waits(&result.session_id, now)
+            .await?;
         Ok(result)
     }
 }

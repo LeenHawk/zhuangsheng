@@ -2,7 +2,7 @@ use sea_orm::ConnectionTrait;
 use zhuangsheng_core::{
     graph::EffectClassification,
     llm::{
-        EffectRetryPolicy, PrepareInitialModelCallCommand, ToolRegistrySnapshot,
+        EffectRetryPolicy, PrepareInitialModelCallCommand,
         ir::{LlmContentPartIr, LlmTurnItemIr, MessageRole},
     },
 };
@@ -80,10 +80,7 @@ fn command(
             provenance: None,
             placeholder: false,
         }],
-        registry_snapshot: ToolRegistrySnapshot {
-            revision: "registry-empty-v1".into(),
-            entries: Vec::new(),
-        },
+        registry_snapshot: snapshot.tool_registry.clone(),
         read_set_digest: read_set_digest.into(),
         effect_kind: "model_generation".into(),
         effect_classification: EffectClassification::Idempotent,

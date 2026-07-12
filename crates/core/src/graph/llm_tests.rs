@@ -92,6 +92,7 @@ fn llm_apply_rejects_explicit_false_even_with_override() {
         )]
         .into(),
         preset_heads: Default::default(),
+        tool_descriptors: Default::default(),
     };
     let error = apply_graph_with_dependencies(draft, 1, 1, &dependencies).unwrap_err();
     let DomainError::GraphValidation(issues) = error else {

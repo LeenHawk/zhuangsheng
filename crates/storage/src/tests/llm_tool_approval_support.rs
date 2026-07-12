@@ -21,10 +21,11 @@ use crate::{
     graph::helpers::{load_object_json, put_inline_object, sql},
     tests::{
         llm_ledger::{now_ms, prepare_command},
-        llm_tool_support::prepare_running_tool_attempt,
-        llm_tool_test_helpers::{
-            DESCRIPTOR_DIGEST, IMPLEMENTATION_DIGEST, SCHEMA_DIGEST, digest, registry,
+        llm_tool_support::{
+            prepare_running_approval_tool_attempt,
+            prepare_running_approval_tool_attempt_with_classification,
         },
+        llm_tool_test_helpers::digest_with_resolved,
     },
 };
 
@@ -34,11 +35,28 @@ pub(super) struct ApprovalSetup {
     transcript_ref: String,
     model_response_ref: String,
     pub call_digest: String,
+    call_digests: Vec<String>,
     pub now: i64,
 }
 
 pub(super) async fn prepare_model_tool_batch(store: &SqliteStore) -> ApprovalSetup {
-    let claimed = prepare_running_tool_attempt(store).await;
+    let claimed = prepare_running_approval_tool_attempt(store).await;
+    prepare_model_tool_batch_for_claimed(store, claimed).await
+}
+
+pub(super) async fn prepare_non_idempotent_model_tool_batch(store: &SqliteStore) -> ApprovalSetup {
+    let claimed = prepare_running_approval_tool_attempt_with_classification(
+        store,
+        EffectClassification::NonIdempotent,
+    )
+    .await;
+    prepare_model_tool_batch_for_claimed(store, claimed).await
+}
+
+async fn prepare_model_tool_batch_for_claimed(
+    store: &SqliteStore,
+    claimed: ClaimedAttempt,
+) -> ApprovalSetup {
     let snapshot = claimed.execution_snapshot.clone().unwrap();
     let now = now_ms();
     let snapshot_ref: String = store
@@ -133,13 +151,20 @@ pub(super) async fn prepare_model_tool_batch(store: &SqliteStore) -> ApprovalSet
         .unwrap()
         .try_get("", "response_object_id")
         .unwrap();
-    let call_digest = digest(&snapshot.tools[0], json!({"text":"same"}));
+    let call_digests: Vec<_> = snapshot
+        .tools
+        .iter()
+        .map(|grant| {
+            digest_with_resolved(grant, json!({"text":"same"}), &snapshot.tool_descriptors[0])
+        })
+        .collect();
     ApprovalSetup {
         claimed,
         snapshot_ref,
         transcript_ref,
         model_response_ref,
-        call_digest,
+        call_digest: call_digests[0].clone(),
+        call_digests,
         now,
     }
 }
@@ -163,23 +188,34 @@ fn approval_call(
     requires_approval: bool,
     setup: &ApprovalSetup,
 ) -> PrepareToolApprovalCall {
+    let pins = setup
+        .claimed
+        .execution_snapshot
+        .as_ref()
+        .unwrap()
+        .tool_descriptors[0]
+        .clone();
     PrepareToolApprovalCall {
         tool_call_id: format!("tool-call-{}", index + 1),
         effect_id: format!("tool-effect-{}", index + 1),
         effect_attempt_id: format!("tool-effect-attempt-{}", index + 1),
         provider_call_id: Some(format!("provider-tool-call-{index}")),
         call_index: index,
-        binding_id: "echo-binding".into(),
+        binding_id: if index == 0 {
+            "echo-binding".into()
+        } else {
+            "echo-free-binding".into()
+        },
         tool_id: "echo-tool".into(),
         tool_version: "1".into(),
-        call_digest: setup.call_digest.clone(),
+        call_digest: setup.call_digests[index as usize].clone(),
         arguments_bytes: canonical::to_vec(&json!({"text":"same"})).unwrap(),
-        descriptor_digest: DESCRIPTOR_DIGEST.into(),
-        schema_compilation_digests: vec![SCHEMA_DIGEST.into()],
-        implementation_digest: IMPLEMENTATION_DIGEST.into(),
-        effect_classification: EffectClassification::Pure,
-        effect_operation_key: "tool.echo".into(),
-        descriptor_requires_approval: requires_approval,
+        descriptor_digest: pins.descriptor_digest,
+        schema_compilation_digests: pins.schema_compilation_digests,
+        implementation_digest: pins.implementation_digest,
+        effect_classification: pins.descriptor.effect.classification,
+        effect_operation_key: pins.descriptor.effect.operation_key.clone(),
+        descriptor_requires_approval: false,
         effect_idempotency_key: format!("tool-effect-{}:idempotency", index + 1),
         retry_policy: EffectRetryPolicy {
             max_attempts: 2,
@@ -230,7 +266,12 @@ fn model_checkpoint(
             .unwrap()
             .graph_revision_id
             .clone(),
-        registry_snapshot: registry(),
+        registry_snapshot: claimed
+            .execution_snapshot
+            .as_ref()
+            .unwrap()
+            .tool_registry
+            .clone(),
         context_snapshot_ref: snapshot_ref.into(),
         read_set_digest: canonical::hash(&json!({})).unwrap(),
         model_call_no: 1,
@@ -260,7 +301,7 @@ fn approval_checkpoint(setup: &ApprovalSetup) -> LlmLoopCheckpoint {
         .map(|index| ToolCallCheckpoint {
             tool_call_id: format!("tool-call-{}", index + 1),
             call_index: index,
-            call_digest: setup.call_digest.clone(),
+            call_digest: setup.call_digests[index as usize].clone(),
             status: if index == 0 {
                 ToolCallCheckpointStatus::AwaitingApproval
             } else {
@@ -282,7 +323,13 @@ fn approval_checkpoint(setup: &ApprovalSetup) -> LlmLoopCheckpoint {
             .unwrap()
             .graph_revision_id
             .clone(),
-        registry_snapshot: registry(),
+        registry_snapshot: setup
+            .claimed
+            .execution_snapshot
+            .as_ref()
+            .unwrap()
+            .tool_registry
+            .clone(),
         context_snapshot_ref: setup.snapshot_ref.clone(),
         read_set_digest: canonical::hash(&json!({})).unwrap(),
         model_call_no: 1,

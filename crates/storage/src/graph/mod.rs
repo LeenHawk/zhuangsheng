@@ -4,7 +4,7 @@ mod draft;
 pub(crate) mod helpers;
 mod llm_dependencies;
 mod query;
-mod schema_bundle;
+pub(crate) mod schema_bundle;
 mod service;
 mod types;
 

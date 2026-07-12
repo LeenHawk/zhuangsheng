@@ -8,6 +8,7 @@ use zhuangsheng_core::{
     application::{
         channel::ChannelService, context::ContextService, graph::GraphService,
         memory::MemoryService, preset::ContextPresetService, secret::SecretStoreService,
+        tool::ToolRegistryService,
     },
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
@@ -35,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let memory_service: Arc<dyn MemoryService> = store.clone();
     let runtime_service: Arc<dyn RuntimeService> = store.clone();
     let secret_service: Arc<dyn SecretStoreService> = store.clone();
+    let tool_registry_service: Arc<dyn ToolRegistryService> = store.clone();
     let llm_executor = Arc::new(LocalLlmExecutor::new(store.clone())?);
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(
@@ -52,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
             memory_service,
             runtime_service,
             secret_service,
+            tool_registry_service,
         ),
     )
     .await?;

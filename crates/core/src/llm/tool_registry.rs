@@ -52,4 +52,5 @@ pub struct ResolvedToolDescriptor {
     #[serde(default)]
     pub schema_compilation_digests: Vec<String>,
     pub implementation_digest: String,
+    pub executor_key: String,
 }

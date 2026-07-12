@@ -10,7 +10,7 @@ use serde::Serialize;
 use tower_http::trace::TraceLayer;
 use zhuangsheng_core::application::{
     channel::ChannelService, context::ContextService, graph::GraphService, memory::MemoryService,
-    preset::ContextPresetService, secret::SecretStoreService,
+    preset::ContextPresetService, secret::SecretStoreService, tool::ToolRegistryService,
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
@@ -29,6 +29,7 @@ pub fn app(
     memory_service: Arc<dyn MemoryService>,
     runtime_service: Arc<dyn RuntimeService>,
     secret_service: Arc<dyn SecretStoreService>,
+    tool_registry_service: Arc<dyn ToolRegistryService>,
 ) -> Router {
     let state = AppState {
         graph_service,
@@ -38,6 +39,7 @@ pub fn app(
         memory_service,
         runtime_service,
         secret_service,
+        tool_registry_service,
     };
     Router::new()
         .route(
@@ -51,6 +53,7 @@ pub fn app(
         .merge(api::memory::routes())
         .merge(api::runtime::routes())
         .merge(api::secret::routes())
+        .merge(api::tool::routes())
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(TraceLayer::new_for_http())
         .with_state(state)

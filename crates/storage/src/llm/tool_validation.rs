@@ -5,8 +5,9 @@ use zhuangsheng_core::{
     llm::{
         EffectAttemptFence, LlmLogicalCallStatus, LlmLoopCheckpoint, PrepareToolApprovalCall,
         PrepareToolCallCommand, TOOL_CALL_POLICY_VERSION, ToolCallCheckpointStatus,
-        ToolCallDigestMaterial,
+        ToolCallDigestMaterial, validate_tool_grant,
     },
+    schema,
 };
 
 use crate::{StorageError, StorageResult, graph::helpers::sql};
@@ -36,6 +37,8 @@ pub(super) fn validate_tool_material(
             schema_compilation_digests: &command.schema_compilation_digests,
             implementation_digest: &command.implementation_digest,
             descriptor_requires_approval: command.descriptor_requires_approval,
+            effect_classification: command.effect_classification,
+            effect_operation_key: &command.effect_operation_key,
         },
     )
 }
@@ -58,6 +61,8 @@ pub(super) fn validate_approval_tool_material(
             schema_compilation_digests: &command.schema_compilation_digests,
             implementation_digest: &command.implementation_digest,
             descriptor_requires_approval: command.descriptor_requires_approval,
+            effect_classification: command.effect_classification,
+            effect_operation_key: &command.effect_operation_key,
         },
     )
 }
@@ -72,6 +77,8 @@ struct ToolMaterialInput<'a> {
     schema_compilation_digests: &'a [String],
     implementation_digest: &'a str,
     descriptor_requires_approval: bool,
+    effect_classification: zhuangsheng_core::graph::EffectClassification,
+    effect_operation_key: &'a str,
 }
 
 fn validate_material(
@@ -92,9 +99,22 @@ fn validate_material(
         .iter()
         .find(|entry| entry.tool_id == command.tool_id && entry.version == command.tool_version)
         .ok_or_else(|| StorageError::InvalidArgument("tool registry entry is not pinned".into()))?;
+    let descriptor = context
+        .snapshot
+        .tool_descriptors
+        .iter()
+        .find(|resolved| {
+            resolved.descriptor.tool_id == command.tool_id
+                && resolved.descriptor.version == command.tool_version
+        })
+        .ok_or_else(|| StorageError::InvalidArgument("tool descriptor is not pinned".into()))?;
+    validate_tool_grant(&grant, descriptor)
+        .map_err(|error| StorageError::InvalidArgument(error.to_string()))?;
     let arguments: serde_json::Value = serde_json::from_slice(command.arguments_bytes)
         .map_err(|_| StorageError::InvalidArgument("tool arguments are not valid JSON".into()))?;
     let canonical_arguments = canonical::to_vec(&arguments)?;
+    schema::validate(&descriptor.descriptor.input_schema, &arguments)
+        .map_err(|error| StorageError::InvalidArgument(error.to_string()))?;
     let effective_approval =
         command.descriptor_requires_approval || grant.approval == Some(ToolApprovalPolicy::Always);
     let material = ToolCallDigestMaterial {
@@ -108,23 +128,49 @@ fn validate_material(
         implementation_digest: command.implementation_digest.to_owned(),
         policy_version: TOOL_CALL_POLICY_VERSION,
     };
-    if grant.tool_id != command.tool_id
-        || grant.version != command.tool_version
-        || registry.descriptor_digest != command.descriptor_digest
+    if grant.tool_id != command.tool_id || grant.version != command.tool_version {
+        return Err(material_error("grant identity"));
+    }
+    if registry.descriptor_digest != command.descriptor_digest
         || registry.schema_compilation_digests != command.schema_compilation_digests
         || registry.implementation_digest != command.implementation_digest
-        || canonical_arguments != command.arguments_bytes
-        || material.digest()? != command.call_digest
     {
-        return Err(StorageError::InvalidArgument(
-            "tool call material does not match its pinned grant and registry entry".into(),
-        ));
+        return Err(material_error("checkpoint registry pin"));
+    }
+    if checkpoint.registry_snapshot != context.snapshot.tool_registry {
+        return Err(material_error("execution registry snapshot"));
+    }
+    if descriptor.descriptor_digest != command.descriptor_digest
+        || descriptor.schema_compilation_digests != command.schema_compilation_digests
+        || descriptor.implementation_digest != command.implementation_digest
+    {
+        return Err(material_error("descriptor pin"));
+    }
+    if descriptor.descriptor.effect.classification != command.effect_classification
+        || descriptor.descriptor.effect.operation_key != command.effect_operation_key
+        || descriptor.descriptor.effect.requires_approval != command.descriptor_requires_approval
+    {
+        return Err(material_error("effect declaration"));
+    }
+    if canonical_arguments != command.arguments_bytes
+        || canonical_arguments.len() as u64 > descriptor.descriptor.limits.max_input_bytes
+    {
+        return Err(material_error("canonical arguments"));
+    }
+    if material.digest()? != command.call_digest {
+        return Err(material_error("call digest"));
     }
     Ok(ValidatedToolCall {
         arguments,
         grant,
         requires_approval: effective_approval,
     })
+}
+
+fn material_error(field: &str) -> StorageError {
+    StorageError::InvalidArgument(format!(
+        "tool call material does not match its pinned {field}"
+    ))
 }
 
 pub(super) struct ToolCheckpointExpectation<'a> {
@@ -173,6 +219,7 @@ pub(super) fn validate_tool_checkpoint(
         || checkpoint.node_instance_id != expected.node_instance_id
         || checkpoint.last_updated_by_attempt_id != expected.updater_attempt_id
         || checkpoint.graph_revision_id != expected.context.graph_revision_id
+        || checkpoint.registry_snapshot != expected.context.snapshot.tool_registry
         || checkpoint.context_snapshot_ref != expected.context.execution_snapshot_object_id
         || checkpoint.tool_calls_used != expected.expected_tool_calls_used
         || checkpoint.tool_calls_used > max_tool_calls

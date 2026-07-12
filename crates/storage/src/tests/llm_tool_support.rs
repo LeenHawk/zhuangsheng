@@ -5,8 +5,12 @@ use zhuangsheng_core::{
         channel::{CreateChannelCommand, PublishChannelRevisionCommand},
         graph::{ApplyGraphCommand, CreateGraphCommand, UpdateGraphDraftCommand},
         preset::{CreateContextPresetCommand, PublishContextPresetVersionCommand},
+        tool::PublishToolCommand,
     },
-    graph::{ArtifactGrant, DraftNodeKind, LlmMemoryBinding, ToolApprovalPolicy, ToolGrant},
+    graph::{
+        ArtifactGrant, DraftNodeKind, EffectClassification, LlmMemoryBinding, ToolApprovalPolicy,
+        ToolGrant,
+    },
     llm::context::{ContextAssemblyMode, ContextAssemblySpec},
     runtime::{RunContextCommand, StartRunCommand},
     scheduler::{ClaimedAttempt, Scheduler, SchedulerWork},
@@ -15,6 +19,9 @@ use zhuangsheng_core::{
 use crate::{
     SqliteStore,
     tests::llm_graph::{channel_spec, llm_draft},
+    tests::llm_tool_test_helpers::{
+        EXECUTOR_KEY, IMPLEMENTATION_DIGEST, descriptor, descriptor_with_classification,
+    },
 };
 
 pub(super) fn echo_grant() -> ToolGrant {
@@ -38,21 +45,62 @@ pub(super) fn echo_grant() -> ToolGrant {
 }
 
 pub(super) async fn prepare_running_tool_attempt(store: &SqliteStore) -> ClaimedAttempt {
-    prepare_running_tool_attempt_with_bindings(store, echo_grant(), None).await
+    prepare_running_tool_attempt_with_bindings(store, vec![echo_grant()], None, descriptor()).await
 }
 
 pub(super) async fn prepare_running_tool_attempt_with_memory(
     store: &SqliteStore,
     memory: LlmMemoryBinding,
 ) -> ClaimedAttempt {
-    prepare_running_tool_attempt_with_bindings(store, echo_grant(), Some(memory)).await
+    prepare_running_tool_attempt_with_bindings(
+        store,
+        vec![echo_grant()],
+        Some(memory),
+        descriptor(),
+    )
+    .await
+}
+
+pub(super) async fn prepare_running_approval_tool_attempt(store: &SqliteStore) -> ClaimedAttempt {
+    prepare_running_approval_tool_attempt_with_classification(store, EffectClassification::Pure)
+        .await
+}
+
+pub(super) async fn prepare_running_approval_tool_attempt_with_classification(
+    store: &SqliteStore,
+    classification: EffectClassification,
+) -> ClaimedAttempt {
+    let mut reviewed = echo_grant();
+    reviewed.exposed_name = Some("echo_reviewed".into());
+    reviewed.approval = Some(ToolApprovalPolicy::Always);
+    let mut automatic = echo_grant();
+    automatic.binding_id = "echo-free-binding".into();
+    automatic.exposed_name = Some("echo_automatic".into());
+    prepare_running_tool_attempt_with_bindings(
+        store,
+        vec![reviewed, automatic],
+        None,
+        descriptor_with_classification(classification),
+    )
+    .await
 }
 
 async fn prepare_running_tool_attempt_with_bindings(
     store: &SqliteStore,
-    grant: ToolGrant,
+    grants: Vec<ToolGrant>,
     memory: Option<LlmMemoryBinding>,
+    tool_descriptor: zhuangsheng_core::llm::ToolDescriptor,
 ) -> ClaimedAttempt {
+    store
+        .publish_tool(PublishToolCommand {
+            descriptor: tool_descriptor,
+            implementation_digest: IMPLEMENTATION_DIGEST.into(),
+            executor_key: EXECUTOR_KEY.into(),
+            enabled: true,
+            idempotency_key: "tool-ledger-publish-echo".into(),
+        })
+        .await
+        .unwrap();
     let channel = store
         .create_channel(CreateChannelCommand {
             name: "Tool LLM".into(),
@@ -112,7 +160,7 @@ async fn prepare_running_tool_attempt_with_bindings(
             _ => None,
         })
         .unwrap();
-    config.tools.push(grant);
+    config.tools.extend(grants);
     config.memory = memory;
     let updated = store
         .update_graph_draft(UpdateGraphDraftCommand {

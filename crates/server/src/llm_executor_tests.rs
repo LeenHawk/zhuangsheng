@@ -11,11 +11,11 @@ use zhuangsheng_core::{
         graph::{ApplyGraphCommand, CreateGraphCommand, UpdateGraphDraftCommand},
         preset::{CreateContextPresetCommand, PublishContextPresetVersionCommand},
     },
-    graph::{DraftNodeKind, GraphDraft, LlmOutputSpec},
+    graph::{DraftNodeKind, GraphDraft, LlmOutputSpec, ToolGrant},
     llm::{
         ChannelCredential, ChannelModel, ChannelModelCatalog, ChannelTransportPolicy,
         ContentGenerationKind, LlmChannelRevision, LlmChannelRevisionSpec, ModelCapabilities,
-        ModelCatalogPolicy, Operation, OperationKey,
+        ModelCatalogPolicy, Operation, OperationKey, SecretRef,
         adapter::WireGenerationRequest,
         context::{
             ContextAssemblyMode, ContextAssemblySpec, ContextBudgetPolicy, ContextBudgetStrategy,
@@ -26,6 +26,9 @@ use zhuangsheng_core::{
     scheduler::Scheduler,
     schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
 };
+
+mod secret_wait;
+mod tool_registry;
 use zhuangsheng_storage::SqliteStore;
 
 use crate::{
@@ -45,37 +48,14 @@ impl ProviderTransport for FakeProvider {
         _wire: &WireGenerationRequest,
         _credential: Option<&zhuangsheng_core::application::secret::SecretValue>,
     ) -> Result<ProviderHttpResponse, ProviderHttpError> {
-        Ok(ProviderHttpResponse {
-            status: 200,
-            provider_request_id: Some("request-test".into()),
-            body: serde_json::to_vec(&json!({
-                "id":"response-1",
-                "created_at":1,
-                "object":"response",
-                "output":[{
-                    "type":"message",
-                    "id":"message-1",
-                    "role":"assistant",
-                    "status":"completed",
-                    "content":[{"type":"output_text","text":self.text,"annotations":[]}]
-                }],
-                "status":"completed",
-                "usage":{
-                    "input_tokens":12,
-                    "output_tokens":7,
-                    "total_tokens":19,
-                    "output_tokens_details":{"reasoning_tokens":0}
-                }
-            }))
-            .unwrap(),
-        })
+        Ok(provider_response(self.text))
     }
 }
 
 #[tokio::test]
 async fn scheduler_executes_first_llm_call_through_durable_effect() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let revision_id = create_llm_graph(&store, false).await;
+    let revision_id = create_llm_graph(&store, false, None, None).await;
     let run = store
         .start_run(StartRunCommand {
             graph_revision_id: revision_id,
@@ -117,7 +97,7 @@ async fn scheduler_executes_first_llm_call_through_durable_effect() {
 #[tokio::test]
 async fn scheduler_finalizes_strict_json_output() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
-    let revision_id = create_llm_graph(&store, true).await;
+    let revision_id = create_llm_graph(&store, true, None, None).await;
     let run = store
         .start_run(StartRunCommand {
             graph_revision_id: revision_id,
@@ -151,7 +131,12 @@ async fn scheduler_finalizes_strict_json_output() {
     ));
 }
 
-async fn create_llm_graph(store: &SqliteStore, json_output: bool) -> String {
+async fn create_llm_graph(
+    store: &SqliteStore,
+    json_output: bool,
+    credential: Option<SecretRef>,
+    tool: Option<ToolGrant>,
+) -> String {
     let channel = store
         .create_channel(CreateChannelCommand {
             name: "Fake LLM".into(),
@@ -163,7 +148,7 @@ async fn create_llm_graph(store: &SqliteStore, json_output: bool) -> String {
         .publish_channel_revision(PublishChannelRevisionCommand {
             channel_id: channel.id.clone(),
             expected_head_revision_id: None,
-            spec: channel_spec(),
+            spec: channel_spec(credential, tool.is_some()),
             idempotency_key: "llm-e2e-channel-revision".into(),
         })
         .await
@@ -196,7 +181,7 @@ async fn create_llm_graph(store: &SqliteStore, json_output: bool) -> String {
         .update_graph_draft(UpdateGraphDraftCommand {
             graph_id: graph.graph.id.clone(),
             expected_revision_token: current.revision_token,
-            document: graph_draft(&graph.graph.id, &channel.id, &preset.id, json_output),
+            document: graph_draft(&graph.graph.id, &channel.id, &preset.id, json_output, tool),
             idempotency_key: "llm-e2e-draft".into(),
         })
         .await
@@ -246,16 +231,19 @@ fn context_spec() -> ContextAssemblySpec {
     }
 }
 
-fn channel_spec() -> LlmChannelRevisionSpec {
+fn channel_spec(credential: Option<SecretRef>, tool_calling: bool) -> LlmChannelRevisionSpec {
+    let authenticated = credential.is_some();
     LlmChannelRevisionSpec {
         operation_taxonomy_version: 1,
         adapter_decoder_version: 1,
         base_url: "https://fake.example.test/v1".into(),
         transport_policy: ChannelTransportPolicy {
             allow_loopback_http: false,
-            allow_unauthenticated: true,
+            allow_unauthenticated: !authenticated,
         },
-        credential: ChannelCredential::None,
+        credential: credential.map_or(ChannelCredential::None, |api_key_ref| {
+            ChannelCredential::Secret { api_key_ref }
+        }),
         operation_keys: vec![operation()],
         model_catalogs: vec![ChannelModelCatalog {
             operation_key: operation(),
@@ -267,7 +255,7 @@ fn channel_spec() -> LlmChannelRevisionSpec {
                 max_output_tokens: Some(2_048),
                 capabilities: ModelCapabilities {
                     streaming: None,
-                    tool_calling: None,
+                    tool_calling: tool_calling.then_some(true),
                     structured_output: Some(true),
                     vision_input: None,
                 },
@@ -277,7 +265,40 @@ fn channel_spec() -> LlmChannelRevisionSpec {
     }
 }
 
-fn graph_draft(graph_id: &str, channel_id: &str, preset_id: &str, json_output: bool) -> GraphDraft {
+fn provider_response(text: &str) -> ProviderHttpResponse {
+    ProviderHttpResponse {
+        status: 200,
+        provider_request_id: Some("request-test".into()),
+        body: serde_json::to_vec(&json!({
+            "id":"response-1",
+            "created_at":1,
+            "object":"response",
+            "output":[{
+                "type":"message",
+                "id":"message-1",
+                "role":"assistant",
+                "status":"completed",
+                "content":[{"type":"output_text","text":text,"annotations":[]}]
+            }],
+            "status":"completed",
+            "usage":{
+                "input_tokens":12,
+                "output_tokens":7,
+                "total_tokens":19,
+                "output_tokens_details":{"reasoning_tokens":0}
+            }
+        }))
+        .unwrap(),
+    }
+}
+
+fn graph_draft(
+    graph_id: &str,
+    channel_id: &str,
+    preset_id: &str,
+    json_output: bool,
+    tool: Option<ToolGrant>,
+) -> GraphDraft {
     let mut draft: GraphDraft = serde_json::from_value(json!({
         "graphId":graph_id,
         "nodes":[
@@ -326,6 +347,17 @@ fn graph_draft(graph_id: &str, channel_id: &str, preset_id: &str, json_output: b
             },
             strict: true,
         });
+    }
+    if let Some(tool) = tool {
+        let config = draft
+            .nodes
+            .iter_mut()
+            .find_map(|node| match &mut node.kind {
+                DraftNodeKind::Llm { config } => Some(config),
+                _ => None,
+            })
+            .unwrap();
+        config.tools.push(tool);
     }
     draft
 }

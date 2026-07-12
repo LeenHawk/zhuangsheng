@@ -28,7 +28,7 @@ impl SqliteStore {
         &self,
         mut command: FinishModelCallCommand,
         now: i64,
-    ) -> StorageResult<()> {
+    ) -> StorageResult<zhuangsheng_core::llm::LlmLoopCheckpoint> {
         let transaction = self.db.begin().await?;
         let fenced =
             load_model_call_attempt(&transaction, &command.effect_attempt_id, &command.fence)
@@ -94,7 +94,7 @@ impl SqliteStore {
                 },
             )?;
             transaction.commit().await?;
-            return Ok(());
+            return Ok(checkpoint);
         }
         validate_active_fence(&fenced, &command.fence)?;
         let stored = store_outcome(&transaction, &command.outcome, now).await?;
@@ -169,6 +169,6 @@ impl SqliteStore {
             .await?;
         }
         transaction.commit().await?;
-        Ok(())
+        Ok(checkpoint)
     }
 }

@@ -2,15 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use crate::{
-    graph::{LlmNodeExecutionSnapshot, ToolApprovalPolicy, ToolGrant},
-    schema,
-};
+use crate::graph::{LlmNodeExecutionSnapshot, ToolApprovalPolicy, ToolGrant};
 
 use super::{
     ResolvedToolDescriptor, ToolRegistryEntrySnapshot, ToolRegistrySnapshot,
     ir::{HostedToolDescriptorIr, MetadataValue, ToolDescriptorIr},
     request_builder::{LlmRequestBuildError, ResolvedRequestTool},
+    validate_tool_grant,
 };
 
 pub(super) fn resolve_tools(
@@ -106,9 +104,6 @@ fn validate_descriptor(
     pin: &ToolRegistryEntrySnapshot,
 ) -> Result<(), LlmRequestBuildError> {
     let descriptor = &resolved.descriptor;
-    let computed = descriptor
-        .digest()
-        .map_err(|error| LlmRequestBuildError::new("tool_descriptor_invalid", error.to_string()))?;
     if descriptor.tool_id != grant.tool_id
         || descriptor.version != grant.version
         || !valid_name(&descriptor.tool_id)
@@ -118,16 +113,11 @@ fn validate_descriptor(
             .description
             .as_ref()
             .is_some_and(|value| value.len() > 4096)
-        || descriptor.effect.operation_key.trim().is_empty()
-        || descriptor.limits.timeout_ms == 0
-        || descriptor.limits.max_input_bytes == 0
-        || descriptor.limits.max_llm_result_bytes == 0
-        || descriptor.limits.max_artifact_bytes == 0
-        || computed != resolved.descriptor_digest
         || pin.descriptor_digest != resolved.descriptor_digest
         || pin.schema_compilation_digests != resolved.schema_compilation_digests
         || pin.implementation_digest != resolved.implementation_digest
         || resolved.implementation_digest.trim().is_empty()
+        || resolved.executor_key.trim().is_empty()
     {
         return Err(LlmRequestBuildError::new(
             "tool_descriptor_pin_mismatch",
@@ -137,36 +127,8 @@ fn validate_descriptor(
             ),
         ));
     }
-    schema::compile(&descriptor.input_schema).map_err(|error| {
-        LlmRequestBuildError::new("tool_input_schema_invalid", error.to_string())
-    })?;
-    let constraints = Value::Object(grant.constraints.clone().into_iter().collect());
-    match &descriptor.binding_config_schema {
-        Some(spec) => schema::validate(spec, &constraints).map_err(|error| {
-            LlmRequestBuildError::new("tool_binding_config_invalid", error.to_string())
-        })?,
-        None if !grant.constraints.is_empty() => {
-            return Err(LlmRequestBuildError::new(
-                "tool_binding_config_unsupported",
-                "tool grant has constraints but its descriptor has no binding config schema",
-            ));
-        }
-        None => {}
-    }
-    if descriptor.required_scopes.iter().any(|required| {
-        !grant
-            .scopes
-            .iter()
-            .any(|actual| actual.kind == required.kind && actual.scope == required.scope)
-    }) {
-        return Err(LlmRequestBuildError::new(
-            "tool_required_scope_missing",
-            format!(
-                "tool grant is missing a descriptor-required scope: {}",
-                grant.binding_id
-            ),
-        ));
-    }
+    validate_tool_grant(grant, resolved)
+        .map_err(|error| LlmRequestBuildError::new(error.code, error.message))?;
     Ok(())
 }
 

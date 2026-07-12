@@ -13,7 +13,7 @@ use zhuangsheng_core::{
     llm::{
         ActiveModelEffectCheckpoint, EffectAttemptFence, EffectRetryPolicy, FinishModelCallCommand,
         LlmLogicalCallStatus, LlmLoopCheckpoint, ModelCallEffectOutcome, PrepareModelCallCommand,
-        StartModelCallCommand, ToolRegistrySnapshot,
+        StartModelCallCommand,
         context::{ContextAssemblyMode, ContextAssemblySpec},
         ir::LlmUsageIr,
     },
@@ -313,10 +313,12 @@ pub(super) fn checkpoint(
             .unwrap()
             .graph_revision_id
             .clone(),
-        registry_snapshot: ToolRegistrySnapshot {
-            revision: "empty-registry-v1".into(),
-            entries: Vec::new(),
-        },
+        registry_snapshot: claimed
+            .execution_snapshot
+            .as_ref()
+            .unwrap()
+            .tool_registry
+            .clone(),
         context_snapshot_ref: snapshot_object_id.into(),
         read_set_digest: canonical::hash(&json!({})).unwrap(),
         model_call_no: 1,

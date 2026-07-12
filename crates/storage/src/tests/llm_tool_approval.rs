@@ -232,8 +232,10 @@ async fn identical_digest_blockers_require_distinct_complete_decisions() {
     let store = store().await;
     let setup = prepare_model_tool_batch(&store).await;
     let mut batch = approval_command(&setup);
-    batch.calls[1].descriptor_requires_approval = true;
+    batch.calls[1].binding_id = "echo-binding".into();
+    batch.calls[1].call_digest = setup.call_digest.clone();
     batch.calls[1].risk_summary = "Second independent echo".into();
+    batch.checkpoint.current_batch[1].call_digest = setup.call_digest.clone();
     batch.checkpoint.current_batch[1].status = ToolCallCheckpointStatus::AwaitingApproval;
     batch.checkpoint = batch.checkpoint.seal().unwrap();
     store

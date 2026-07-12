@@ -24,6 +24,7 @@ async fn secret_http_flow_never_returns_plaintext_and_expires_unlock_receipt() {
         store.clone(),
         store.clone(),
         store.clone(),
+        store.clone(),
     );
     let initial_status = call(
         &app,

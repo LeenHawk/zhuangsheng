@@ -27,6 +27,7 @@ async fn graph_http_vertical_slice_uses_public_contract() {
         store.clone(),
         store.clone(),
         store.clone(),
+        store.clone(),
     );
     let created = call(
         &app,
@@ -212,6 +213,7 @@ async fn graph_http_errors_use_typed_envelope() {
         store.clone(),
         store.clone(),
         store.clone(),
+        store.clone(),
         store,
     );
     let response = app
@@ -239,6 +241,7 @@ async fn graph_http_errors_use_typed_envelope() {
 async fn memory_http_flow_uses_service_contract_and_typed_commands() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
     let app = app(
+        store.clone(),
         store.clone(),
         store.clone(),
         store.clone(),
@@ -342,6 +345,7 @@ async fn memory_http_flow_uses_service_contract_and_typed_commands() {
 async fn wait_response_route_uses_typed_blocker_decisions() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
     let app = app(
+        store.clone(),
         store.clone(),
         store.clone(),
         store.clone(),

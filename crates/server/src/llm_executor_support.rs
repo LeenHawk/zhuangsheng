@@ -4,8 +4,7 @@ use zhuangsheng_core::{
     canonical,
     graph::{LlmNodeExecutionSnapshot, LlmOutputSpec},
     llm::{
-        ActiveModelEffectCheckpoint, EffectAttemptFence, FinishModelCallCommand,
-        LlmLogicalCallStatus, ModelCallEffectOutcome,
+        ActiveModelEffectCheckpoint, LlmLogicalCallStatus,
         context::{ContextAssemblyError, ContextAssemblyResult, ContextRole, ContextTokenCounter},
         finalize_llm_output,
         ir::{LlmContentPartIr, LlmTurnItemIr},
@@ -37,6 +36,7 @@ impl ContextTokenCounter for EstimateTokenCounter {
 pub(super) fn fixed_request_estimate(execution: &LlmNodeExecutionSnapshot) -> u64 {
     let bytes = canonical::to_vec(&json!({
         "tools":execution.tools,
+        "toolDescriptors":execution.tool_descriptors,
         "hostedTools":execution.hosted_tools,
         "output":execution.output,
         "request":execution.request,
@@ -59,27 +59,6 @@ pub(super) fn finalize_output(
 
 pub(super) fn assembly_failure(error: ContextAssemblyError) -> LlmAttemptExecution {
     finalize_failure(error.code, &error.message)
-}
-
-pub(super) fn known_failure(
-    effect_attempt_id: &str,
-    fence: &EffectAttemptFence,
-    mut checkpoint: zhuangsheng_core::llm::LlmLoopCheckpoint,
-    code: &str,
-    message: &str,
-) -> FinishModelCallCommand {
-    set_model_status(&mut checkpoint, LlmLogicalCallStatus::Failed);
-    let checkpoint = checkpoint.seal().expect("valid failure checkpoint");
-    FinishModelCallCommand {
-        effect_attempt_id: effect_attempt_id.into(),
-        fence: fence.clone(),
-        outcome: ModelCallEffectOutcome::Failed {
-            error_bytes: canonical::to_vec(&json!({"code":code,"message":message}))
-                .expect("safe error serializes"),
-        },
-        checkpoint,
-        transcript: None,
-    }
 }
 
 pub(super) fn set_model_status(

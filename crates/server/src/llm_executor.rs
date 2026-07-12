@@ -3,19 +3,22 @@ use std::{collections::BTreeSet, sync::Arc};
 use async_trait::async_trait;
 use serde_json::Value;
 use zhuangsheng_core::{
-    application::{ApplicationError, secret::SecretResolver},
+    application::{
+        ApplicationError,
+        secret::{ResolveRuntimeSecretCommand, RuntimeSecretResolution, RuntimeSecretResolver},
+    },
     graph::EffectClassification,
     llm::{
         ChannelCredential, EffectAttemptFence, EffectRetryPolicy, FinishModelCallCommand,
-        LlmLogicalCallStatus, LlmRequestBuildInput, ModelCallEffectOutcome,
-        PrepareInitialModelCallCommand, StartModelCallCommand, ToolRegistrySnapshot,
+        InitialToolBatchInput, InitialToolBatchPlan, LlmLogicalCallStatus, LlmRequestBuildInput,
+        ModelCallEffectOutcome, PrepareInitialModelCallCommand, StartModelCallCommand,
+        ToolRegistrySnapshot,
         adapter::{
             AdapterExecutionOptions, AdapterResources, decode_generation_terminal,
             encode_generation_request,
         },
         build_llm_request,
         context::{ContextAssemblyInput, ContextBudgetInput, ContextCountSource, assemble_context},
-        ir::LlmTurnItemIr,
     },
     scheduler::{ClaimedAttempt, LlmAttemptExecution, LlmAttemptExecutor},
 };
@@ -73,10 +76,10 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                 "streaming LLM execution is not connected yet",
             ));
         }
-        if !execution.tools.is_empty() || !execution.hosted_tools.is_empty() {
+        if !execution.hosted_tools.is_empty() {
             return Ok(finalize_failure(
-                "llm_tool_registry_pending",
-                "tool-enabled execution requires the persistent tool registry",
+                "llm_hosted_tool_executor_pending",
+                "hosted tool execution is not connected yet",
             ));
         }
         let node_input = Value::Object(
@@ -122,15 +125,12 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
             Ok(output) => output,
             Err(error) => return Ok(assembly_failure(error)),
         };
-        let registry = ToolRegistrySnapshot {
-            revision: "empty-tool-registry-v1".into(),
-            entries: Vec::new(),
-        };
+        let registry: ToolRegistrySnapshot = execution.tool_registry.clone();
         let built = match build_llm_request(LlmRequestBuildInput {
             execution,
             context: &assembly,
             registry_snapshot: &registry,
-            tool_descriptors: &[],
+            tool_descriptors: &execution.tool_descriptors,
             transcript_tail: &[],
             continuation: None,
             approved_hosted_bindings: &BTreeSet::new(),
@@ -150,6 +150,40 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
         ) {
             Ok(wire) => wire,
             Err(error) => return Ok(finalize_failure(error.code, &error.message)),
+        };
+        let credential = match &execution.channel.spec.credential {
+            ChannelCredential::Secret { api_key_ref } => {
+                match RuntimeSecretResolver::resolve_runtime_secret(
+                    self.store.as_ref(),
+                    api_key_ref,
+                    ResolveRuntimeSecretCommand {
+                        run_id: attempt.run_id.clone(),
+                        node_instance_id: attempt.node_instance_id.clone(),
+                        attempt_id: attempt.attempt_id.clone(),
+                        wakeup_id: attempt.wakeup_id.clone(),
+                        worker_id: attempt.worker_id.clone(),
+                        lease_fence: attempt.lease_fence,
+                        run_control_epoch: attempt.run_control_epoch,
+                        channel_id: execution.channel.channel_id.clone(),
+                        read_set_digest: context_snapshot.read_set_digest.clone(),
+                    },
+                    now,
+                )
+                .await
+                {
+                    Ok(RuntimeSecretResolution::Resolved(value)) => Some(value),
+                    Ok(RuntimeSecretResolution::Waiting { .. }) => {
+                        return Ok(LlmAttemptExecution::Handled);
+                    }
+                    Err(_) => {
+                        return Ok(finalize_failure(
+                            "provider_credential_unavailable",
+                            "provider credential is unavailable",
+                        ));
+                    }
+                }
+            }
+            ChannelCredential::None => None,
         };
         let model_call_id = new_id("modelcall");
         let effect_id = new_id("effect");
@@ -203,31 +237,6 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
             )
             .await
             .map_err(ApplicationError::from)?;
-        let credential = match &execution.channel.spec.credential {
-            ChannelCredential::Secret { api_key_ref } => {
-                match SecretResolver::resolve_secret(self.store.as_ref(), api_key_ref).await {
-                    Ok(value) => Some(value),
-                    Err(error) => {
-                        let outcome = known_failure(
-                            &effect_attempt_id,
-                            &fence,
-                            running,
-                            "provider_credential_unavailable",
-                            "provider credential is locked or unavailable",
-                        );
-                        self.store
-                            .finish_model_call(outcome, now)
-                            .await
-                            .map_err(ApplicationError::from)?;
-                        return Ok(finalize_failure(
-                            "provider_credential_unavailable",
-                            &error.to_string(),
-                        ));
-                    }
-                }
-            }
-            ChannelCredential::None => None,
-        };
         let response = self
             .provider
             .send(&execution.channel, &wire, credential.as_ref())
@@ -288,7 +297,8 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                 transcript.extend(draft.response.items.clone());
                 transcript
             });
-        self.store
+        let completed_checkpoint = self
+            .store
             .finish_model_call(
                 FinishModelCallCommand {
                     effect_attempt_id,
@@ -314,16 +324,35 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                 "provider response requires opaque continuation storage",
             ));
         }
-        if decoded.response.items.iter().any(|item| {
-            matches!(
-                item,
-                LlmTurnItemIr::AssistantToolCall { .. } | LlmTurnItemIr::HostedTool { .. }
-            )
-        }) {
-            return Ok(finalize_failure(
-                "llm_tool_loop_pending",
-                "provider requested a tool but the tool loop is not connected yet",
-            ));
+        let tool_plan =
+            match zhuangsheng_core::llm::plan_initial_tool_batch(InitialToolBatchInput {
+                execution,
+                request_tools: &built.resolved_tools,
+                response_items: &decoded.response.items,
+                model_call_id: &model_call_id,
+                node_instance_id: &attempt.node_instance_id,
+                originating_attempt_id: &attempt.attempt_id,
+                checkpoint: completed_checkpoint,
+                now_ms: now,
+            }) {
+                Ok(plan) => plan,
+                Err(error) => return Ok(finalize_failure(error.code, &error.message)),
+            };
+        match tool_plan {
+            InitialToolBatchPlan::Approval(command) => {
+                self.store
+                    .prepare_tool_approval_batch(command, now)
+                    .await
+                    .map_err(ApplicationError::from)?;
+                return Ok(LlmAttemptExecution::Handled);
+            }
+            InitialToolBatchPlan::ExecutablePending => {
+                return Ok(finalize_failure(
+                    "llm_tool_dispatcher_pending",
+                    "custom tool execution dispatcher is not connected yet",
+                ));
+            }
+            InitialToolBatchPlan::NoCalls => {}
         }
         Ok(finalize_output(
             execution.output.as_ref(),
