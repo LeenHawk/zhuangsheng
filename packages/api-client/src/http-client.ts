@@ -1,9 +1,21 @@
-import { decodeConversation, decodeConversationList, decodeTimeline } from "./decode";
+import {
+  decodeConversation,
+  decodeConversationList,
+  decodeRunProfile,
+  decodeSubmitTurnAck,
+  decodeTimeline,
+} from "./decode";
+import { decodeRolePlayGraphOptions } from "./decode-roleplay";
 import type {
   ApiErrorBody,
   ConversationListView,
+  ConversationRunProfile,
+  ConversationRunSpec,
   ConversationTimelineView,
   ConversationView,
+  LlmContentPart,
+  RolePlayGraphOptionView,
+  SubmitConversationTurnAck,
 } from "./types";
 
 export class ApiError extends Error {
@@ -15,6 +27,17 @@ export class ApiError extends Error {
 
 export interface CreateConversationInput {
   title?: string;
+}
+
+export interface UpdateConversationRunProfileInput {
+  expectedRevisionNo: number;
+  run: ConversationRunSpec;
+}
+
+export interface SubmitConversationTurnInput {
+  expectedHeadCommitId: string;
+  userContent: LlmContentPart[];
+  run: ConversationRunSpec;
 }
 
 export class HttpApiClient {
@@ -38,6 +61,34 @@ export class HttpApiClient {
 
   async getTimeline(id: string, signal?: AbortSignal): Promise<ConversationTimelineView> {
     return decodeTimeline(await this.request(`/v1/conversations/${encodeURIComponent(id)}/turns`, { signal }));
+  }
+
+  async listRolePlayGraphOptions(signal?: AbortSignal): Promise<RolePlayGraphOptionView[]> {
+    return decodeRolePlayGraphOptions(await this.request("/v1/roleplay/graph-options", { signal }));
+  }
+
+  async updateConversationRunProfile(
+    id: string,
+    input: UpdateConversationRunProfileInput,
+  ): Promise<ConversationRunProfile> {
+    return decodeRunProfile(await this.request(`/v1/conversations/${encodeURIComponent(id)}/run-profile`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      body: JSON.stringify(input),
+    }));
+  }
+
+  async submitConversationTurn(
+    id: string,
+    input: SubmitConversationTurnInput,
+    signal?: AbortSignal,
+  ): Promise<SubmitConversationTurnAck> {
+    return decodeSubmitTurnAck(await this.request(`/v1/conversations/${encodeURIComponent(id)}/turns`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      body: JSON.stringify(input),
+      signal,
+    }));
   }
 
   private async request(path: string, init: RequestInit): Promise<unknown> {

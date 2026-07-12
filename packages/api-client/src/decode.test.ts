@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { DecodeError, decodeConversationList, decodeTimeline } from "./decode";
+import {
+  DecodeError,
+  decodeConversationList,
+  decodeSubmitTurnAck,
+  decodeTimeline,
+} from "./decode";
+import { decodeRolePlayGraphOptions } from "./decode-roleplay";
 
 const conversation = {
   id: "conversation_1",
@@ -69,5 +75,50 @@ describe("conversation decoders", () => {
     const incompatible = structuredClone(timeline);
     incompatible.turns[0]!.candidates[0]!.status = "future_status";
     expect(() => decodeTimeline(incompatible)).toThrow(DecodeError);
+  });
+
+  it("decodes role play compatibility without inspecting raw graph documents", () => {
+    const options = decodeRolePlayGraphOptions([
+      {
+        graphId: "graph_1",
+        graphName: "Archive Role",
+        revisionId: "graphrev_1",
+        revisionNo: 2,
+        replyOutputKeys: ["reply"],
+        primaryLlmNodeId: "generate",
+        compatibility: {
+          mode: "partial",
+          profileVersion: 1,
+          editableFields: ["model"],
+          lockedReasons: ["custom_coordination_nodes"],
+        },
+      },
+    ]);
+    expect(options[0]?.compatibility.mode).toBe("partial");
+    expect(() =>
+      decodeRolePlayGraphOptions([
+        {
+          ...options[0],
+          compatibility: { mode: "editable", profileVersion: 2, editableFields: [] },
+        },
+      ]),
+    ).toThrow(DecodeError);
+  });
+
+  it("checks that a submitted candidate and run identify the same durable run", () => {
+    expect(
+      decodeSubmitTurnAck({
+        turn: { id: "turn_1" },
+        candidate: { runId: "run_1", status: "running" },
+        run: { id: "run_1" },
+      }),
+    ).toEqual({ turnId: "turn_1", runId: "run_1", status: "running" });
+    expect(() =>
+      decodeSubmitTurnAck({
+        turn: { id: "turn_1" },
+        candidate: { runId: "run_1", status: "running" },
+        run: { id: "run_2" },
+      }),
+    ).toThrow(DecodeError);
   });
 });

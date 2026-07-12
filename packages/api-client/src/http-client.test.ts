@@ -1,0 +1,60 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { HttpApiClient } from "./http-client";
+
+describe("HttpApiClient conversation commands", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends revision CAS and exact run specs to their canonical endpoints", async () => {
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal("crypto", { randomUUID: () => "command-key" });
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      const payload = calls.length === 1
+        ? {
+            graphRevisionId: "graphrev_1",
+            replyOutputKey: "reply",
+            inputShape: "conversation_message_v1",
+            revisionNo: 2,
+          }
+        : {
+            turn: { id: "turn_1" },
+            candidate: { runId: "run_1", status: "running" },
+            run: { id: "run_1" },
+          };
+      return new Response(JSON.stringify(payload), {
+        status: calls.length === 1 ? 200 : 202,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const client = new HttpApiClient("https://roleplay.example");
+    const run = {
+      graphRevisionId: "graphrev_1",
+      replyOutputKey: "reply",
+      inputShape: "conversation_message_v1" as const,
+    };
+    await client.updateConversationRunProfile("conversation/1", {
+      expectedRevisionNo: 1,
+      run,
+    });
+    await client.submitConversationTurn("conversation/1", {
+      expectedHeadCommitId: "commit_1",
+      userContent: [{ type: "text", text: "Continue" }],
+      run,
+    });
+
+    expect(calls.map((call) => call.input)).toEqual([
+      "https://roleplay.example/v1/conversations/conversation%2F1/run-profile",
+      "https://roleplay.example/v1/conversations/conversation%2F1/turns",
+    ]);
+    expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({ expectedRevisionNo: 1, run });
+    expect(JSON.parse(calls[1]?.init?.body as string)).toEqual({
+      expectedHeadCommitId: "commit_1",
+      userContent: [{ type: "text", text: "Continue" }],
+      run,
+    });
+    expect(calls[0]?.init?.headers).toMatchObject({ "idempotency-key": "command-key" });
+    expect(calls[1]?.init?.headers).toMatchObject({ "idempotency-key": "command-key" });
+  });
+});

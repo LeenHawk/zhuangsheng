@@ -22,6 +22,33 @@ export interface ConversationRunProfile extends ConversationRunSpec {
   revisionNo: number;
 }
 
+export type RolePlayCompatibilityView =
+  | {
+      mode: "editable";
+      profileVersion: 1;
+      editableFields: string[];
+    }
+  | {
+      mode: "partial";
+      profileVersion: 1;
+      editableFields: string[];
+      lockedReasons: string[];
+    }
+  | {
+      mode: "expert_only";
+      reasons: string[];
+    };
+
+export interface RolePlayGraphOptionView {
+  graphId: string;
+  graphName: string;
+  revisionId: string;
+  revisionNo: number;
+  replyOutputKeys: string[];
+  primaryLlmNodeId: string | null;
+  compatibility: RolePlayCompatibilityView;
+}
+
 export interface ConversationView {
   id: string;
   title: string | null;
@@ -88,6 +115,12 @@ export interface ConversationTimelineView {
   activeHeadCommitId: string;
   messages: ConversationMessageView[];
   turns: ConversationTurnView[];
+}
+
+export interface SubmitConversationTurnAck {
+  turnId: string;
+  runId: string;
+  status: CandidateStatus;
 }
 
 export interface ApiErrorBody {

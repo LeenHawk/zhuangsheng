@@ -3,3 +3,4 @@ export * from "./button";
 export * from "./card";
 export * from "./cn";
 export * from "./input";
+export * from "./textarea";

@@ -2,39 +2,16 @@ import type {
   CandidateStatus,
   ConversationListView,
   ConversationMessageView,
+  ConversationRunProfile,
   ConversationTimelineView,
   ConversationView,
   LlmContentPart,
+  SubmitConversationTurnAck,
 } from "./types";
+import { DecodeError } from "./decode-error";
+import { nullableString, number, record, string } from "./decode-helpers";
 
-export class DecodeError extends Error {
-  constructor(readonly path: string) {
-    super(`Incompatible API response at ${path}`);
-    this.name = "DecodeError";
-  }
-}
-
-const record = (value: unknown, path: string): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new DecodeError(path);
-  }
-  return value as Record<string, unknown>;
-};
-
-const string = (value: unknown, path: string): string => {
-  if (typeof value !== "string") throw new DecodeError(path);
-  return value;
-};
-
-const number = (value: unknown, path: string): number => {
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    throw new DecodeError(path);
-  }
-  return value;
-};
-
-const nullableString = (value: unknown, path: string): string | null =>
-  value === null ? null : string(value, path);
+export { DecodeError } from "./decode-error";
 
 const contentPart = (value: unknown, path: string): LlmContentPart => {
   const item = record(value, path);
@@ -62,23 +39,25 @@ export const decodeConversation = (value: unknown): ConversationView => {
     contextId: string(item.contextId, "conversation.contextId"),
     activeBranchId: string(item.activeBranchId, "conversation.activeBranchId"),
     activeHeadCommitId: string(item.activeHeadCommitId, "conversation.activeHeadCommitId"),
-    runProfile:
-      profile === null
-        ? null
-        : (() => {
-            const run = record(profile, "conversation.runProfile");
-            if (run.inputShape !== "conversation_message_v1") {
-              throw new DecodeError("conversation.runProfile.inputShape");
-            }
-            return {
-              graphRevisionId: string(run.graphRevisionId, "conversation.runProfile.graphRevisionId"),
-              replyOutputKey: string(run.replyOutputKey, "conversation.runProfile.replyOutputKey"),
-              inputShape: run.inputShape,
-              revisionNo: number(run.revisionNo, "conversation.runProfile.revisionNo"),
-            };
-          })(),
+    runProfile: profile === null ? null : decodeRunProfile(profile, "conversation.runProfile"),
     createdAt: number(item.createdAt, "conversation.createdAt"),
     updatedAt: number(item.updatedAt, "conversation.updatedAt"),
+  };
+};
+
+export const decodeRunProfile = (
+  value: unknown,
+  path = "runProfile",
+): ConversationRunProfile => {
+  const run = record(value, path);
+  if (run.inputShape !== "conversation_message_v1") {
+    throw new DecodeError(`${path}.inputShape`);
+  }
+  return {
+    graphRevisionId: string(run.graphRevisionId, `${path}.graphRevisionId`),
+    replyOutputKey: string(run.replyOutputKey, `${path}.replyOutputKey`),
+    inputShape: run.inputShape,
+    revisionNo: number(run.revisionNo, `${path}.revisionNo`),
   };
 };
 
@@ -148,5 +127,21 @@ export const decodeTimeline = (value: unknown): ConversationTimelineView => {
         }),
       };
     }),
+  };
+};
+
+export const decodeSubmitTurnAck = (value: unknown): SubmitConversationTurnAck => {
+  const result = record(value, "submitTurn");
+  const turn = record(result.turn, "submitTurn.turn");
+  const candidate = record(result.candidate, "submitTurn.candidate");
+  const run = record(result.run, "submitTurn.run");
+  const status = string(candidate.status, "submitTurn.candidate.status") as CandidateStatus;
+  if (!candidateStatuses.has(status)) throw new DecodeError("submitTurn.candidate.status");
+  const runId = string(candidate.runId, "submitTurn.candidate.runId");
+  if (string(run.id, "submitTurn.run.id") !== runId) throw new DecodeError("submitTurn.run.id");
+  return {
+    turnId: string(turn.id, "submitTurn.turn.id"),
+    runId,
+    status,
   };
 };
