@@ -16,6 +16,8 @@ mod request_builder_hosted;
 mod request_builder_memory;
 mod request_builder_tools;
 mod secret;
+mod service_operations;
+mod service_validation;
 mod stream_ledger;
 mod tool_batch;
 mod tool_ledger;
@@ -37,6 +39,8 @@ pub use output_repair_ledger::*;
 pub use request_builder::*;
 pub use request_builder_memory::ResolvedMemoryTool;
 pub use secret::{SecretRef, SecretScheme};
+pub use service_operations::*;
+pub use service_validation::*;
 pub use stream_ledger::*;
 pub use tool_batch::*;
 pub use tool_ledger::*;
@@ -47,6 +51,8 @@ pub use tool_registry_validation::*;
 mod memory_tool_batch_tests;
 #[cfg(test)]
 mod request_builder_tests;
+#[cfg(test)]
+mod service_validation_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

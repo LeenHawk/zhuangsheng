@@ -8,7 +8,8 @@ use crate::{canonical, compatibility::supports_operation_versions};
 use super::{
     ChannelCredential, ChannelTransportPolicy, LlmChannelRevisionSpec, LlmConfigError,
     LlmConfigResult, LlmNodeModelRef, MODEL_CAPABILITY_POLICY_VERSION, ModelCapabilityOverride,
-    ModelCapabilityRequirements, ModelCatalogPolicy,
+    ModelCapabilityRequirements, ModelCatalogPolicy, is_supported_compact_key,
+    is_supported_embedding_key, is_supported_image_key,
 };
 
 pub fn normalize_channel_revision(
@@ -232,6 +233,9 @@ fn normalize_operations(spec: &mut LlmChannelRevisionSpec) -> LlmConfigResult<()
         !is_supported_generation_key(*key)
             && !is_supported_count_key(*key)
             && !is_supported_discovery_key(*key)
+            && !is_supported_image_key(*key)
+            && !is_supported_embedding_key(*key)
+            && !is_supported_compact_key(*key)
     }) {
         return Err(LlmConfigError::new(
             "unsupported_channel_operation",
