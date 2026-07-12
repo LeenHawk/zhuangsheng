@@ -89,6 +89,7 @@ export function StoryRoute() {
       onSubmitApproval={waits.submitApproval}
       onSubmitSecretPassword={waits.submitSecretPassword}
       onReloadWaits={waits.reloadWaits}
+      onInspectRun={(runId) => navigate(`/expert/runs/${runId}`)}
     />
   );
 }

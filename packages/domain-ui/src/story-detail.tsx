@@ -51,6 +51,7 @@ export interface StoryDetailProps {
     password: string,
   ) => Promise<void>;
   onReloadWaits: () => void;
+  onInspectRun: (runId: string) => void;
 }
 
 export interface StoryLiveCandidate {

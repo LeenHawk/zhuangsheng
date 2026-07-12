@@ -37,6 +37,11 @@ struct EventsQuery {
 }
 
 #[derive(Deserialize)]
+struct RunsQuery {
+    limit: Option<u32>,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunControlBody {
     expected_epoch: u64,
@@ -77,6 +82,7 @@ enum BlockerDecisionBody {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/graphs/{graph_revision_id}/runs", post(start_run))
+        .route("/v1/runs", get(list_runs))
         .route("/v1/runs/{run_id}", get(get_run))
         .route("/v1/runs/{run_id}/outputs", get(get_outputs))
         .route("/v1/runs/{run_id}/waits", get(list_open_waits))
@@ -86,6 +92,18 @@ pub fn routes() -> Router<AppState> {
         .route("/v1/runs/{run_id}/cancel", post(cancel_run))
         .route("/v1/waits/{wait_id}/responses", post(submit_wait_response))
         .route("/v1/values/{value_ref}", get(get_value))
+}
+
+async fn list_runs(
+    State(state): State<AppState>,
+    Query(query): Query<RunsQuery>,
+) -> ApiResult<Json<zhuangsheng_core::runtime::RunListView>> {
+    Ok(Json(
+        state
+            .runtime_service
+            .list_recent_runs(query.limit.unwrap_or(50))
+            .await?,
+    ))
 }
 
 async fn start_run(

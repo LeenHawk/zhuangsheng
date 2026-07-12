@@ -11,6 +11,7 @@ import { decodeRolePlayGraphOptions } from "./decode-roleplay";
 import { requestJson } from "./http-json";
 import { HttpRuntimeClient } from "./http-runtime-client";
 import { HttpSecretClient } from "./http-secret-client";
+import { createIdempotencyKey } from "./idempotency";
 import type {
   ConversationListView,
   ConversationRunProfile,
@@ -134,10 +135,3 @@ export class HttpApiClient {
     return requestJson(this.baseUrl, path, init);
   }
 }
-
-export const createIdempotencyKey = (): string => {
-  if (typeof crypto.randomUUID !== "function") {
-    throw new Error("This browser cannot generate secure idempotency keys.");
-  }
-  return crypto.randomUUID();
-};

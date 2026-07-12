@@ -34,6 +34,7 @@ export function StorySidebar(props: StoryDetailProps) {
         error={props.candidateError}
         onRegenerate={props.onRegenerateCandidate}
         onSelect={props.onSelectCandidate}
+        onInspectRun={props.onInspectRun}
       />
     </aside>
   );

@@ -22,6 +22,7 @@ mod conversation_profile;
 mod conversation_projection_resolution;
 mod conversation_turn;
 mod roleplay_compatibility;
+mod run_list;
 mod secret;
 
 fn test_app(store: Arc<SqliteStore>) -> axum::Router {

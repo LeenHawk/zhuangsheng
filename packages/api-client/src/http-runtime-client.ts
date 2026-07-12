@@ -1,11 +1,29 @@
 import { decodeOpenWaits, decodeWaitDelivery } from "./decode-waits";
+import { decodeRun, decodeRunList } from "./decode-runs";
 import { DecodeError } from "./decode-error";
 import { requestJson } from "./http-json";
 import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
 import type { SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
+import type { RunControlInput, RunListView, RunView } from "./run-types";
 
 export class HttpRuntimeClient {
   constructor(private readonly baseUrl: string) {}
+
+  async listRecentRuns(limit = 50, signal?: AbortSignal): Promise<RunListView> {
+    return decodeRunList(await requestJson(
+      this.baseUrl,
+      `/v1/runs?limit=${Math.max(1, Math.min(100, Math.trunc(limit)))}`,
+      { signal },
+    ));
+  }
+
+  async getRun(runId: string, signal?: AbortSignal): Promise<RunView> {
+    return decodeRun(await requestJson(
+      this.baseUrl,
+      `/v1/runs/${encodeURIComponent(runId)}`,
+      { signal },
+    ));
+  }
 
   streamRunEvents(
     runId: string,
@@ -57,6 +75,41 @@ export class HttpRuntimeClient {
       throw new DecodeError("waitDelivery");
     }
     return result;
+  }
+
+  interrupt(runId: string, input: RunControlInput): Promise<RunView> {
+    return this.control(runId, "interrupt", input);
+  }
+
+  resume(runId: string, input: RunControlInput): Promise<RunView> {
+    return this.control(runId, "resume", input);
+  }
+
+  cancel(runId: string, input: RunControlInput): Promise<RunView> {
+    return this.control(runId, "cancel", input);
+  }
+
+  private async control(
+    runId: string,
+    action: "interrupt" | "resume" | "cancel",
+    input: RunControlInput,
+  ): Promise<RunView> {
+    const value = await requestJson(
+      this.baseUrl,
+      `/v1/runs/${encodeURIComponent(runId)}/${action}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
+        body: JSON.stringify({
+          expectedEpoch: input.expectedEpoch,
+          reason: input.reason?.trim() || null,
+        }),
+      },
+    );
+    const run = decodeRun(value);
+    if (run.id !== runId) throw new DecodeError("run.id");
+    if (run.controlEpoch !== input.expectedEpoch + 1) throw new DecodeError("run.controlEpoch");
+    return run;
   }
 }
 

@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Eye, RefreshCw } from "lucide-react";
 
 import type { CandidateStatus, ConversationTimelineView } from "@zhuangsheng/api-client";
 import { Badge, Button, Card } from "@zhuangsheng/ui";
@@ -12,6 +12,7 @@ interface StoryCandidatesProps {
   error: string | null;
   onRegenerate: (turnId: string, userCommitId: string) => Promise<void>;
   onSelect: (turnId: string, runId: string) => Promise<void>;
+  onInspectRun: (runId: string) => void;
 }
 
 const statusLabel: Record<CandidateStatus, readonly [string, "running" | "success" | "danger" | "neutral" | "warning"]> = {
@@ -48,6 +49,7 @@ export function StoryCandidates(props: StoryCandidatesProps) {
                       <Badge tone={selected ? "info" : tone}>{selected ? "当前采用" : label}</Badge>
                     </div>
                     {candidate.projectionError && <p className="mt-2 text-xs text-warning">{candidate.projectionError.safeMessage}</p>}
+                    <Button className="mt-3 w-full" size="compact" variant="ghost" onClick={() => props.onInspectRun(candidate.runId)}><Eye className="size-3.5" />检查运行</Button>
                     {latest && candidate.status === "ready" && !selected && (
                       <Button
                         className="mt-3 w-full"

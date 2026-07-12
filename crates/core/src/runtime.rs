@@ -195,6 +195,12 @@ pub struct RunView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RunListView {
+    pub items: Vec<RunView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ContextBranchView {
     pub context_id: String,
     pub branch_id: String,
@@ -263,6 +269,7 @@ pub struct DurableRunEventView {
 pub trait RuntimeService: Send + Sync {
     async fn start_run(&self, command: StartRunCommand) -> Result<RunView, ApplicationError>;
     async fn get_run(&self, run_id: &str) -> Result<RunView, ApplicationError>;
+    async fn list_recent_runs(&self, limit: u32) -> Result<RunListView, ApplicationError>;
     async fn get_run_outputs(&self, run_id: &str) -> Result<RunOutputsView, ApplicationError>;
     async fn list_open_waits(&self, run_id: &str) -> Result<Vec<WaitView>, ApplicationError>;
     async fn list_run_events(

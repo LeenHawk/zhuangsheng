@@ -59,6 +59,16 @@ export interface RunStreamProjection {
   lastSeqByCall: Record<string, number>;
   nextLiveOrder: number;
   liveTruncated: boolean;
+  recentEvents: RunTraceEvent[];
+}
+
+export interface RunTraceEvent {
+  durableSeq: number;
+  type: string;
+  timestamp: number;
+  nodeInstanceId: string | null;
+  attemptId: string | null;
+  importance: string;
 }
 
 export type RunStreamConnectionState =

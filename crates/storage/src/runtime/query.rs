@@ -1,11 +1,24 @@
 use sea_orm::{ConnectionTrait, QueryResult};
-use zhuangsheng_core::runtime::{RunStatus, RunView};
+use zhuangsheng_core::runtime::{RunListView, RunStatus, RunView};
 
 use crate::{SqliteStore, StorageError, StorageResult, graph::helpers::sql};
 
 impl SqliteStore {
     pub async fn get_run(&self, run_id: &str) -> StorageResult<RunView> {
         load_run(&self.db, run_id).await
+    }
+
+    pub async fn list_recent_runs(&self, limit: u32) -> StorageResult<RunListView> {
+        let rows = self.db.query_all_raw(sql(
+            "SELECT r.id, r.graph_revision_id, r.status, r.control_epoch, r.context_id, r.branch_id, r.input_commit_id, r.run_input_object_id, r.output_commit_id, r.deadline_at, r.created_at, r.updated_at, e.next_seq - 1 AS last_durable_seq FROM graph_runs r JOIN run_event_counters e ON e.run_id = r.id ORDER BY r.updated_at DESC, r.id LIMIT ?",
+            vec![i64::from(limit.clamp(1, 100)).into()],
+        )).await?;
+        Ok(RunListView {
+            items: rows
+                .iter()
+                .map(run_from_row)
+                .collect::<StorageResult<_>>()?,
+        })
     }
 }
 

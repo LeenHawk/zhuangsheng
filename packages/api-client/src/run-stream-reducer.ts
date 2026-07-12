@@ -19,7 +19,8 @@ export const createRunStreamProjection = (
   liveItems: {},
   lastSeqByCall: {},
   nextLiveOrder: 0,
-  liveTruncated: false,
+    liveTruncated: false,
+    recentEvents: [],
 });
 
 export const reduceRunStream = (
@@ -56,7 +57,21 @@ const reduceDurable = (
   if (event.importance === "critical" && !KNOWN_DURABLE_EVENTS.has(event.type)) {
     throw new RunStreamProtocolError(`unknown critical run event: ${event.type}`);
   }
-  let next: RunStreamProjection = { ...state, durableSeq: event.durableSeq };
+  let next: RunStreamProjection = {
+    ...state,
+    durableSeq: event.durableSeq,
+    recentEvents: [
+      ...state.recentEvents.slice(-499),
+      {
+        durableSeq: event.durableSeq,
+        type: event.type,
+        timestamp: event.timestamp,
+        nodeInstanceId: event.nodeInstanceId,
+        attemptId: event.attemptId,
+        importance: event.importance,
+      },
+    ],
+  };
   if ((event.type === "node.completed" || event.type === "node.failed") && event.nodeInstanceId) {
     next = clearNode(next, event.nodeInstanceId);
   }
@@ -128,6 +143,7 @@ const terminal = (type: string): RunStreamProjection["terminalStatus"] => {
 };
 
 const REFRESH_EVENTS = new Set([
+  "run.interrupt.requested",
   "run.waiting",
   "run.interrupted",
   "run.resumed",

@@ -154,8 +154,9 @@ type RunView = {
   inputRef: string
   outputCommitId?: string
   lastDurableSeq: number
-  createdAt: string
-  updatedAt: string
+  deadlineAt: number
+  createdAt: number
+  updatedAt: number
 }
 ```
 
@@ -167,6 +168,7 @@ Run output 的领域值始终是 GraphOutputContract 验证过的 JsonValue/Valu
 
 ```text
 POST   /v1/graphs/{graphRevisionId}/runs
+GET    /v1/runs?limit={1..100}
 GET    /v1/runs/{runId}
 GET    /v1/runs/{runId}/outputs
 GET    /v1/runs/{runId}/waits

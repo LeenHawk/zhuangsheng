@@ -3,7 +3,7 @@ use zhuangsheng_core::{
     application::ApplicationError,
     context_merge::{MergeContextCommand, MergeContextView},
     runtime::{
-        ContextBranchView, DurableRunEventView, ForkContextCommand, RunControlCommand,
+        ContextBranchView, DurableRunEventView, ForkContextCommand, RunControlCommand, RunListView,
         RunOutputsView, RunView, RuntimeService, StartRunCommand, SubmitWaitResponseCommand,
         WaitDeliveryView, WaitView,
     },
@@ -21,6 +21,12 @@ impl RuntimeService for SqliteStore {
 
     async fn get_run(&self, run_id: &str) -> Result<RunView, ApplicationError> {
         SqliteStore::get_run(self, run_id).await.map_err(Into::into)
+    }
+
+    async fn list_recent_runs(&self, limit: u32) -> Result<RunListView, ApplicationError> {
+        SqliteStore::list_recent_runs(self, limit)
+            .await
+            .map_err(Into::into)
     }
 
     async fn get_run_outputs(&self, run_id: &str) -> Result<RunOutputsView, ApplicationError> {

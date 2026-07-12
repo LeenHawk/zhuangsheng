@@ -71,6 +71,7 @@ describe("StoryDetail", () => {
       onSubmitApproval: async () => undefined,
       onSubmitSecretPassword: async () => undefined,
       onReloadWaits: () => undefined,
+      onInspectRun: () => undefined,
     };
     const view = render(<StoryDetail {...props} story={story} />);
 
@@ -172,6 +173,7 @@ describe("StoryDetail", () => {
       onSubmitApproval={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
       onReloadWaits={() => undefined}
+      onInspectRun={() => undefined}
     />);
 
     fireEvent.click(screen.getByRole("button", { name: "采用这个回复" }));
