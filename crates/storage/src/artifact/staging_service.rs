@@ -3,8 +3,8 @@ use zhuangsheng_core::{
     application::{
         ApplicationError,
         artifact::{
-            ArtifactStagingService, CommitArtifactStagingCommand, CompleteArtifactStagingCommand,
-            CreateArtifactStagingCommand,
+            ArtifactDownload, ArtifactStagingService, CommitArtifactStagingCommand,
+            CompleteArtifactStagingCommand, CreateArtifactStagingCommand,
         },
     },
     artifact::{ArtifactStagingView, ArtifactView},
@@ -52,6 +52,15 @@ impl ArtifactStagingService for SqliteStore {
 
     async fn get_artifact(&self, artifact_id: &str) -> Result<ArtifactView, ApplicationError> {
         self.get_artifact_view(artifact_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn download_artifact(
+        &self,
+        artifact_id: &str,
+    ) -> Result<ArtifactDownload, ApplicationError> {
+        self.download_artifact_value(artifact_id)
             .await
             .map_err(Into::into)
     }

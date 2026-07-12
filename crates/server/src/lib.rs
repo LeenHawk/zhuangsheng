@@ -13,8 +13,9 @@ use axum::{Router, extract::DefaultBodyLimit, routing::get};
 use serde::Serialize;
 use tower_http::trace::TraceLayer;
 use zhuangsheng_core::application::{
-    channel::ChannelService, context::ContextService, graph::GraphService, memory::MemoryService,
-    preset::ContextPresetService, secret::SecretStoreService, tool::ToolRegistryService,
+    artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
+    graph::GraphService, memory::MemoryService, preset::ContextPresetService,
+    secret::SecretStoreService, tool::ToolRegistryService,
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
@@ -26,6 +27,7 @@ struct Health {
 }
 
 pub struct AppServices {
+    pub artifact: Arc<dyn ArtifactStagingService>,
     pub graph: Arc<dyn GraphService>,
     pub channel: Arc<dyn ChannelService>,
     pub preset: Arc<dyn ContextPresetService>,
@@ -39,6 +41,7 @@ pub struct AppServices {
 
 pub fn app(services: AppServices) -> Router {
     let state = AppState {
+        artifact_service: services.artifact,
         graph_service: services.graph,
         channel_service: services.channel,
         preset_service: services.preset,
@@ -55,6 +58,7 @@ pub fn app(services: AppServices) -> Router {
             get(|| async { axum::Json(Health { status: "ok" }) }),
         )
         .merge(api::graph::routes())
+        .merge(api::artifact::routes())
         .merge(api::channel::routes())
         .merge(api::preset::routes())
         .merge(api::context::routes())

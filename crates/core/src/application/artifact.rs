@@ -30,6 +30,11 @@ pub struct CommitArtifactStagingCommand {
     pub idempotency_key: String,
 }
 
+pub struct ArtifactDownload {
+    pub artifact: ArtifactView,
+    pub bytes: Vec<u8>,
+}
+
 #[async_trait]
 pub trait ArtifactStagingService: Send + Sync {
     async fn create_artifact_staging(
@@ -49,4 +54,8 @@ pub trait ArtifactStagingService: Send + Sync {
         command: CommitArtifactStagingCommand,
     ) -> Result<ArtifactView, ApplicationError>;
     async fn get_artifact(&self, artifact_id: &str) -> Result<ArtifactView, ApplicationError>;
+    async fn download_artifact(
+        &self,
+        artifact_id: &str,
+    ) -> Result<ArtifactDownload, ApplicationError>;
 }

@@ -6,9 +6,9 @@ use std::{
 
 use zhuangsheng_core::{
     application::{
-        channel::ChannelService, context::ContextService, graph::GraphService,
-        memory::MemoryService, preset::ContextPresetService, secret::SecretStoreService,
-        tool::ToolRegistryService,
+        artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
+        graph::GraphService, memory::MemoryService, preset::ContextPresetService,
+        secret::SecretStoreService, tool::ToolRegistryService,
     },
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
@@ -30,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
     let bind_address = env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let store = Arc::new(SqliteStore::connect(database_url).await?);
     let graph_service: Arc<dyn GraphService> = store.clone();
+    let artifact_service: Arc<dyn ArtifactStagingService> = store.clone();
     let channel_service: Arc<dyn ChannelService> = store.clone();
     let preset_service: Arc<dyn ContextPresetService> = store.clone();
     let context_service: Arc<dyn ContextService> = store.clone();
@@ -49,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(
         listener,
         app(AppServices {
+            artifact: artifact_service,
             graph: graph_service,
             channel: channel_service,
             preset: preset_service,

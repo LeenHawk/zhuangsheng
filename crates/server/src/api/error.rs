@@ -34,6 +34,10 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, code, message, false, None)
     }
 
+    pub fn unprocessable(code: &'static str, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, code, message, false, None)
+    }
+
     fn new(
         status: StatusCode,
         code: &'static str,

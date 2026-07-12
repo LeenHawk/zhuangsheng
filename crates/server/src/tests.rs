@@ -12,11 +12,13 @@ use zhuangsheng_storage::SqliteStore;
 
 use crate::{AppServices, StreamEventHub, app};
 
+mod artifact;
 mod config;
 mod secret;
 
 fn test_app(store: Arc<SqliteStore>) -> axum::Router {
     app(AppServices {
+        artifact: store.clone(),
         graph: store.clone(),
         channel: store.clone(),
         preset: store.clone(),

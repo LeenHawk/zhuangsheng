@@ -1,3 +1,5 @@
+pub mod artifact;
+mod artifact_upload;
 pub mod channel;
 pub mod context;
 pub mod error;
@@ -11,8 +13,9 @@ pub mod tool;
 use std::sync::Arc;
 
 use zhuangsheng_core::application::{
-    channel::ChannelService, context::ContextService, graph::GraphService, memory::MemoryService,
-    preset::ContextPresetService, secret::SecretStoreService,
+    artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
+    graph::GraphService, memory::MemoryService, preset::ContextPresetService,
+    secret::SecretStoreService,
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
@@ -20,6 +23,7 @@ use crate::StreamEventHub;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub artifact_service: Arc<dyn ArtifactStagingService>,
     pub graph_service: Arc<dyn GraphService>,
     pub channel_service: Arc<dyn ChannelService>,
     pub preset_service: Arc<dyn ContextPresetService>,

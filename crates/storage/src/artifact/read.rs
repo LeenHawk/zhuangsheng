@@ -1,5 +1,6 @@
 use sea_orm::ConnectionTrait;
 use zhuangsheng_core::{
+    application::artifact::ArtifactDownload,
     artifact::{ArtifactMetadata, ArtifactStatus, ArtifactView},
     canonical,
 };
@@ -98,5 +99,26 @@ impl SqliteStore {
             ));
         }
         load_artifact_view(&self.db, artifact_id).await
+    }
+
+    pub async fn download_artifact_value(
+        &self,
+        artifact_id: &str,
+    ) -> StorageResult<ArtifactDownload> {
+        let artifact = self.get_artifact_view(artifact_id).await?;
+        let row = self
+            .db
+            .query_one_raw(sql(
+                "SELECT content_object_id FROM artifacts WHERE id = ? AND status = 'active'",
+                vec![artifact_id.into()],
+            ))
+            .await?
+            .ok_or_else(|| StorageError::NotFound {
+                kind: "artifact",
+                id: artifact_id.into(),
+            })?;
+        let bytes =
+            load_object_bytes(&self.db, &row.try_get::<String>("", "content_object_id")?).await?;
+        Ok(ArtifactDownload { artifact, bytes })
     }
 }
