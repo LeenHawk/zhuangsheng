@@ -1,7 +1,7 @@
 import { CheckCircle2, CircleAlert } from "lucide-react";
 
 import type {
-  EffectResolutionKind,
+  EffectResolutionSubmission,
   MemoryProposalDecisionInput,
   SecretStoreStatusView,
   ToolApprovalDecisionInput,
@@ -25,7 +25,7 @@ interface StoryWaitActionsProps {
   onSubmitApproval: (wait: WaitView, decisions: ToolApprovalDecisionInput[]) => Promise<void>;
   onSubmitMemoryProposals: (wait: WaitView, decisions: MemoryProposalDecisionInput[]) => Promise<void>;
   onSubmitSecretPassword: (wait: WaitView, mode: "initialize" | "unlock", password: string) => Promise<void>;
-  onResolveEffect: (wait: WaitView, kind: EffectResolutionKind, reason: string) => Promise<void>;
+  onResolveEffect: (wait: WaitView, submission: EffectResolutionSubmission) => Promise<void>;
   onReload: () => void;
 }
 

@@ -10,7 +10,7 @@ import type {
   SecretStoreStatusView,
   ToolApprovalDecisionInput,
   WaitView,
-  EffectResolutionKind,
+  EffectResolutionSubmission,
   MemoryProposalDecisionInput,
 } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
@@ -62,8 +62,7 @@ export interface StoryDetailProps {
   ) => Promise<void>;
   onResolveEffect: (
     wait: WaitView,
-    kind: EffectResolutionKind,
-    reason: string,
+    submission: EffectResolutionSubmission,
   ) => Promise<void>;
   onReloadWaits: () => void;
   onInspectRun: (runId: string) => void;

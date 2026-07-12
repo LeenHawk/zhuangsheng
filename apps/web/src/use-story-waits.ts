@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createIdempotencyKey,
-  type EffectResolutionKind,
+  type EffectResolutionSubmission,
   type SecretStoreStatusView,
   type MemoryProposalDecisionInput,
   type ToolApprovalDecisionInput,
@@ -100,12 +100,11 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
 
   const resolveEffect = async (
     wait: WaitView,
-    kind: EffectResolutionKind,
-    reason: string,
+    submission: EffectResolutionSubmission,
   ) => {
     if (wait.request.kind !== "effect_resolution") return;
     const request = wait.request;
-    const commandKey = `${request.effectId}:${request.effectAttemptId}:${kind}`;
+    const commandKey = `${request.effectId}:${request.effectAttemptId}:${submission.kind}`;
     const idempotencyKey = effectCommandIds.current[commandKey] ?? createIdempotencyKey();
     effectCommandIds.current[commandKey] = idempotencyKey;
     await act(wait, async () => {
@@ -113,15 +112,17 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
       await client.runtime.resolveEffectUnknown(request.effectId, {
         expectedEffectAttemptId: request.effectAttemptId,
         expectedRunControlEpoch: run.controlEpoch,
-        kind,
-        decision: { reason },
-        resultObjectId: null,
-        evidenceObjectId: null,
+        kind: submission.kind,
+        decision: { reason: submission.reason },
+        resultObjectId: submission.resultObjectId,
+        evidenceObjectId: submission.evidenceObjectId,
         idempotencyKey,
       });
-      rememberHandled(wait, kind === "abort_run"
+      rememberHandled(wait, submission.kind === "abort_run"
         ? "已隔离未知结果并终止运行"
-        : "已确认外部操作未执行，运行将安全重试");
+        : submission.kind === "confirm_succeeded"
+          ? "已确认外部操作成功并绑定结果"
+          : "已确认外部操作未执行，运行将安全重试");
       await reload();
     });
   };

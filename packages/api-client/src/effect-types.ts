@@ -15,6 +15,13 @@ export interface ResolveEffectUnknownInput {
   idempotencyKey: string;
 }
 
+export interface EffectResolutionSubmission {
+  kind: EffectResolutionKind;
+  reason: string;
+  resultObjectId: string | null;
+  evidenceObjectId: string | null;
+}
+
 export interface EffectResolutionView {
   resolutionId: string;
   effectId: string;

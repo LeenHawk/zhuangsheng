@@ -109,6 +109,7 @@ describe("StoryWaitActions", () => {
     />);
 
     expect(screen.getByRole("button", { name: "确认未执行，安全重试" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认已成功" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("处理依据"), {
       target: { value: "provider 查询确认没有创建请求" },
     });
@@ -116,8 +117,28 @@ describe("StoryWaitActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认未执行，安全重试" }));
     await waitFor(() => expect(onResolveEffect).toHaveBeenCalledWith(
       wait,
-      "confirm_failed_retry_safe",
-      "provider 查询确认没有创建请求",
+      {
+        kind: "confirm_failed_retry_safe",
+        reason: "provider 查询确认没有创建请求",
+        resultObjectId: null,
+        evidenceObjectId: null,
+      },
+    ));
+    fireEvent.change(screen.getByLabelText("结果 Object ID"), {
+      target: { value: "object_result_1" },
+    });
+    fireEvent.change(screen.getByLabelText(/Evidence Object ID/), {
+      target: { value: "object_evidence_1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认已成功" }));
+    await waitFor(() => expect(onResolveEffect).toHaveBeenCalledWith(
+      wait,
+      {
+        kind: "confirm_succeeded",
+        reason: "provider 查询确认没有创建请求",
+        resultObjectId: "object_result_1",
+        evidenceObjectId: "object_evidence_1",
+      },
     ));
   });
 });
