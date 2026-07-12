@@ -11,7 +11,7 @@ use crate::{
 
 const MAX_ANCESTRY: usize = 10_000;
 
-pub(super) async fn is_reachable<C: ConnectionTrait>(
+pub(crate) async fn is_reachable<C: ConnectionTrait>(
     connection: &C,
     head: &str,
     target: &str,

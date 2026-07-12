@@ -4,7 +4,8 @@ use zhuangsheng_core::{
         ApplicationError,
         conversation::{
             ConversationService, CreateConversationCommand, RegenerateConversationCandidateCommand,
-            RegenerateConversationCandidateResult, SelectConversationCandidateCommand,
+            RegenerateConversationCandidateResult, ResolveCandidateProjectionCommand,
+            ResolveCandidateProjectionResult, SelectConversationCandidateCommand,
             SubmitConversationTurnCommand, SubmitConversationTurnResult,
             UpdateConversationRunProfileCommand,
         },
@@ -68,6 +69,15 @@ impl ConversationService for SqliteStore {
         command: RegenerateConversationCandidateCommand,
     ) -> Result<RegenerateConversationCandidateResult, ApplicationError> {
         self.regenerate_conversation_candidate_at(command, now_ms())
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn resolve_candidate_projection(
+        &self,
+        command: ResolveCandidateProjectionCommand,
+    ) -> Result<ResolveCandidateProjectionResult, ApplicationError> {
+        self.resolve_candidate_projection_at(command, now_ms())
             .await
             .map_err(Into::into)
     }

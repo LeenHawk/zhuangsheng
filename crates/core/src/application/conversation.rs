@@ -72,6 +72,44 @@ pub struct RegenerateConversationCandidateResult {
     pub run: RunView,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CandidateProjectionResolution {
+    AppendAfterCurrent { reason: String },
+    AbandonProjection { reason: String },
+}
+
+impl CandidateProjectionResolution {
+    pub fn reason(&self) -> &str {
+        match self {
+            Self::AppendAfterCurrent { reason } | Self::AbandonProjection { reason } => reason,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveCandidateProjectionCommand {
+    pub turn_id: String,
+    pub run_id: String,
+    pub expected_current_branch_head: String,
+    pub resolution: CandidateProjectionResolution,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveCandidateProjectionResult {
+    pub turn_id: String,
+    pub run_id: String,
+    pub branch_id: String,
+    pub branch_head_commit_id: String,
+    pub status: crate::conversation::TurnCandidateStatus,
+    pub assistant_message_id: Option<String>,
+    pub candidate_commit_id: Option<String>,
+    pub resolved_at: i64,
+}
+
 #[async_trait]
 pub trait ConversationService: Send + Sync {
     async fn create_conversation(
@@ -98,4 +136,8 @@ pub trait ConversationService: Send + Sync {
         &self,
         command: RegenerateConversationCandidateCommand,
     ) -> Result<RegenerateConversationCandidateResult, ApplicationError>;
+    async fn resolve_candidate_projection(
+        &self,
+        command: ResolveCandidateProjectionCommand,
+    ) -> Result<ResolveCandidateProjectionResult, ApplicationError>;
 }

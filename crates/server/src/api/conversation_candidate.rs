@@ -7,8 +7,9 @@ use axum::{
 use serde::Deserialize;
 use zhuangsheng_core::{
     application::conversation::{
-        RegenerateConversationCandidateCommand, RegenerateConversationCandidateResult,
-        SelectConversationCandidateCommand,
+        CandidateProjectionResolution, RegenerateConversationCandidateCommand,
+        RegenerateConversationCandidateResult, ResolveCandidateProjectionCommand,
+        ResolveCandidateProjectionResult, SelectConversationCandidateCommand,
     },
     conversation::{ConversationRunSpec, ConversationSelectionView},
 };
@@ -33,6 +34,13 @@ struct RegenerateCandidateBody {
     run: ConversationRunSpec,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResolveProjectionBody {
+    expected_current_branch_head: String,
+    resolution: CandidateProjectionResolution,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -43,6 +51,31 @@ pub fn routes() -> Router<AppState> {
             "/v1/conversation-turns/{turn_id}/candidates",
             post(regenerate_candidate),
         )
+        .route(
+            "/v1/turns/{turn_id}/candidates/{run_id}/projection-resolution",
+            post(resolve_projection),
+        )
+}
+
+async fn resolve_projection(
+    State(state): State<AppState>,
+    Path((turn_id, run_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: Result<Json<ResolveProjectionBody>, JsonRejection>,
+) -> ApiResult<Json<ResolveCandidateProjectionResult>> {
+    let body = json_body(body)?;
+    Ok(Json(
+        state
+            .conversation_service
+            .resolve_candidate_projection(ResolveCandidateProjectionCommand {
+                turn_id,
+                run_id,
+                expected_current_branch_head: body.expected_current_branch_head,
+                resolution: body.resolution,
+                idempotency_key: required_header(&headers, "idempotency-key")?,
+            })
+            .await?,
+    ))
 }
 
 async fn select_candidate(

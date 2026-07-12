@@ -3,6 +3,8 @@ mod create;
 mod events;
 mod profile;
 mod projection;
+mod projection_resolution;
+mod projection_resolution_support;
 mod read;
 mod receipt;
 mod regenerate;

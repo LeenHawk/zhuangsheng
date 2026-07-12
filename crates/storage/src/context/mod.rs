@@ -15,3 +15,5 @@ pub(crate) mod query;
 pub(crate) mod replay;
 mod service;
 mod snapshot;
+
+pub(crate) use fork_support::is_reachable;

@@ -13,6 +13,8 @@ mod context_replay;
 mod conversation_projection;
 mod conversation_projection_conflict;
 mod conversation_projection_failure;
+mod conversation_projection_resolution;
+mod conversation_projection_resolution_support;
 mod conversation_projection_support;
 mod conversation_regenerate;
 mod conversation_root;

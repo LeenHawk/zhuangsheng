@@ -2,6 +2,11 @@ mod append;
 mod complete;
 mod jobs;
 mod outcome;
+mod payload;
+
+pub(super) use append::append_ready_candidate;
+pub(super) use complete::Candidate;
+pub(super) use payload::{ReplyPayloadError, load_reply_payload};
 
 use crate::{SqliteStore, StorageResult};
 

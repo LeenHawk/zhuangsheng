@@ -163,6 +163,17 @@ type ResolveCandidateProjectionCommand = {
     | { type: "abandon_projection"; reason: string }
   idempotencyKey: string
 }
+
+type ResolveCandidateProjectionResult = {
+  turnId: string
+  runId: string
+  branchId: string
+  branchHeadCommitId: string
+  status: "ready" | "projection_abandoned"
+  assistantMessageId?: string
+  candidateCommitId?: string
+  resolvedAt: number
+}
 ```
 
 Candidate 以 `(turnId, runId)` 唯一，不需要另一份 candidate ID。Message content 存 content object；message row 是领域索引，commit graph 是 branch/history 权威。Turn 不复制聊天内容或 candidate output。
@@ -277,7 +288,7 @@ Assistant commit 与 candidate/message 更新在同一事务，使用 run ID 作
 
 该 CAS 失败时把 Candidate 置为 `projection_conflicted` 并保存脱敏 `projectionErrorRef`；Run 仍是 completed，Candidate 不能伪装成 running/failed/ready。由于 branch head 不回退，协调必须使用 `ResolveCandidateProjectionCommand`，不是重做一次必然失败的旧 CAS。
 
-`append_after_current` 要求 `run.outputCommitId` 在 `expectedCurrentBranchHead` ancestry 中，并在显示 diff/获得授权 reason 后，CAS 当前 head、把 assistant commit 显式追加到当前 head，再置 ready；它不重跑 GraphRun/LLM，并写独立 resolution audit。`abandon_projection` 只把 Candidate 置 `projection_abandoned`，不创建 assistant message。两者都幂等校验当前 head/command digest；head 又前进时返回新 conflict，不静默改挂载点。
+`append_after_current` 要求 `run.outputCommitId` 在 `expectedCurrentBranchHead` ancestry 中，并在显示 diff/获得授权 reason 后，CAS 当前 head、把 assistant commit 显式追加到当前 head，再置 ready；它不重跑 GraphRun/LLM，并写独立 resolution audit。`abandon_projection` 只把 Candidate 置 `projection_abandoned`，不创建 assistant message。两者都幂等校验当前 head/command digest；head 又前进时返回新 conflict，不静默改挂载点。原 `projectionErrorRef` 和 projector job 的 `conflicted` 结果保留为事实记录，operator resolution 另由 Conversation domain event 和 application receipt 审计，不能覆盖成一次未发生冲突的普通投影。
 
 Failed/cancelled run 将 candidate 标记为相应 terminal 状态，不创建正式 assistant message，也不移动 Conversation active head。Partial stream 只用于 UI；用户显式“保留部分回复”时，应用服务创建一条来源标记明确的新 message/commit，而不是把 ephemeral token 当 finalized run output。
 

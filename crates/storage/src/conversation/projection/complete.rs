@@ -4,7 +4,7 @@ use crate::{StorageError, StorageResult, graph::helpers::sql};
 
 use super::{append::project_completed, outcome::finish_job};
 
-pub(super) struct Candidate {
+pub(crate) struct Candidate {
     pub terminal_status: String,
     pub turn_id: String,
     pub branch_id: String,

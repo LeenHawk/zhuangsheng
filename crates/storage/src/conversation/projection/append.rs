@@ -5,21 +5,21 @@ use zhuangsheng_core::{
     canonical,
     conversation::{
         AssistantReplyPayloadV1, ConversationContextMessageV1, ConversationMessageRole,
-        ConversationMessageSource, assistant_reply_payload_v1_schema,
+        ConversationMessageSource,
     },
-    schema,
     state::{ActorKind, ActorRef, AggregateKind, JsonPatchOp, StatePatch},
 };
 
 use crate::{
     StorageError, StorageResult,
     context::commit::commit_patch,
-    graph::helpers::{load_object_json, new_id, put_inline_object, sql},
+    graph::helpers::{new_id, put_inline_object, sql},
 };
 
 use super::{
     complete::Candidate,
     outcome::{finish_job, permanent_failure, projection_conflict},
+    payload::{ReplyPayloadError, load_reply_payload},
 };
 use crate::conversation::events::append_event;
 use crate::conversation::selection::auto_select;
@@ -43,59 +43,43 @@ pub(super) async fn project_completed<C: ConnectionTrait>(
     if head.try_get::<String>("", "head_commit_id")? != output_commit_id {
         return projection_conflict(connection, run_id, "candidate branch head changed", now).await;
     }
-    let rows = connection.query_all_raw(sql(
-        "SELECT value_object_id FROM run_output_values WHERE run_id = ? AND output_key = ? ORDER BY output_seq",
-        vec![run_id.into(), candidate.reply_output_key.clone().into()],
-    )).await?;
-    if rows.len() != 1 {
-        return permanent_failure(
-            connection,
-            run_id,
-            "reply output cardinality is invalid",
-            now,
-        )
-        .await;
-    }
-    let value_id: String = rows[0].try_get("", "value_object_id")?;
-    let value: serde_json::Value = match load_object_json(connection, &value_id).await {
-        Ok(value) => value,
-        Err(StorageError::Integrity(_)) => {
-            return permanent_failure(connection, run_id, "reply output is corrupt", now).await;
-        }
-        Err(error) => return Err(error),
-    };
-    if schema::validate(&assistant_reply_payload_v1_schema(), &value).is_err() {
-        return permanent_failure(connection, run_id, "reply output schema is invalid", now).await;
-    }
-    let payload: AssistantReplyPayloadV1 = match serde_json::from_value(value) {
+    let payload = match load_reply_payload(connection, run_id, &candidate.reply_output_key).await {
         Ok(payload) => payload,
-        Err(_) => {
-            return permanent_failure(connection, run_id, "reply output cannot be decoded", now)
-                .await;
+        Err(ReplyPayloadError::Invalid(message)) => {
+            return permanent_failure(connection, run_id, message, now).await;
         }
+        Err(ReplyPayloadError::Storage(error)) => return Err(error),
     };
-    if payload.validate().is_err() {
-        return permanent_failure(connection, run_id, "reply content is invalid", now).await;
-    }
-    append_assistant(
+    append_ready_candidate(
         connection,
         run_id,
         candidate,
         output_commit_id,
         payload,
+        "running",
+        true,
         now,
     )
     .await
+    .map(|_| ())
 }
 
-async fn append_assistant<C: ConnectionTrait>(
+pub(crate) struct ReadyCandidate {
+    pub message_id: String,
+    pub commit_id: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn append_ready_candidate<C: ConnectionTrait>(
     connection: &C,
     run_id: &str,
     candidate: Candidate,
-    output_commit_id: String,
+    base_commit_id: String,
     payload: AssistantReplyPayloadV1,
+    expected_candidate_status: &str,
+    finish_claimed_job: bool,
     now: i64,
-) -> StorageResult<()> {
+) -> StorageResult<ReadyCandidate> {
     let message_id = new_id("message");
     let content_id =
         put_inline_object(connection, &canonical::to_vec(&payload.content)?, now).await?;
@@ -117,7 +101,7 @@ async fn append_assistant<C: ConnectionTrait>(
                 aggregate_kind: AggregateKind::WorkingContext,
                 aggregate_id: candidate.context_id.clone(),
                 lineage_key: candidate.branch_id.clone(),
-                base_commit_id: output_commit_id,
+                base_commit_id,
                 operation_id: format!("conversation-assistant-message:{message_id}"),
                 ops: vec![JsonPatchOp::Append {
                     path: "/messages".into(),
@@ -144,6 +128,7 @@ async fn append_assistant<C: ConnectionTrait>(
         &message,
         &commit.id,
         &content_id,
+        expected_candidate_status,
         now,
     )
     .await?;
@@ -166,7 +151,13 @@ async fn append_assistant<C: ConnectionTrait>(
         now,
     )
     .await?;
-    finish_job(connection, run_id, "done", None, now).await
+    if finish_claimed_job {
+        finish_job(connection, run_id, "done", None, now).await?;
+    }
+    Ok(ReadyCandidate {
+        message_id,
+        commit_id: commit.id,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -177,6 +168,7 @@ async fn insert_ready_rows<C: ConnectionTrait>(
     message: &ConversationContextMessageV1,
     commit_id: &str,
     content_id: &str,
+    expected_candidate_status: &str,
     now: i64,
 ) -> StorageResult<()> {
     connection.execute_raw(sql(
@@ -188,8 +180,8 @@ async fn insert_ready_rows<C: ConnectionTrait>(
         vec![content_id.into(), message.message_id.clone().into(), now.into()],
     )).await?;
     let updated = connection.execute_raw(sql(
-        "UPDATE turn_candidates SET status = 'ready', assistant_message_id = ?, candidate_commit_id = ? WHERE run_id = ? AND status = 'running'",
-        vec![message.message_id.clone().into(), commit_id.into(), run_id.into()],
+        "UPDATE turn_candidates SET status = 'ready', assistant_message_id = ?, candidate_commit_id = ? WHERE run_id = ? AND status = ?",
+        vec![message.message_id.clone().into(), commit_id.into(), run_id.into(), expected_candidate_status.into()],
     )).await?;
     if updated.rows_affected() != 1 {
         return Err(StorageError::Conflict("candidate_status"));

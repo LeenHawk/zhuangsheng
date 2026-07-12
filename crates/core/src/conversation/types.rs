@@ -180,6 +180,12 @@ pub struct ConversationTurnView {
 #[serde(rename_all = "snake_case")]
 pub enum TurnCandidateStatus {
     Running,
+    Ready,
+    Failed,
+    Cancelled,
+    ProjectionConflicted,
+    ProjectionFailed,
+    ProjectionAbandoned,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

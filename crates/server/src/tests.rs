@@ -19,6 +19,7 @@ mod context_merge;
 mod context_merge_resolution;
 mod conversation;
 mod conversation_profile;
+mod conversation_projection_resolution;
 mod conversation_turn;
 mod secret;
 
