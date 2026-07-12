@@ -101,7 +101,7 @@ describe("StoryDetail", () => {
     await waitFor(() => expect(onSubmitMessage).toHaveBeenCalledWith("打开最后一卷档案。"));
   });
 
-  it("offers regenerate and selection only on the latest durable turn", async () => {
+  it("confirms historical branch selection and keeps regenerate on the latest turn", async () => {
     const onRegenerateCandidate = vi.fn(async () => undefined);
     const onSelectCandidate = vi.fn(async () => undefined);
     render(<StoryDetail
@@ -140,6 +140,19 @@ describe("StoryDetail", () => {
               projectionError: null, createdAt: 3,
             },
           ],
+        }, {
+          id: "turn_2",
+          conversationId: story.id,
+          userMessageId: "message_2",
+          userCommitId: "commit_user_2",
+          createdAt: 4,
+          selectedRunId: "run_3",
+          candidates: [{
+            turnId: "turn_2", runId: "run_3", branchId: "branch_3",
+            baseCommitId: "commit_user_2", replyOutputKey: "reply", status: "ready",
+            assistantMessageId: "message_c", candidateCommitId: "commit_selected",
+            projectionError: null, createdAt: 5,
+          }],
         }],
       }}
       graphOptions={[option]}
@@ -180,10 +193,13 @@ describe("StoryDetail", () => {
       onInspectRun={() => undefined}
     />);
 
-    fireEvent.click(screen.getByRole("button", { name: "采用这个回复" }));
+    fireEvent.click(screen.getByRole("button", { name: "从此处继续 run_2" }));
+    expect(onSelectCandidate).not.toHaveBeenCalled();
+    expect(screen.getByText(/后续 1 轮历史仍会保留/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认从此处继续" }));
     await waitFor(() => expect(onSelectCandidate).toHaveBeenCalledWith("turn_1", "run_2"));
     fireEvent.click(screen.getByRole("button", { name: "再生成一个" }));
-    await waitFor(() => expect(onRegenerateCandidate).toHaveBeenCalledWith("turn_1", "commit_user"));
+    await waitFor(() => expect(onRegenerateCandidate).toHaveBeenCalledWith("turn_2", "commit_user_2"));
     expect(screen.getByText("未提交实时预览")).toBeInTheDocument();
     expect(screen.getByText("月光落在档案封面上。")).toBeInTheDocument();
     expect(screen.getByText("正在恢复连接")).toBeInTheDocument();

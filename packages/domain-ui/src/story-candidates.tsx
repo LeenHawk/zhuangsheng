@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Eye, RefreshCw } from "lucide-react";
 
 import type { CandidateStatus, ConversationTimelineView } from "@zhuangsheng/api-client";
@@ -26,7 +27,20 @@ const statusLabel: Record<CandidateStatus, readonly [string, "running" | "succes
 };
 
 export function StoryCandidates(props: StoryCandidatesProps) {
+  const [confirmSelection, setConfirmSelection] = useState<{
+    turnId: string;
+    runId: string;
+    laterTurns: number;
+  } | null>(null);
   const turns = props.timeline?.turns ?? [];
+  const select = async (turnId: string, runId: string) => {
+    try {
+      await props.onSelect(turnId, runId);
+      setConfirmSelection(null);
+    } catch {
+      // The route owner retains the authoritative command error.
+    }
+  };
   return (
     <Card className="p-5">
       <h2 className="font-semibold">回复候选</h2>
@@ -42,24 +56,43 @@ export function StoryCandidates(props: StoryCandidatesProps) {
               {turn.candidates.map((candidate) => {
                 const [label, tone] = statusLabel[candidate.status];
                 const selected = turn.selectedRunId === candidate.runId;
+                const canSelect = candidate.status === "ready" && (!selected || !latest);
+                const confirming = confirmSelection?.turnId === turn.id
+                  && confirmSelection.runId === candidate.runId;
                 return (
                   <div key={candidate.runId} className="rounded-xl border border-default p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono text-xs text-secondary">{shortId(candidate.runId)}</span>
-                      <Badge tone={selected ? "info" : tone}>{selected ? "当前采用" : label}</Badge>
+                      <Badge tone={selected ? (latest ? "info" : "neutral") : tone}>{selected ? (latest ? "当前采用" : "曾采用") : label}</Badge>
                     </div>
                     {candidate.projectionError && <p className="mt-2 text-xs text-warning">{candidate.projectionError.safeMessage}</p>}
                     <Button className="mt-3 w-full" size="compact" variant="ghost" onClick={() => props.onInspectRun(candidate.runId)}><Eye className="size-3.5" />检查运行</Button>
-                    {latest && candidate.status === "ready" && !selected && (
+                    {canSelect && !confirming && (
                       <Button
                         className="mt-3 w-full"
                         size="compact"
                         variant="secondary"
                         disabled={props.pending}
-                        onClick={() => void safely(() => props.onSelect(turn.id, candidate.runId))}
+                        aria-label={`${latest ? "采用这个回复" : "从此处继续"} ${shortId(candidate.runId)}`}
+                        onClick={() => latest
+                          ? void select(turn.id, candidate.runId)
+                          : setConfirmSelection({
+                              turnId: turn.id,
+                              runId: candidate.runId,
+                              laterTurns: turns.length - index - 1,
+                            })}
                       >
-                        采用这个回复
+                        {latest ? "采用这个回复" : "从此处继续"}
                       </Button>
+                    )}
+                    {confirming && (
+                      <div className="mt-3 rounded-xl border border-warning/30 bg-warning/5 p-3 text-xs">
+                        <p className="text-warning">这会从该回复创建新分支；后续 {confirmSelection.laterTurns} 轮历史仍会保留。</p>
+                        <div className="mt-2 flex gap-2">
+                          <Button size="compact" disabled={props.pending} onClick={() => void select(turn.id, candidate.runId)}>确认从此处继续</Button>
+                          <Button size="compact" variant="ghost" onClick={() => setConfirmSelection(null)}>取消</Button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 );

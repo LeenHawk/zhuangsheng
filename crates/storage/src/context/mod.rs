@@ -17,4 +17,5 @@ pub(crate) mod replay;
 mod service;
 mod snapshot;
 
+pub(crate) use fork::fork_branch_at_commit;
 pub(crate) use fork_support::is_reachable;

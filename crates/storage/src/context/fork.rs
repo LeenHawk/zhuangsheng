@@ -54,35 +54,14 @@ impl SqliteStore {
         if !is_reachable(&transaction, &source_head, &command.from_commit_id).await? {
             return Err(StorageError::Conflict("fork_commit_not_reachable"));
         }
-        let reconstructed = reconstruct(&transaction, &command.from_commit_id).await?;
-        if reconstructed.context_id != command.context_id {
-            return Err(StorageError::Conflict("fork_context_mismatch"));
-        }
-        let branch_id = new_id("branch");
-        transaction.execute_raw(sql(
-            "INSERT INTO context_branches (id, context_id, parent_branch_id, fork_commit_id, head_commit_id, creation_operation_id, status, pinned, audit_hold, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, ?)",
-            vec![branch_id.clone().into(), command.context_id.clone().into(), command.source_branch_id.clone().into(), command.from_commit_id.clone().into(), command.from_commit_id.clone().into(), format!("fork-context:{branch_id}").into(), now.into(), now.into()],
-        )).await?;
-        transaction.execute_raw(sql(
-            "INSERT INTO materialized_projections (aggregate_kind, aggregate_id, lineage_key, head_commit_id, projection_json, schema_version, updated_at) VALUES ('working_context', ?, ?, ?, ?, 1, ?)",
-            vec![command.context_id.clone().into(), branch_id.clone().into(), command.from_commit_id.clone().into(), canonical::to_string(&reconstructed.value)?.into(), now.into()],
-        )).await?;
-        append_event(
+        let result = fork_branch_at_commit(
             &transaction,
             &command.context_id,
-            &branch_id,
             &command.source_branch_id,
             &command.from_commit_id,
             now,
         )
         .await?;
-        let result = ContextBranchView {
-            context_id: command.context_id,
-            branch_id,
-            head_commit_id: command.from_commit_id.clone(),
-            fork_commit_id: command.from_commit_id,
-            status: "active".into(),
-        };
         finish_receipt(
             &transaction,
             &scope,
@@ -95,6 +74,44 @@ impl SqliteStore {
         transaction.commit().await?;
         Ok(result)
     }
+}
+
+pub(crate) async fn fork_branch_at_commit<C: ConnectionTrait>(
+    connection: &C,
+    context_id: &str,
+    source_branch_id: &str,
+    from_commit_id: &str,
+    now: i64,
+) -> StorageResult<ContextBranchView> {
+    let reconstructed = reconstruct(connection, from_commit_id).await?;
+    if reconstructed.context_id != context_id {
+        return Err(StorageError::Conflict("fork_context_mismatch"));
+    }
+    let branch_id = new_id("branch");
+    connection.execute_raw(sql(
+        "INSERT INTO context_branches (id, context_id, parent_branch_id, fork_commit_id, head_commit_id, creation_operation_id, status, pinned, audit_hold, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, ?)",
+        vec![branch_id.clone().into(), context_id.into(), source_branch_id.into(), from_commit_id.into(), from_commit_id.into(), format!("fork-context:{branch_id}").into(), now.into(), now.into()],
+    )).await?;
+    connection.execute_raw(sql(
+        "INSERT INTO materialized_projections (aggregate_kind, aggregate_id, lineage_key, head_commit_id, projection_json, schema_version, updated_at) VALUES ('working_context', ?, ?, ?, ?, 1, ?)",
+        vec![context_id.into(), branch_id.clone().into(), from_commit_id.into(), canonical::to_string(&reconstructed.value)?.into(), now.into()],
+    )).await?;
+    append_event(
+        connection,
+        context_id,
+        &branch_id,
+        source_branch_id,
+        from_commit_id,
+        now,
+    )
+    .await?;
+    Ok(ContextBranchView {
+        context_id: context_id.into(),
+        branch_id,
+        head_commit_id: from_commit_id.into(),
+        fork_commit_id: from_commit_id.into(),
+        status: "active".into(),
+    })
 }
 
 fn validate(command: &ForkContextCommand) -> StorageResult<()> {

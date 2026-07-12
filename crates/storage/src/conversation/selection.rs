@@ -5,7 +5,11 @@ use zhuangsheng_core::{
     conversation::ConversationSelectionView,
 };
 
-use crate::{SqliteStore, StorageError, StorageResult, graph::helpers::sql};
+use crate::{
+    SqliteStore, StorageError, StorageResult,
+    context::{fork_branch_at_commit, is_reachable},
+    graph::helpers::sql,
+};
 
 use super::{
     events::append_event,
@@ -38,7 +42,7 @@ impl SqliteStore {
             return Ok(result);
         }
         let row = transaction.query_one_raw(sql(
-            "SELECT t.conversation_id, t.user_commit_id, c.context_id, tc.branch_id, tc.base_commit_id, tc.candidate_commit_id, tc.status, b.context_id AS branch_context, b.head_commit_id AS branch_head, vc.aggregate_id AS commit_context, vc.lineage_key AS commit_branch FROM turn_candidates tc JOIN conversation_turns t ON t.id = tc.turn_id JOIN conversations c ON c.id = t.conversation_id JOIN context_branches b ON b.id = tc.branch_id LEFT JOIN version_commits vc ON vc.id = tc.candidate_commit_id AND vc.aggregate_kind = 'working_context' WHERE tc.turn_id = ? AND tc.run_id = ?",
+            "SELECT t.conversation_id, t.user_commit_id, c.context_id, tc.branch_id, tc.base_commit_id, tc.candidate_commit_id, tc.status, b.context_id AS branch_context, b.head_commit_id AS branch_head, b.status AS branch_status, vc.aggregate_id AS commit_context, vc.lineage_key AS commit_branch FROM turn_candidates tc JOIN conversation_turns t ON t.id = tc.turn_id JOIN conversations c ON c.id = t.conversation_id JOIN context_branches b ON b.id = tc.branch_id LEFT JOIN version_commits vc ON vc.id = tc.candidate_commit_id AND vc.aggregate_kind = 'working_context' WHERE tc.turn_id = ? AND tc.run_id = ?",
             vec![command.turn_id.clone().into(), command.selected_run_id.clone().into()],
         )).await?.ok_or_else(|| StorageError::NotFound { kind: "turn_candidate", id: command.selected_run_id.clone() })?;
         if row.try_get::<String>("", "status")? != "ready" {
@@ -48,10 +52,11 @@ impl SqliteStore {
         let context_id: String = row.try_get("", "context_id")?;
         let branch_id: String = row.try_get("", "branch_id")?;
         let commit_id: String = row.try_get("", "candidate_commit_id")?;
+        let branch_head: String = row.try_get("", "branch_head")?;
         if row.try_get::<String>("", "base_commit_id")?
             != row.try_get::<String>("", "user_commit_id")?
             || row.try_get::<String>("", "branch_context")? != context_id
-            || row.try_get::<String>("", "branch_head")? != commit_id
+            || row.try_get::<String>("", "branch_status")? != "active"
             || row.try_get::<String>("", "commit_context")? != context_id
             || row.try_get::<String>("", "commit_branch")? != branch_id
         {
@@ -59,9 +64,21 @@ impl SqliteStore {
                 "ready candidate lineage is corrupt".into(),
             ));
         }
+        let selected_branch_id = if branch_head == commit_id {
+            branch_id
+        } else {
+            if !is_reachable(&transaction, &branch_head, &commit_id).await? {
+                return Err(StorageError::Integrity(
+                    "ready candidate commit is not in its branch history".into(),
+                ));
+            }
+            fork_branch_at_commit(&transaction, &context_id, &branch_id, &commit_id, now)
+                .await?
+                .branch_id
+        };
         let updated = transaction.execute_raw(sql(
             "UPDATE conversations SET active_branch_id = ?, active_head_commit_id = ?, updated_at = ? WHERE id = ? AND active_head_commit_id = ?",
-            vec![branch_id.clone().into(), commit_id.clone().into(), now.into(), conversation_id.clone().into(), command.expected_conversation_head_commit_id.clone().into()],
+            vec![selected_branch_id.clone().into(), commit_id.clone().into(), now.into(), conversation_id.clone().into(), command.expected_conversation_head_commit_id.clone().into()],
         )).await?;
         if updated.rows_affected() != 1 {
             return Err(StorageError::Conflict("conversation_head"));
@@ -73,7 +90,7 @@ impl SqliteStore {
         let result = ConversationSelectionView {
             turn_id: command.turn_id,
             selected_run_id: command.selected_run_id,
-            selected_branch_id: branch_id,
+            selected_branch_id,
             selected_commit_id: commit_id,
             selected_at: now,
         };
