@@ -12,13 +12,16 @@ use zhuangsheng_core::{
     },
     conversation::{
         ConversationListView, ConversationRunProfile, ConversationSelectionView,
-        ConversationTimelineView, ConversationView,
+        ConversationTimelineView, ConversationTurnDetailView, ConversationView,
     },
 };
 
 use crate::{SqliteStore, graph::helpers::now_ms};
 
-use super::{read::load_conversation, read_list::load_conversations, read_timeline::load_timeline};
+use super::{
+    read::load_conversation, read_list::load_conversations, read_timeline::load_timeline,
+    read_turn::load_turn_candidates,
+};
 
 #[async_trait]
 impl ConversationService for SqliteStore {
@@ -49,6 +52,15 @@ impl ConversationService for SqliteStore {
         conversation_id: &str,
     ) -> Result<ConversationTimelineView, ApplicationError> {
         load_timeline(&self.db, conversation_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn get_turn_candidates(
+        &self,
+        turn_id: &str,
+    ) -> Result<ConversationTurnDetailView, ApplicationError> {
+        load_turn_candidates(&self.db, turn_id)
             .await
             .map_err(Into::into)
     }

@@ -1,5 +1,6 @@
 use sea_orm::ConnectionTrait;
 use zhuangsheng_core::application::context::{ContextCommitView, WorkingContextView};
+use zhuangsheng_core::runtime::ContextBranchView;
 use zhuangsheng_core::state::{ActorKind, ActorRef};
 
 use crate::{
@@ -72,6 +73,65 @@ pub(crate) async fn load_commit<C: ConnectionTrait>(
         origin_node_instance_id: row.try_get("", "origin_node_instance_id")?,
         created_at: row.try_get("", "created_at")?,
     })
+}
+
+pub(crate) async fn list_branches<C: ConnectionTrait>(
+    connection: &C,
+    context_id: &str,
+) -> StorageResult<Vec<ContextBranchView>> {
+    ensure_context(connection, context_id).await?;
+    connection
+        .query_all_raw(sql(
+            "SELECT id, head_commit_id, fork_commit_id, status FROM context_branches WHERE context_id = ? ORDER BY created_at, id LIMIT 1000",
+            vec![context_id.into()],
+        ))
+        .await?
+        .into_iter()
+        .map(|row| {
+            Ok(ContextBranchView {
+                context_id: context_id.into(),
+                branch_id: row.try_get("", "id")?,
+                head_commit_id: row.try_get("", "head_commit_id")?,
+                fork_commit_id: row.try_get("", "fork_commit_id")?,
+                status: row.try_get("", "status")?,
+            })
+        })
+        .collect()
+}
+
+pub(crate) async fn list_commits<C: ConnectionTrait>(
+    connection: &C,
+    context_id: &str,
+) -> StorageResult<Vec<ContextCommitView>> {
+    ensure_context(connection, context_id).await?;
+    let rows = connection
+        .query_all_raw(sql(
+            "SELECT id FROM version_commits WHERE aggregate_kind = 'working_context' AND aggregate_id = ? ORDER BY created_at, lineage_key, sequence_no, id LIMIT 5000",
+            vec![context_id.into()],
+        ))
+        .await?;
+    let mut commits = Vec::with_capacity(rows.len());
+    for row in rows {
+        commits.push(load_commit(connection, &row.try_get::<String>("", "id")?).await?);
+    }
+    Ok(commits)
+}
+
+async fn ensure_context<C: ConnectionTrait>(connection: &C, context_id: &str) -> StorageResult<()> {
+    if connection
+        .query_one_raw(sql(
+            "SELECT id FROM contexts WHERE id = ?",
+            vec![context_id.into()],
+        ))
+        .await?
+        .is_none()
+    {
+        return Err(StorageError::NotFound {
+            kind: "context",
+            id: context_id.into(),
+        });
+    }
+    Ok(())
 }
 
 fn parse_actor(value: &str) -> StorageResult<ActorKind> {

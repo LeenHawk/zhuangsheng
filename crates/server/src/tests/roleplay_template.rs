@@ -133,6 +133,23 @@ async fn user_mode_template_builds_an_applied_compatible_graph_idempotently() {
     )
     .await;
     assert_eq!(compatibility["mode"], "editable");
+    let settings = call(
+        &app,
+        request(
+            "GET",
+            &format!(
+                "/v1/graph-revisions/{}/roleplay-settings",
+                revision["id"].as_str().unwrap()
+            ),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(settings["profileVersion"], 1);
+    assert_eq!(settings["model"]["modelId"], "role-model");
+    assert_eq!(settings["contextPresetId"], preset_id);
     assert_eq!(
         revision["definition"]["nodes"][1]["model"]["modelId"],
         "role-model"

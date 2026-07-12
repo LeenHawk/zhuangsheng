@@ -60,6 +60,7 @@ pub fn app(services: AppServices) -> Router {
             get(|| async { axum::Json(Health { status: "ok" }) }),
         )
         .merge(api::graph::routes())
+        .merge(api::graph_roleplay::routes())
         .merge(api::artifact::routes())
         .merge(api::channel::routes())
         .merge(api::preset::routes())

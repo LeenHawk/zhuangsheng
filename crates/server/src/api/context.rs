@@ -1,12 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Path, State, rejection::JsonRejection},
+    extract::{Path, Query, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
 use serde::Deserialize;
 use zhuangsheng_core::application::context::{
-    CommitContextPatchCommand, ContextCommitView, CreateVersionSnapshotCommand,
+    CommitContextPatchCommand, ContextCommitView, ContextDiffView, CreateVersionSnapshotCommand,
     VersionSnapshotView, WorkingContextView,
 };
 use zhuangsheng_core::runtime::{ContextBranchView, ForkContextCommand};
@@ -32,13 +32,27 @@ struct ForkContextBody {
     expected_source_head: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct DiffQuery {
+    from: String,
+    to: String,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/v1/contexts/{context_id}/branches/{branch_id}",
             get(get_context),
         )
-        .route("/v1/contexts/{context_id}/branches", post(fork_context))
+        .route(
+            "/v1/contexts/{context_id}/branches",
+            get(list_context_branches).post(fork_context),
+        )
+        .route(
+            "/v1/contexts/{context_id}/commits",
+            get(list_context_commits),
+        )
+        .route("/v1/contexts/{context_id}/diff", get(diff_context))
         .route(
             "/v1/contexts/{context_id}/branches/{branch_id}/commits",
             post(commit_patch),
@@ -51,6 +65,43 @@ pub fn routes() -> Router<AppState> {
             "/v1/context-commits/{commit_id}/snapshot",
             post(create_snapshot),
         )
+}
+
+async fn list_context_branches(
+    State(state): State<AppState>,
+    Path(context_id): Path<String>,
+) -> ApiResult<Json<Vec<ContextBranchView>>> {
+    Ok(Json(
+        state
+            .context_service
+            .list_context_branches(&context_id)
+            .await?,
+    ))
+}
+
+async fn list_context_commits(
+    State(state): State<AppState>,
+    Path(context_id): Path<String>,
+) -> ApiResult<Json<Vec<ContextCommitView>>> {
+    Ok(Json(
+        state
+            .context_service
+            .list_context_commits(&context_id)
+            .await?,
+    ))
+}
+
+async fn diff_context(
+    State(state): State<AppState>,
+    Path(context_id): Path<String>,
+    Query(query): Query<DiffQuery>,
+) -> ApiResult<Json<ContextDiffView>> {
+    Ok(Json(
+        state
+            .context_service
+            .diff_context_commits(&context_id, &query.from, &query.to)
+            .await?,
+    ))
 }
 
 async fn fork_context(

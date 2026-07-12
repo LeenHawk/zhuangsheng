@@ -7,6 +7,7 @@ pub mod conversation;
 pub mod conversation_candidate;
 pub mod error;
 pub mod graph;
+pub mod graph_roleplay;
 pub mod memory;
 pub mod preset;
 pub mod runtime;

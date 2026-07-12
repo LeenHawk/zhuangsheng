@@ -1,4 +1,5 @@
 pub(crate) mod commit;
+mod diff;
 mod fork;
 mod fork_support;
 mod merge;

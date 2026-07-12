@@ -3,6 +3,7 @@ mod contracts;
 mod contracts_tests;
 mod roleplay;
 mod roleplay_memory;
+mod roleplay_settings;
 mod selection;
 mod types;
 mod views;
@@ -13,6 +14,7 @@ pub use contracts::{
     validate_conversation_run_contract,
 };
 pub use roleplay::*;
+pub use roleplay_settings::*;
 pub use selection::*;
 pub use types::*;
 pub use views::*;

@@ -72,4 +72,40 @@ async fn context_fork_http_creates_a_historical_branch_idempotently() {
         projection["value"],
         json!({"schemaVersion":1,"messages":[]})
     );
+    let branches = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/contexts/{context_id}/branches"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(branches.as_array().unwrap().len(), 2);
+    let commits = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/contexts/{context_id}/commits"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(commits.as_array().unwrap().len(), 1);
+    let diff = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/contexts/{context_id}/diff?from={root_commit_id}&to={root_commit_id}"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(diff["changes"], json!([]));
 }

@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
-    routing::{post, put},
+    routing::{get, post, put},
 };
 use serde::Deserialize;
 use zhuangsheng_core::{
@@ -11,7 +11,7 @@ use zhuangsheng_core::{
         RegenerateConversationCandidateResult, ResolveCandidateProjectionCommand,
         ResolveCandidateProjectionResult, SelectConversationCandidateCommand,
     },
-    conversation::{ConversationRunSpec, ConversationSelectionView},
+    conversation::{ConversationRunSpec, ConversationSelectionView, ConversationTurnDetailView},
 };
 
 use super::{
@@ -43,6 +43,7 @@ struct ResolveProjectionBody {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/v1/turns/{turn_id}/candidates", get(get_candidates))
         .route("/v1/turns/{turn_id}/selection", put(select_candidate))
         .route(
             "/v1/turns/{turn_id}/regenerations",
@@ -52,6 +53,18 @@ pub fn routes() -> Router<AppState> {
             "/v1/turns/{turn_id}/candidates/{run_id}/projection-resolution",
             post(resolve_projection),
         )
+}
+
+async fn get_candidates(
+    State(state): State<AppState>,
+    Path(turn_id): Path<String>,
+) -> ApiResult<Json<ConversationTurnDetailView>> {
+    Ok(Json(
+        state
+            .conversation_service
+            .get_turn_candidates(&turn_id)
+            .await?,
+    ))
 }
 
 async fn resolve_projection(

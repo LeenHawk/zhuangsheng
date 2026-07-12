@@ -41,6 +41,23 @@ pub struct WorkingContextView {
     pub value: Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextDiffEntry {
+    pub path: String,
+    pub before: Option<Value>,
+    pub after: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextDiffView {
+    pub context_id: String,
+    pub from_commit_id: String,
+    pub to_commit_id: String,
+    pub changes: Vec<ContextDiffEntry>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateVersionSnapshotCommand {
@@ -78,6 +95,23 @@ pub trait ContextService: Send + Sync {
         &self,
         commit_id: &str,
     ) -> Result<WorkingContextView, ApplicationError>;
+
+    async fn list_context_branches(
+        &self,
+        context_id: &str,
+    ) -> Result<Vec<crate::runtime::ContextBranchView>, ApplicationError>;
+
+    async fn list_context_commits(
+        &self,
+        context_id: &str,
+    ) -> Result<Vec<ContextCommitView>, ApplicationError>;
+
+    async fn diff_context_commits(
+        &self,
+        context_id: &str,
+        from_commit_id: &str,
+        to_commit_id: &str,
+    ) -> Result<ContextDiffView, ApplicationError>;
 
     async fn create_version_snapshot(
         &self,

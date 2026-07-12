@@ -2,7 +2,7 @@ use sea_orm::ConnectionTrait;
 use zhuangsheng_core::{
     conversation::{
         RolePlayCompatibilityAnalysis, RolePlayCompatibilityView, RolePlayGraphOptionView,
-        analyze_roleplay_compatibility,
+        RolePlaySettingsView, analyze_roleplay_compatibility,
     },
     graph::{AppliedGraphDefinition, DraftNodeKind},
     llm::context::ContextAssemblyConfig,
@@ -45,6 +45,46 @@ impl SqliteStore {
             .await?
             .compatibility)
     }
+
+    pub async fn get_roleplay_settings(
+        &self,
+        revision_id: &str,
+    ) -> StorageResult<RolePlaySettingsView> {
+        let revision = load_revision(&self.db, revision_id).await?;
+        let analysis = analyze_with_preset(&self.db, &revision.definition).await?;
+        let mut nodes = revision
+            .definition
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.kind {
+                DraftNodeKind::Llm { config } => Some((node.id.as_str(), config.as_ref())),
+                _ => None,
+            });
+        let (node_id, config) = nodes.next().ok_or_else(settings_unavailable)?;
+        if nodes.next().is_some() {
+            return Err(settings_unavailable());
+        }
+        Ok(RolePlaySettingsView {
+            profile_version: 1,
+            revision_id: revision_id.into(),
+            primary_llm_node_id: node_id.into(),
+            compatibility: analysis.compatibility,
+            model: config.model.clone(),
+            generation: config
+                .request
+                .as_ref()
+                .and_then(|request| request.generation.clone()),
+            streaming: config.streaming.clone(),
+            context_preset_id: match &config.context {
+                ContextAssemblyConfig::Preset { preset_id } => Some(preset_id.clone()),
+                ContextAssemblyConfig::Inline { .. } => None,
+            },
+        })
+    }
+}
+
+fn settings_unavailable() -> StorageError {
+    StorageError::InvalidArgument("role-play settings require exactly one LLM node".into())
 }
 
 async fn analyze_with_preset<C: ConnectionTrait>(
