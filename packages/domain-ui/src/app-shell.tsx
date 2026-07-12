@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { BookOpen, Brain, GitBranch, Orbit, Settings, Sparkles, Workflow } from "lucide-react";
+import { BookOpen, Brain, FileArchive, GitBranch, Orbit, Settings, Sparkles, Workflow } from "lucide-react";
 
 import type { UiExperienceMode } from "@zhuangsheng/api-client";
 import { Badge, cn } from "@zhuangsheng/ui";
 
-type Section = "stories" | "memory" | "studio" | "runs" | "settings";
+type Section = "stories" | "memory" | "artifacts" | "studio" | "runs" | "settings";
 
 interface AppShellProps {
   mode: UiExperienceMode;
@@ -24,6 +24,7 @@ const expertNavigation = [
   ...userNavigation,
   { id: "studio" as const, label: "Agent Studio", icon: Workflow },
   { id: "runs" as const, label: "运行与 Trace", icon: GitBranch },
+  { id: "artifacts" as const, label: "Artifacts", icon: FileArchive },
 ];
 
 export function AppShell({ mode, section, onModeChange, onSectionChange, children }: AppShellProps) {

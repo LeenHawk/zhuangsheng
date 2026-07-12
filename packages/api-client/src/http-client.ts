@@ -13,6 +13,7 @@ import { HttpGraphClient } from "./http-graph-client";
 import { HttpConfigClient } from "./http-config-client";
 import { HttpRuntimeClient } from "./http-runtime-client";
 import { HttpMemoryClient } from "./http-memory-client";
+import { HttpArtifactClient } from "./http-artifact-client";
 import { HttpSecretClient } from "./http-secret-client";
 import { createIdempotencyKey } from "./idempotency";
 import type {
@@ -60,6 +61,7 @@ export class HttpApiClient {
   readonly graphs: HttpGraphClient;
   readonly config: HttpConfigClient;
   readonly memory: HttpMemoryClient;
+  readonly artifacts: HttpArtifactClient;
 
   constructor(private readonly baseUrl = "") {
     this.runtime = new HttpRuntimeClient(baseUrl);
@@ -67,6 +69,7 @@ export class HttpApiClient {
     this.graphs = new HttpGraphClient(baseUrl);
     this.config = new HttpConfigClient(baseUrl);
     this.memory = new HttpMemoryClient(baseUrl);
+    this.artifacts = new HttpArtifactClient(baseUrl);
   }
 
   async listConversations(signal?: AbortSignal): Promise<ConversationListView> {

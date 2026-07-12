@@ -16,6 +16,22 @@ pub(super) async fn load_artifact_view<C: ConnectionTrait>(
     connection: &C,
     artifact_id: &str,
 ) -> StorageResult<ArtifactView> {
+    let (view, object_id) = load_artifact_metadata_view(connection, artifact_id).await?;
+    let bytes = load_object_bytes(connection, &object_id).await?;
+    if canonical::hash_bytes(&bytes) != view.metadata.content.content_hash
+        || bytes.len() as u64 != view.metadata.content.byte_size
+    {
+        return Err(StorageError::Integrity(
+            "artifact content is corrupt".into(),
+        ));
+    }
+    Ok(view)
+}
+
+pub(super) async fn load_artifact_metadata_view<C: ConnectionTrait>(
+    connection: &C,
+    artifact_id: &str,
+) -> StorageResult<(ArtifactView, String)> {
     let row = connection.query_one_raw(sql(
         "SELECT a.content_object_id, a.metadata_head_commit_id, a.media_type, a.name, a.classification, a.retention_kind, a.retention_until, a.status, a.origin_run_id, a.origin_node_instance_id, a.origin_tool_call_id, a.created_at, p.projection_json, p.head_commit_id AS projection_head, vc.initial_snapshot_object_id, vc.sequence_no, s.status AS staging_status, s.committed_artifact_id, s.validated_content_object_id FROM artifacts a JOIN materialized_projections p ON p.aggregate_kind = 'artifact_metadata' AND p.aggregate_id = a.id AND p.lineage_key = 'global' JOIN version_commits vc ON vc.id = a.metadata_head_commit_id AND vc.aggregate_kind = 'artifact_metadata' AND vc.aggregate_id = a.id AND vc.lineage_key = 'global' JOIN artifact_staging s ON s.id = a.source_staging_id WHERE a.id = ?",
         vec![artifact_id.into()],
@@ -68,27 +84,22 @@ pub(super) async fn load_artifact_view<C: ConnectionTrait>(
             "artifact staging content binding is corrupt".into(),
         ));
     }
-    let bytes = load_object_bytes(connection, &object_id).await?;
-    if canonical::hash_bytes(&bytes) != metadata.content.content_hash
-        || bytes.len() as u64 != metadata.content.byte_size
-    {
-        return Err(StorageError::Integrity(
-            "artifact content is corrupt".into(),
-        ));
-    }
     let reference = connection.query_one_raw(sql(
         "SELECT 1 AS present FROM content_object_refs WHERE object_id = ? AND owner_kind = 'artifact' AND owner_id = ? AND role = 'content'",
-        vec![object_id.into(), artifact_id.into()],
+        vec![object_id.clone().into(), artifact_id.into()],
     )).await?;
     if reference.is_none() {
         return Err(StorageError::Integrity(
             "artifact content owner ref is missing".into(),
         ));
     }
-    Ok(ArtifactView {
-        metadata,
-        metadata_head_commit_id: head,
-    })
+    Ok((
+        ArtifactView {
+            metadata,
+            metadata_head_commit_id: head,
+        },
+        object_id,
+    ))
 }
 
 impl SqliteStore {

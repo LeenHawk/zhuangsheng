@@ -35,6 +35,12 @@ pub struct ArtifactDownload {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactListView {
+    pub items: Vec<ArtifactView>,
+}
+
 #[async_trait]
 pub trait ArtifactStagingService: Send + Sync {
     async fn create_artifact_staging(
@@ -54,6 +60,7 @@ pub trait ArtifactStagingService: Send + Sync {
         command: CommitArtifactStagingCommand,
     ) -> Result<ArtifactView, ApplicationError>;
     async fn get_artifact(&self, artifact_id: &str) -> Result<ArtifactView, ApplicationError>;
+    async fn list_artifacts(&self, limit: u32) -> Result<ArtifactListView, ApplicationError>;
     async fn download_artifact(
         &self,
         artifact_id: &str,

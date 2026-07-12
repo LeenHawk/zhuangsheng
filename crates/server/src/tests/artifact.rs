@@ -68,6 +68,13 @@ async fn artifact_http_flow_uploads_commits_and_downloads_safe_content() {
     )
     .await;
     assert_eq!(loaded, artifact);
+    let listed = call(
+        &app,
+        request("GET", "/v1/artifacts?limit=10", json!(null), &[]),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(listed["items"], json!([artifact]));
 
     let response = app
         .oneshot(

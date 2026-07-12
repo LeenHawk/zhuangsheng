@@ -1,14 +1,14 @@
 use axum::{
     Json, Router,
     body::Body,
-    extract::{DefaultBodyLimit, Path, State, rejection::JsonRejection},
+    extract::{DefaultBodyLimit, Path, Query, State, rejection::JsonRejection},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::Response,
     routing::{get, post},
 };
 use serde::Deserialize;
 use zhuangsheng_core::{
-    application::artifact::CommitArtifactStagingCommand,
+    application::artifact::{ArtifactListView, CommitArtifactStagingCommand},
     artifact::{ArtifactStagingView, ArtifactView},
 };
 
@@ -24,17 +24,35 @@ struct CommitBody {
     expected_lifecycle_generation: u64,
 }
 
+#[derive(Deserialize)]
+struct ListQuery {
+    limit: Option<u32>,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/artifacts/staging", post(upload))
         .route("/v1/artifacts/staging/{staging_id}", get(get_staging))
         .route("/v1/artifacts/staging/{staging_id}/commit", post(commit))
+        .route("/v1/artifacts", get(list_artifacts))
         .route("/v1/artifacts/{artifact_id}", get(get_artifact))
         .route(
             "/v1/artifacts/{artifact_id}/content",
             get(download_artifact),
         )
         .layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES))
+}
+
+async fn list_artifacts(
+    State(state): State<AppState>,
+    Query(query): Query<ListQuery>,
+) -> ApiResult<Json<ArtifactListView>> {
+    Ok(Json(
+        state
+            .artifact_service
+            .list_artifacts(query.limit.unwrap_or(50))
+            .await?,
+    ))
 }
 
 async fn get_staging(

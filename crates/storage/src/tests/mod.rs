@@ -1,4 +1,5 @@
 mod artifact_commit;
+mod artifact_list;
 mod artifact_maintenance;
 mod artifact_origin;
 mod artifact_staging;

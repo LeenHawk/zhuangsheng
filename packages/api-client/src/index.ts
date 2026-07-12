@@ -1,4 +1,6 @@
 export * from "./api-error";
+export * from "./artifact-types";
+export * from "./decode-artifacts";
 export * from "./decode";
 export * from "./decode-roleplay";
 export * from "./decode-memory";
@@ -7,6 +9,7 @@ export * from "./decode-config";
 export * from "./config-types";
 export * from "./graph-types";
 export * from "./http-client";
+export * from "./http-artifact-client";
 export * from "./http-graph-client";
 export * from "./http-config-client";
 export * from "./http-runtime-client";
