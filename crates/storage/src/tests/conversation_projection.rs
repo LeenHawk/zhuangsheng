@@ -1,12 +1,15 @@
 use sea_orm::ConnectionTrait;
 use zhuangsheng_core::{
-    application::conversation::{CreateConversationCommand, SubmitConversationTurnCommand},
+    application::conversation::{
+        CreateConversationCommand, SelectConversationCandidateCommand,
+        SubmitConversationTurnCommand,
+    },
     llm::ir::LlmContentPartIr,
 };
 
-use crate::{graph::helpers::sql, tests::store};
+use crate::{StorageError, graph::helpers::sql, tests::store};
 
-use super::conversation_projection_support::{complete_with_reply, terminalize_failed};
+use super::conversation_projection_support::complete_with_reply;
 use super::conversation_run_profile::{compatible_revision, run_spec};
 
 const NOW: i64 = 1_700_000_300_000;
@@ -72,6 +75,48 @@ async fn terminal_reconciliation_projects_one_assistant_message_idempotently() {
             .unwrap()
             .is_some()
     );
+    let candidate_commit_id: String = row.try_get("", "candidate_commit_id").unwrap();
+    let selected_conversation = store.get_conversation_view(&conversation.id).await.unwrap();
+    assert_eq!(
+        selected_conversation.active_branch_id,
+        submitted.candidate.branch_id
+    );
+    assert_eq!(
+        selected_conversation.active_head_commit_id,
+        candidate_commit_id
+    );
+    let explicit = SelectConversationCandidateCommand {
+        turn_id: submitted.turn.id.clone(),
+        selected_run_id: submitted.run.id.clone(),
+        expected_conversation_head_commit_id: selected_conversation.active_head_commit_id,
+        idempotency_key: "projection-explicit-select".into(),
+    };
+    let selection = store
+        .select_conversation_candidate_at(explicit.clone(), NOW + 5)
+        .await
+        .unwrap();
+    assert_eq!(selection.selected_run_id, submitted.run.id);
+    assert_eq!(
+        store
+            .select_conversation_candidate_at(explicit, NOW + 6)
+            .await
+            .unwrap(),
+        selection
+    );
+    assert!(matches!(
+        store
+            .select_conversation_candidate_at(
+                SelectConversationCandidateCommand {
+                    turn_id: submitted.turn.id.clone(),
+                    selected_run_id: submitted.run.id.clone(),
+                    expected_conversation_head_commit_id: submitted.turn.user_commit_id.clone(),
+                    idempotency_key: "projection-explicit-stale".into(),
+                },
+                NOW + 7,
+            )
+            .await,
+        Err(StorageError::Conflict("conversation_head"))
+    ));
     let candidate_context = store
         .get_working_context(&conversation.context_id, &submitted.candidate.branch_id)
         .await
@@ -87,71 +132,5 @@ async fn terminal_reconciliation_projects_one_assistant_message_idempotently() {
     assert_eq!(
         active_context.value["messages"].as_array().unwrap().len(),
         1
-    );
-}
-
-#[tokio::test]
-async fn terminal_reconciliation_marks_failed_candidate_without_message() {
-    let store = store().await;
-    let revision_id = compatible_revision(&store, "projection-failed").await;
-    let conversation = store
-        .create_conversation_at(
-            CreateConversationCommand {
-                title: None,
-                default_run: None,
-                idempotency_key: "projection-failed-conversation".into(),
-            },
-            NOW,
-        )
-        .await
-        .unwrap();
-    let submitted = store
-        .submit_conversation_turn_at(
-            SubmitConversationTurnCommand {
-                conversation_id: conversation.id,
-                expected_head_commit_id: conversation.active_head_commit_id,
-                user_content: vec![LlmContentPartIr::Text {
-                    text: "fail".into(),
-                }],
-                run: run_spec(&revision_id),
-                idempotency_key: "projection-failed-turn".into(),
-            },
-            NOW + 1,
-        )
-        .await
-        .unwrap();
-    terminalize_failed(&store, &submitted.run.id, NOW + 2).await;
-    assert_eq!(
-        store
-            .maintain_candidate_projections(NOW + 3, "projector-test", 10)
-            .await
-            .unwrap(),
-        1
-    );
-    let status = store
-        .db
-        .query_one_raw(sql(
-            "SELECT status FROM turn_candidates WHERE run_id = ?",
-            vec![submitted.run.id.into()],
-        ))
-        .await
-        .unwrap()
-        .unwrap()
-        .try_get::<String>("", "status")
-        .unwrap();
-    assert_eq!(status, "failed");
-    assert_eq!(
-        store
-            .db
-            .query_one_raw(sql(
-                "SELECT COUNT(*) AS count FROM conversation_messages WHERE role = 'assistant'",
-                vec![],
-            ))
-            .await
-            .unwrap()
-            .unwrap()
-            .try_get::<i64>("", "count")
-            .unwrap(),
-        0
     );
 }

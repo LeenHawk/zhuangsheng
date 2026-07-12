@@ -7,6 +7,7 @@ mod context_patch;
 mod context_replay;
 mod conversation_projection;
 mod conversation_projection_conflict;
+mod conversation_projection_failure;
 mod conversation_projection_support;
 mod conversation_root;
 mod conversation_run_profile;

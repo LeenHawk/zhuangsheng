@@ -8,6 +8,7 @@ pub(super) struct Candidate {
     pub terminal_status: String,
     pub turn_id: String,
     pub branch_id: String,
+    pub base_commit_id: String,
     pub reply_output_key: String,
     pub user_message_id: String,
     pub conversation_id: String,
@@ -37,7 +38,7 @@ async fn load_candidate<C: ConnectionTrait>(
     worker_id: &str,
 ) -> StorageResult<Candidate> {
     let row = connection.query_one_raw(sql(
-        "SELECT j.terminal_status, tc.turn_id, tc.branch_id, tc.reply_output_key, t.user_message_id, t.conversation_id, c.context_id, r.output_commit_id, r.status AS run_status, tc.status AS candidate_status FROM candidate_projection_jobs j JOIN turn_candidates tc ON tc.run_id = j.run_id JOIN conversation_turns t ON t.id = tc.turn_id JOIN conversations c ON c.id = t.conversation_id JOIN graph_runs r ON r.id = j.run_id WHERE j.run_id = ? AND j.status = 'claimed' AND j.claimed_by = ?",
+        "SELECT j.terminal_status, tc.turn_id, tc.branch_id, tc.base_commit_id, tc.reply_output_key, t.user_message_id, t.conversation_id, c.context_id, r.output_commit_id, r.status AS run_status, tc.status AS candidate_status FROM candidate_projection_jobs j JOIN turn_candidates tc ON tc.run_id = j.run_id JOIN conversation_turns t ON t.id = tc.turn_id JOIN conversations c ON c.id = t.conversation_id JOIN graph_runs r ON r.id = j.run_id WHERE j.run_id = ? AND j.status = 'claimed' AND j.claimed_by = ?",
         vec![run_id.into(), worker_id.into()],
     )).await?.ok_or_else(|| StorageError::Conflict("candidate_projection_claim"))?;
     let terminal_status: String = row.try_get("", "terminal_status")?;
@@ -52,6 +53,7 @@ async fn load_candidate<C: ConnectionTrait>(
         terminal_status,
         turn_id: row.try_get("", "turn_id")?,
         branch_id: row.try_get("", "branch_id")?,
+        base_commit_id: row.try_get("", "base_commit_id")?,
         reply_output_key: row.try_get("", "reply_output_key")?,
         user_message_id: row.try_get("", "user_message_id")?,
         conversation_id: row.try_get("", "conversation_id")?,

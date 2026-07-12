@@ -5,6 +5,7 @@ mod profile;
 mod projection;
 mod read;
 mod receipt;
+mod selection;
 mod service;
 mod submit;
 mod submit_prepare;

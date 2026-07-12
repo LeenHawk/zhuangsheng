@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     conversation::{
-        ConversationRunProfile, ConversationRunSpec, ConversationTurnView, ConversationView,
-        TurnCandidateView,
+        ConversationRunProfile, ConversationRunSpec, ConversationSelectionView,
+        ConversationTurnView, ConversationView, TurnCandidateView,
     },
     llm::ir::LlmContentPartIr,
     runtime::RunView,
@@ -47,6 +47,15 @@ pub struct SubmitConversationTurnResult {
     pub run: RunView,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectConversationCandidateCommand {
+    pub turn_id: String,
+    pub selected_run_id: String,
+    pub expected_conversation_head_commit_id: String,
+    pub idempotency_key: String,
+}
+
 #[async_trait]
 pub trait ConversationService: Send + Sync {
     async fn create_conversation(
@@ -65,4 +74,8 @@ pub trait ConversationService: Send + Sync {
         &self,
         command: SubmitConversationTurnCommand,
     ) -> Result<SubmitConversationTurnResult, ApplicationError>;
+    async fn select_candidate(
+        &self,
+        command: SelectConversationCandidateCommand,
+    ) -> Result<ConversationSelectionView, ApplicationError>;
 }

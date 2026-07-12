@@ -22,6 +22,7 @@ mod m20260712_000021_artifacts;
 mod m20260712_000022_conversations;
 mod m20260712_000023_conversation_turns;
 mod m20260712_000024_candidate_projection_jobs;
+mod m20260712_000025_conversation_selections;
 
 use sea_orm_migration::prelude::*;
 
@@ -55,6 +56,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260712_000022_conversations::Migration),
             Box::new(m20260712_000023_conversation_turns::Migration),
             Box::new(m20260712_000024_candidate_projection_jobs::Migration),
+            Box::new(m20260712_000025_conversation_selections::Migration),
         ]
     }
 }

@@ -1,6 +1,7 @@
 mod contracts;
 #[cfg(test)]
 mod contracts_tests;
+mod selection;
 mod types;
 
 pub use contracts::{
@@ -8,4 +9,5 @@ pub use contracts::{
     assistant_reply_payload_v1_schema, conversation_run_input_v1_schema,
     validate_conversation_run_contract,
 };
+pub use selection::*;
 pub use types::*;

@@ -22,6 +22,7 @@ use super::{
     outcome::{finish_job, permanent_failure, projection_conflict},
 };
 use crate::conversation::events::append_event;
+use crate::conversation::selection::auto_select;
 
 pub(super) async fn project_completed<C: ConnectionTrait>(
     connection: &C,
@@ -151,6 +152,17 @@ async fn append_assistant<C: ConnectionTrait>(
         &candidate.conversation_id,
         "conversation.candidate_ready",
         &json!({"schemaVersion":1,"turnId":candidate.turn_id,"runId":run_id,"messageId":message_id,"commitId":commit.id}),
+        now,
+    )
+    .await?;
+    auto_select(
+        connection,
+        &candidate.conversation_id,
+        &candidate.turn_id,
+        run_id,
+        &candidate.branch_id,
+        &candidate.base_commit_id,
+        &commit.id,
         now,
     )
     .await?;

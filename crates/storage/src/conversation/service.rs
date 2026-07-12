@@ -3,11 +3,12 @@ use zhuangsheng_core::{
     application::{
         ApplicationError,
         conversation::{
-            ConversationService, CreateConversationCommand, SubmitConversationTurnCommand,
-            SubmitConversationTurnResult, UpdateConversationRunProfileCommand,
+            ConversationService, CreateConversationCommand, SelectConversationCandidateCommand,
+            SubmitConversationTurnCommand, SubmitConversationTurnResult,
+            UpdateConversationRunProfileCommand,
         },
     },
-    conversation::{ConversationRunProfile, ConversationView},
+    conversation::{ConversationRunProfile, ConversationSelectionView, ConversationView},
 };
 
 use crate::{SqliteStore, graph::helpers::now_ms};
@@ -48,6 +49,15 @@ impl ConversationService for SqliteStore {
         command: SubmitConversationTurnCommand,
     ) -> Result<SubmitConversationTurnResult, ApplicationError> {
         self.submit_conversation_turn_at(command, now_ms())
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn select_candidate(
+        &self,
+        command: SelectConversationCandidateCommand,
+    ) -> Result<ConversationSelectionView, ApplicationError> {
+        self.select_conversation_candidate_at(command, now_ms())
             .await
             .map_err(Into::into)
     }

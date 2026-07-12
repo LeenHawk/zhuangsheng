@@ -66,4 +66,22 @@ async fn conversation_turn_http_returns_one_durable_candidate_run() {
     )
     .await;
     assert_eq!(replayed, submitted);
+    let not_ready = call(
+        &app,
+        request(
+            "PUT",
+            &format!(
+                "/v1/conversation-turns/{}/selection",
+                submitted["turn"]["id"].as_str().unwrap()
+            ),
+            json!({
+                "selectedRunId":submitted["run"]["id"],
+                "expectedConversationHeadCommitId":submitted["turn"]["userCommitId"]
+            }),
+            &[("idempotency-key", "turn-http-select".into())],
+        ),
+        StatusCode::CONFLICT,
+    )
+    .await;
+    assert_eq!(not_ready["error"]["code"], "candidate_not_ready");
 }
