@@ -15,7 +15,7 @@ use zhuangsheng_core::{
         LongTermMemoryRecordView, MemoryChangeProposalView, MemoryProposalChangeInput,
         MemoryProposalStatus,
     },
-    state::ActorRef,
+    state::{ActorKind, ActorRef},
 };
 
 use super::{
@@ -32,7 +32,6 @@ struct ProposeBody {
     change: MemoryProposalChangeInput,
     reason: String,
     evidence_refs: Vec<String>,
-    requested_by: ActorRef,
     schema_version: u32,
     policy_version: u32,
     origin_run_id: Option<String>,
@@ -44,7 +43,6 @@ struct ProposeBody {
 struct DecisionBody {
     expected_status: MemoryProposalStatus,
     decision: MemoryProposalDecision,
-    actor: ActorRef,
 }
 
 #[derive(Deserialize)]
@@ -119,7 +117,7 @@ async fn propose(
             change: body.change,
             reason: body.reason,
             evidence_refs: body.evidence_refs,
-            requested_by: body.requested_by,
+            requested_by: local_actor(),
             idempotency_key: idempotency_key(&headers)?,
             schema_version: body.schema_version,
             policy_version: body.policy_version,
@@ -144,7 +142,7 @@ async fn decide(
                 proposal_id,
                 expected_status: body.expected_status,
                 decision: body.decision,
-                actor: body.actor,
+                actor: local_actor(),
                 idempotency_key: idempotency_key(&headers)?,
             })
             .await?,
@@ -205,4 +203,11 @@ fn idempotency_key(headers: &HeaderMap) -> ApiResult<String> {
 
 fn json_body<T>(body: Result<Json<T>, JsonRejection>) -> ApiResult<Json<T>> {
     body.map_err(|error| ApiError::bad_request("invalid_json_body", error.body_text()))
+}
+
+fn local_actor() -> ActorRef {
+    ActorRef {
+        kind: ActorKind::User,
+        id: Some("local-user".into()),
+    }
 }

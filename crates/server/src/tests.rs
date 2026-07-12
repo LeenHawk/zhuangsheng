@@ -312,6 +312,8 @@ async fn memory_http_flow_uses_service_contract_and_typed_commands() {
     .await;
     let proposal_id = proposed["id"].as_str().unwrap();
     let memory_id = proposed["memoryId"].as_str().unwrap();
+    assert_eq!(proposed["requestedBy"]["kind"], "user");
+    assert_eq!(proposed["requestedBy"]["id"], "local-user");
     let inbox = call(
         &app,
         request(
