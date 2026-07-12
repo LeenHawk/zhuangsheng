@@ -1,4 +1,5 @@
 import { DecodeError } from "./decode-error";
+import type { JsonValue } from "./graph-types";
 
 export const record = (value: unknown, path: string): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -30,4 +31,19 @@ export const nullableString = (value: unknown, path: string): string | null =>
 export const stringArray = (value: unknown, path: string): string[] => {
   if (!Array.isArray(value)) throw new DecodeError(path);
   return value.map((item, index) => string(item, `${path}[${index}]`));
+};
+
+export const jsonValue = (value: unknown, path: string): JsonValue => {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new DecodeError(path);
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item, index) => jsonValue(item, `${path}[${index}]`));
+  }
+  const item = record(value, path);
+  return Object.fromEntries(
+    Object.entries(item).map(([key, nested]) => [key, jsonValue(nested, `${path}.${key}`)]),
+  );
 };

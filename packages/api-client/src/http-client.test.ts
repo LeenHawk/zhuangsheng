@@ -147,4 +147,37 @@ describe("HttpApiClient conversation commands", () => {
       expectedConversationHeadCommitId: "commit_1",
     });
   });
+
+  it("reads candidates from the canonical encoded turn route", async () => {
+    let requested: RequestInfo | URL | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested = input;
+      return new Response(JSON.stringify({
+        id: "turn/1",
+        conversationId: "conversation_1",
+        userMessageId: "message_1",
+        userCommitId: "commit_1",
+        createdAt: 1,
+        selectedRunId: null,
+        candidates: [{
+          turnId: "turn/1",
+          runId: "run_1",
+          branchId: "branch_1",
+          baseCommitId: "commit_1",
+          replyOutputKey: "reply",
+          status: "ready",
+          assistantMessageId: "message_2",
+          candidateCommitId: "commit_2",
+          projectionError: null,
+          createdAt: 2,
+        }],
+      }), { status: 200 });
+    });
+
+    const turn = await new HttpApiClient("https://roleplay.example")
+      .getTurnCandidates("turn/1");
+
+    expect(requested).toBe("https://roleplay.example/v1/turns/turn%2F1/candidates");
+    expect(turn.candidates[0]?.status).toBe("ready");
+  });
 });

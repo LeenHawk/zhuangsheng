@@ -1,5 +1,7 @@
 import { decodeCreateGraph, decodeGraphDraft, decodeGraphList, decodeGraphRevision } from "./decode-graphs";
+import { decodeRolePlaySettings } from "./decode-roleplay";
 import type { CreateGraphResult, GraphDraftView, GraphRevisionView, GraphSummary, JsonObject } from "./graph-types";
+import type { RolePlaySettingsView } from "./roleplay-types";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
 
@@ -67,6 +69,16 @@ export class HttpGraphClient {
       body: JSON.stringify({ name, channelId, presetId }),
       signal: options.signal,
     }));
+  }
+
+  async getRolePlaySettings(
+    revisionId: string,
+    signal?: AbortSignal,
+  ): Promise<RolePlaySettingsView> {
+    return decodeRolePlaySettings(await this.request(
+      `/v1/graph-revisions/${encodeURIComponent(revisionId)}/roleplay-settings`,
+      { signal },
+    ));
   }
 
   private commandHeaders(key?: string): Record<string, string> {

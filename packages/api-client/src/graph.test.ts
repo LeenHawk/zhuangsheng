@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DecodeError } from "./decode-error";
 import { decodeGraphDraft, projectGraphStructure } from "./decode-graphs";
+import { decodeRolePlaySettings } from "./decode-roleplay";
 import { HttpGraphClient } from "./http-graph-client";
 import type { JsonObject } from "./graph-types";
 
@@ -46,6 +47,30 @@ describe("graph decoders", () => {
       document: draftDocument,
       revisionToken: "draftrev_1",
       updatedAt: 10,
+    })).toThrow(DecodeError);
+  });
+
+  it("decodes the server-projected role play settings and pins profile version", () => {
+    const settings = {
+      profileVersion: 1,
+      revisionId: "graphrev_1",
+      primaryLlmNodeId: "reply",
+      compatibility: { mode: "editable", profileVersion: 1, editableFields: ["model"] },
+      model: {
+        channelId: "channel_1",
+        modelId: "model_1",
+        modelName: null,
+        operationKey: { operation: "generate_content", kind: "open_ai_responses" },
+      },
+      generation: { temperature: 0.7, stop: [] },
+      streaming: { enabled: true, audience: "user", persistChunks: false },
+      contextPresetId: "preset_1",
+    };
+    expect(decodeRolePlaySettings(settings).model.channelId).toBe("channel_1");
+    expect(() => decodeRolePlaySettings({ ...settings, profileVersion: 2 })).toThrow(DecodeError);
+    expect(() => decodeRolePlaySettings({
+      ...settings,
+      streaming: { ...settings.streaming, audience: "future" },
     })).toThrow(DecodeError);
   });
 });
@@ -97,5 +122,35 @@ describe("HttpGraphClient", () => {
     expect(request.input).toBe("https://role.example/v1/roleplay/templates");
     expect(request.init.headers).toMatchObject({ "idempotency-key": "template-key" });
     expect(JSON.parse(request.init.body as string)).toEqual({ name: "Alice", channelId: "channel_1", presetId: "preset_1" });
+  });
+
+  it("reads role play settings without making the browser inspect graph definitions", async () => {
+    let requested: RequestInfo | URL | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested = input;
+      return new Response(JSON.stringify({
+        profileVersion: 1,
+        revisionId: "graphrev/1",
+        primaryLlmNodeId: "reply",
+        compatibility: { mode: "editable", profileVersion: 1, editableFields: [] },
+        model: {
+          channelId: "channel_1",
+          modelId: "model_1",
+          modelName: "Model One",
+          operationKey: { operation: "generate_content", kind: "open_ai_responses" },
+        },
+        generation: null,
+        streaming: null,
+        contextPresetId: null,
+      }), { status: 200 });
+    });
+
+    const result = await new HttpGraphClient("https://role.example")
+      .getRolePlaySettings("graphrev/1");
+
+    expect(requested).toBe(
+      "https://role.example/v1/graph-revisions/graphrev%2F1/roleplay-settings",
+    );
+    expect(result.model.modelName).toBe("Model One");
   });
 });

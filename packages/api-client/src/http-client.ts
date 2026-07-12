@@ -8,6 +8,7 @@ import {
   decodeTimeline,
 } from "./decode";
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
+import { decodeTurnCandidates } from "./decode-turn";
 import { requestJson } from "./http-json";
 import { HttpGraphClient } from "./http-graph-client";
 import { HttpConfigClient } from "./http-config-client";
@@ -15,6 +16,7 @@ import { HttpRuntimeClient } from "./http-runtime-client";
 import { HttpMemoryClient } from "./http-memory-client";
 import { HttpArtifactClient } from "./http-artifact-client";
 import { HttpSecretClient } from "./http-secret-client";
+import { HttpContextClient } from "./http-context-client";
 import { createIdempotencyKey } from "./idempotency";
 import type {
   ConversationListView,
@@ -22,6 +24,7 @@ import type {
   ConversationRunSpec,
   ConversationSelectionView,
   ConversationTimelineView,
+  ConversationTurnView,
   ConversationView,
   LlmContentPart,
   RegenerateConversationCandidateAck,
@@ -62,6 +65,7 @@ export class HttpApiClient {
   readonly config: HttpConfigClient;
   readonly memory: HttpMemoryClient;
   readonly artifacts: HttpArtifactClient;
+  readonly contexts: HttpContextClient;
 
   constructor(private readonly baseUrl = "") {
     this.runtime = new HttpRuntimeClient(baseUrl);
@@ -70,6 +74,7 @@ export class HttpApiClient {
     this.config = new HttpConfigClient(baseUrl);
     this.memory = new HttpMemoryClient(baseUrl);
     this.artifacts = new HttpArtifactClient(baseUrl);
+    this.contexts = new HttpContextClient(baseUrl);
   }
 
   async listConversations(signal?: AbortSignal): Promise<ConversationListView> {
@@ -97,6 +102,13 @@ export class HttpApiClient {
 
   async listRolePlayGraphOptions(signal?: AbortSignal): Promise<RolePlayGraphOptionView[]> {
     return decodeRolePlayGraphOptions(await this.request("/v1/roleplay/graph-options", { signal }));
+  }
+
+  async getTurnCandidates(turnId: string, signal?: AbortSignal): Promise<ConversationTurnView> {
+    return decodeTurnCandidates(await this.request(
+      `/v1/turns/${encodeURIComponent(turnId)}/candidates`,
+      { signal },
+    ));
   }
 
   async updateConversationRunProfile(

@@ -7,6 +7,7 @@ import {
   decodeTimeline,
 } from "./decode";
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
+import { decodeTurnCandidates } from "./decode-turn";
 
 const conversation = {
   id: "conversation_1",
@@ -75,6 +76,12 @@ describe("conversation decoders", () => {
     const incompatible = structuredClone(timeline);
     incompatible.turns[0]!.candidates[0]!.status = "future_status";
     expect(() => decodeTimeline(incompatible)).toThrow(DecodeError);
+  });
+
+  it("decodes the canonical turn candidate detail independently", () => {
+    expect(decodeTurnCandidates(timeline.turns[0]).candidates[0]?.runId).toBe("run_1");
+    expect(() => decodeTurnCandidates({ ...timeline.turns[0], candidates: "invalid" }))
+      .toThrow(DecodeError);
   });
 
   it("decodes role play compatibility without inspecting raw graph documents", () => {

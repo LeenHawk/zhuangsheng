@@ -1,5 +1,4 @@
 import type {
-  CandidateStatus,
   ConversationListView,
   ConversationMessageView,
   ConversationRunProfile,
@@ -12,6 +11,7 @@ import type {
 } from "./types";
 import { DecodeError } from "./decode-error";
 import { nullableString, number, record, string } from "./decode-helpers";
+import { decodeCandidateStatus, decodeConversationTurn } from "./decode-turn";
 
 export { DecodeError } from "./decode-error";
 
@@ -69,11 +69,6 @@ export const decodeConversationList = (value: unknown): ConversationListView => 
   return { items: item.items.map(decodeConversation) };
 };
 
-const candidateStatuses = new Set<CandidateStatus>([
-  "running", "ready", "failed", "cancelled", "projection_conflicted",
-  "projection_failed", "projection_abandoned",
-]);
-
 const message = (value: unknown, index: number): ConversationMessageView => {
   const path = `timeline.messages[${index}]`;
   const item = record(value, path);
@@ -101,34 +96,8 @@ export const decodeTimeline = (value: unknown): ConversationTimelineView => {
     activeBranchId: string(item.activeBranchId, "timeline.activeBranchId"),
     activeHeadCommitId: string(item.activeHeadCommitId, "timeline.activeHeadCommitId"),
     messages: item.messages.map(message),
-    turns: item.turns.map((rawTurn, turnIndex) => {
-      const path = `timeline.turns[${turnIndex}]`;
-      const turn = record(rawTurn, path);
-      if (!Array.isArray(turn.candidates)) throw new DecodeError(`${path}.candidates`);
-      return {
-        id: string(turn.id, `${path}.id`), conversationId: string(turn.conversationId, `${path}.conversationId`),
-        userMessageId: string(turn.userMessageId, `${path}.userMessageId`),
-        userCommitId: string(turn.userCommitId, `${path}.userCommitId`),
-        createdAt: number(turn.createdAt, `${path}.createdAt`),
-        selectedRunId: nullableString(turn.selectedRunId, `${path}.selectedRunId`),
-        candidates: turn.candidates.map((rawCandidate, candidateIndex) => {
-          const candidatePath = `${path}.candidates[${candidateIndex}]`;
-          const candidate = record(rawCandidate, candidatePath);
-          const status = string(candidate.status, `${candidatePath}.status`) as CandidateStatus;
-          if (!candidateStatuses.has(status)) throw new DecodeError(`${candidatePath}.status`);
-          const error = candidate.projectionError;
-          return {
-            turnId: string(candidate.turnId, `${candidatePath}.turnId`), runId: string(candidate.runId, `${candidatePath}.runId`),
-            branchId: string(candidate.branchId, `${candidatePath}.branchId`), baseCommitId: string(candidate.baseCommitId, `${candidatePath}.baseCommitId`),
-            replyOutputKey: string(candidate.replyOutputKey, `${candidatePath}.replyOutputKey`), status,
-            assistantMessageId: nullableString(candidate.assistantMessageId, `${candidatePath}.assistantMessageId`),
-            candidateCommitId: nullableString(candidate.candidateCommitId, `${candidatePath}.candidateCommitId`),
-            projectionError: error === null ? null : (() => { const detail = record(error, `${candidatePath}.projectionError`); return { code: string(detail.code, `${candidatePath}.projectionError.code`), safeMessage: string(detail.safeMessage, `${candidatePath}.projectionError.safeMessage`) }; })(),
-            createdAt: number(candidate.createdAt, `${candidatePath}.createdAt`),
-          };
-        }),
-      };
-    }),
+    turns: item.turns.map((turn, index) =>
+      decodeConversationTurn(turn, `timeline.turns[${index}]`)),
   };
 };
 
@@ -137,8 +106,7 @@ export const decodeSubmitTurnAck = (value: unknown): SubmitConversationTurnAck =
   const turn = record(result.turn, "submitTurn.turn");
   const candidate = record(result.candidate, "submitTurn.candidate");
   const run = record(result.run, "submitTurn.run");
-  const status = string(candidate.status, "submitTurn.candidate.status") as CandidateStatus;
-  if (!candidateStatuses.has(status)) throw new DecodeError("submitTurn.candidate.status");
+  const status = decodeCandidateStatus(candidate.status, "submitTurn.candidate.status");
   const runId = string(candidate.runId, "submitTurn.candidate.runId");
   if (string(run.id, "submitTurn.run.id") !== runId) throw new DecodeError("submitTurn.run.id");
   return {
@@ -154,10 +122,10 @@ export const decodeRegenerateCandidateAck = (
   const result = record(value, "regenerateCandidate");
   const candidate = record(result.candidate, "regenerateCandidate.candidate");
   const run = record(result.run, "regenerateCandidate.run");
-  const status = string(candidate.status, "regenerateCandidate.candidate.status") as CandidateStatus;
-  if (!candidateStatuses.has(status)) {
-    throw new DecodeError("regenerateCandidate.candidate.status");
-  }
+  const status = decodeCandidateStatus(
+    candidate.status,
+    "regenerateCandidate.candidate.status",
+  );
   const runId = string(candidate.runId, "regenerateCandidate.candidate.runId");
   if (string(run.id, "regenerateCandidate.run.id") !== runId) {
     throw new DecodeError("regenerateCandidate.run.id");
