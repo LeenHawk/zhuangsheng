@@ -1,7 +1,9 @@
-import { decodeSecretStoreSession, decodeSecretStoreStatus } from "./decode-secret";
+import { decodeSecretList, decodeSecretMetadata, decodeSecretStoreSession, decodeSecretStoreStatus } from "./decode-secret";
 import { requestJson } from "./http-json";
 import type {
   SecretPasswordCommandInput,
+  PutSecretInput,
+  SecretMetadataView,
   SecretStoreSessionView,
   SecretStoreStatusView,
 } from "./secret-types";
@@ -21,6 +23,18 @@ export class HttpSecretClient {
 
   initialize(input: SecretPasswordCommandInput): Promise<SecretStoreSessionView> {
     return this.passwordCommand("/v1/secret-store/initialize", input);
+  }
+
+  async list(signal?: AbortSignal): Promise<SecretMetadataView[]> {
+    return decodeSecretList(await requestJson(this.baseUrl, "/v1/secrets", { signal }));
+  }
+
+  async put(input: PutSecretInput): Promise<SecretMetadataView> {
+    return decodeSecretMetadata(await requestJson(this.baseUrl, `/v1/secrets/${encodeURIComponent(input.secretId)}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
+      body: JSON.stringify({ name: input.name?.trim() || null, kind: input.kind, value: input.value, sessionId: input.sessionId }),
+    }));
   }
 
   private async passwordCommand(

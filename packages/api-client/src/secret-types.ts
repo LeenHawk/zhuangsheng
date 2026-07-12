@@ -16,3 +16,25 @@ export interface SecretPasswordCommandInput {
   masterPassword: string;
   idempotencyKey: string;
 }
+
+export interface SecretRef {
+  scheme: "secret";
+  id: string;
+}
+
+export interface SecretMetadataView {
+  secretRef: SecretRef;
+  name: string | null;
+  kind: "api_key" | "token";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PutSecretInput {
+  secretId: string;
+  name?: string;
+  kind: "api_key" | "token";
+  value: string;
+  sessionId: string;
+  idempotencyKey: string;
+}

@@ -10,6 +10,7 @@ import {
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
 import { requestJson } from "./http-json";
 import { HttpGraphClient } from "./http-graph-client";
+import { HttpConfigClient } from "./http-config-client";
 import { HttpRuntimeClient } from "./http-runtime-client";
 import { HttpSecretClient } from "./http-secret-client";
 import { createIdempotencyKey } from "./idempotency";
@@ -55,11 +56,13 @@ export class HttpApiClient {
   readonly runtime: HttpRuntimeClient;
   readonly secrets: HttpSecretClient;
   readonly graphs: HttpGraphClient;
+  readonly config: HttpConfigClient;
 
   constructor(private readonly baseUrl = "") {
     this.runtime = new HttpRuntimeClient(baseUrl);
     this.secrets = new HttpSecretClient(baseUrl);
     this.graphs = new HttpGraphClient(baseUrl);
+    this.config = new HttpConfigClient(baseUrl);
   }
 
   async listConversations(signal?: AbortSignal): Promise<ConversationListView> {
