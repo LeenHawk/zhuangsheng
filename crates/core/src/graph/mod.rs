@@ -1,4 +1,6 @@
 mod apply;
+mod coordination;
+mod coordination_validation;
 mod cycle;
 mod llm;
 mod llm_memory_validation;
@@ -15,6 +17,7 @@ mod tests;
 mod types;
 
 pub use apply::{apply_graph, apply_graph_with_dependencies};
+pub use coordination::*;
 pub use llm::*;
 pub use llm_validation::{GraphApplyDependencies, llm_model_requirements};
 pub use memory::*;

@@ -1,11 +1,6 @@
 use sea_orm::{ConnectionTrait, TransactionTrait};
-use serde::Serialize;
-use serde_json::{Map, Value, json};
-use zhuangsheng_core::{
-    canonical,
-    graph::{DraftNodeKind, GraphEdge, GraphNode},
-    schema, selector,
-};
+use serde_json::json;
+use zhuangsheng_core::graph::DraftNodeKind;
 
 use crate::{
     SqliteStore, StorageError, StorageResult,
@@ -13,29 +8,14 @@ use crate::{
 };
 
 use super::{
-    activation_failure::fail_input_activation,
+    activation_failure::{ActivationFailure, fail_input_activation},
+    activation_inputs::{build_inputs, queue_heads},
     events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run, finish_wakeup},
+    join_by_key::{self, JoinPreparation},
     llm_read_set::resolve_llm_reads,
-    load::object_metadata,
     read_set::resolve_router_reads,
     router::create_control_snapshot,
 };
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ValueRef<'a> {
-    id: &'a str,
-    content_hash: &'a str,
-    encoding: &'static str,
-    size_bytes: i64,
-}
-
-pub(super) struct QueueHead {
-    pub(super) id: String,
-    pub(super) port: String,
-    pub(super) value_object_id: String,
-    pub(super) enqueue_seq: i64,
-}
 
 impl SqliteStore {
     pub(crate) async fn activate_if_ready(
@@ -79,11 +59,48 @@ impl SqliteStore {
             transaction.commit().await?;
             return Ok(());
         }
-        let heads = queue_heads(&transaction, run_id, node, &revision.definition.edges).await?;
-        let Some(heads) = heads else {
-            finish_and_settle(&transaction, wakeup_id, run_id, now).await?;
-            transaction.commit().await?;
-            return Ok(());
+        let mut join_tuple = None;
+        let mut activation_failure = None;
+        let heads = if matches!(&node.kind, DraftNodeKind::JoinByKey { .. }) {
+            match join_by_key::prepare(
+                &transaction,
+                run_id,
+                node,
+                &revision.definition.edges,
+                &revision.definition.limits,
+                now,
+            )
+            .await?
+            {
+                JoinPreparation::NotReady => {
+                    finish_and_settle(&transaction, wakeup_id, run_id, now).await?;
+                    transaction.commit().await?;
+                    return Ok(());
+                }
+                JoinPreparation::LimitExceeded(message) => {
+                    fail_run(&transaction, run_id, "run_limit_exceeded", &message, now).await?;
+                    transaction.commit().await?;
+                    return Ok(());
+                }
+                JoinPreparation::Invalid(invalid) => {
+                    activation_failure = Some((invalid.code, invalid.safe_message));
+                    vec![invalid.head]
+                }
+                JoinPreparation::Ready(tuple) => {
+                    let heads = tuple.heads.clone();
+                    join_tuple = Some(tuple);
+                    heads
+                }
+            }
+        } else {
+            let Some(heads) =
+                queue_heads(&transaction, run_id, node, &revision.definition.edges).await?
+            else {
+                finish_and_settle(&transaction, wakeup_id, run_id, now).await?;
+                transaction.commit().await?;
+                return Ok(());
+            };
+            heads
         };
         if limits_exceeded(&transaction, run_id, &revision.definition.limits).await? {
             fail_run(
@@ -100,7 +117,36 @@ impl SqliteStore {
         let instance_id = new_id("nodeinst");
         let attempt_id = new_id("attempt");
         let activation_seq = allocate_activation_seq(&transaction, run_id, node_id).await?;
-        let inputs_id = match build_inputs(&transaction, node, &heads, &instance_id, now).await {
+        if let Some((code, message)) = activation_failure {
+            fail_input_activation(
+                &transaction,
+                run_id,
+                node,
+                &revision_id,
+                &heads,
+                &instance_id,
+                &attempt_id,
+                activation_seq,
+                ActivationFailure {
+                    code,
+                    safe_message: &message,
+                },
+                now,
+            )
+            .await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
+        let inputs_id = match build_inputs(
+            &transaction,
+            node,
+            &heads,
+            &instance_id,
+            join_tuple.as_ref().map(|tuple| &tuple.key),
+            now,
+        )
+        .await
+        {
             Ok(inputs_id) => inputs_id,
             Err(StorageError::InputContract(_) | StorageError::Domain(_)) => {
                 fail_input_activation(
@@ -112,6 +158,10 @@ impl SqliteStore {
                     &instance_id,
                     &attempt_id,
                     activation_seq,
+                    ActivationFailure {
+                        code: "input_contract_violation",
+                        safe_message: "node input does not satisfy its selector or schema",
+                    },
                     now,
                 )
                 .await?;
@@ -169,6 +219,18 @@ impl SqliteStore {
                 .await?;
             }
         }
+        if let Some(tuple) = &join_tuple {
+            join_by_key::consume(
+                &transaction,
+                run_id,
+                node,
+                tuple,
+                &instance_id,
+                &attempt_id,
+                now,
+            )
+            .await?;
+        }
         transaction.execute_raw(sql(
             "UPDATE run_execution_counters SET total_activations = total_activations + 1, total_attempts = total_attempts + 1, pending_queue_values = pending_queue_values - ? WHERE run_id = ?",
             vec![(heads.len() as i64).into(), run_id.into()],
@@ -209,103 +271,6 @@ impl SqliteStore {
         transaction.commit().await?;
         Ok(())
     }
-}
-
-async fn queue_heads<C: ConnectionTrait>(
-    connection: &C,
-    run_id: &str,
-    node: &GraphNode,
-    edges: &[GraphEdge],
-) -> StorageResult<Option<Vec<QueueHead>>> {
-    let mut heads = Vec::new();
-    for input in &node.inputs {
-        let edge = edges
-            .iter()
-            .find(|edge| edge.to.node_id == node.id && edge.to.input == input.name)
-            .ok_or_else(|| StorageError::Integrity("node input edge missing".into()))?;
-        let row = connection.query_one_raw(sql(
-            "SELECT id, value_object_id, enqueue_seq FROM edge_queue_values WHERE run_id = ? AND edge_id = ? AND consumed_at IS NULL ORDER BY enqueue_seq LIMIT 1",
-            vec![run_id.into(), edge.id.clone().into()],
-        )).await?;
-        let Some(row) = row else {
-            if matches!(&node.kind, DraftNodeKind::Merge { .. }) {
-                continue;
-            }
-            return Ok(None);
-        };
-        heads.push(QueueHead {
-            id: row.try_get("", "id")?,
-            port: input.name.clone(),
-            value_object_id: row.try_get("", "value_object_id")?,
-            enqueue_seq: row.try_get("", "enqueue_seq")?,
-        });
-    }
-    if matches!(&node.kind, DraftNodeKind::Merge { .. }) {
-        let Some(head) = heads.into_iter().min_by_key(|head| head.enqueue_seq) else {
-            return Ok(None);
-        };
-        return Ok(Some(vec![head]));
-    }
-    Ok(Some(heads))
-}
-
-async fn build_inputs<C: ConnectionTrait>(
-    connection: &C,
-    node: &GraphNode,
-    heads: &[QueueHead],
-    instance_id: &str,
-    now: i64,
-) -> StorageResult<String> {
-    let mut validated = Vec::with_capacity(heads.len());
-    for head in heads {
-        let input = node
-            .inputs
-            .iter()
-            .find(|input| input.name == head.port)
-            .ok_or_else(|| StorageError::Integrity("selected input port missing".into()))?;
-        let raw: Value = load_object_json(connection, &head.value_object_id).await?;
-        let selected = selector::select(&input.binding.selector, &raw, 100_000)
-            .map_err(StorageError::InputContract)?;
-        if let Some(spec) = &input.schema {
-            schema::validate(spec, &selected)?;
-        }
-        validated.push((input, head, canonical::to_vec(&selected)?));
-    }
-    let mut ports = Map::new();
-    for (input, head, selected_bytes) in validated {
-        let selected_id = put_inline_object(connection, &selected_bytes, now).await?;
-        let (raw_hash, raw_size) = object_metadata(connection, &head.value_object_id).await?;
-        let selected_hash = canonical::hash_bytes(&selected_bytes);
-        ports.insert(input.name.clone(), json!({
-            "rawValue": ValueRef { id: &head.value_object_id, content_hash: &raw_hash, encoding: "canonical_json_v1", size_bytes: raw_size },
-            "selectedValue": ValueRef { id: &selected_id, content_hash: &selected_hash, encoding: "canonical_json_v1", size_bytes: selected_bytes.len() as i64 },
-            "queueItemIds": [head.id]
-        }));
-        add_object_ref(
-            connection,
-            &head.value_object_id,
-            "node_instance",
-            instance_id,
-            &format!("raw_input:{}", input.name),
-            now,
-        )
-        .await?;
-        add_object_ref(
-            connection,
-            &selected_id,
-            "node_instance",
-            instance_id,
-            &format!("selected_input:{}", input.name),
-            now,
-        )
-        .await?;
-    }
-    put_inline_object(
-        connection,
-        &canonical::to_vec(&json!({"schemaVersion":1,"ports":ports}))?,
-        now,
-    )
-    .await
 }
 
 async fn claimed_wakeup<C: ConnectionTrait>(

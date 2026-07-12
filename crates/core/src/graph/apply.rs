@@ -6,6 +6,7 @@ use super::{
     AppliedGraph, AppliedGraphDefinition, DraftGraphEdge, DraftGraphNode, DraftNodeKind,
     GraphDraft, GraphEdge, GraphNode, InputPortDefinition, LlmOutputSpec, OutputPortDefinition,
     SchemaSemanticDigest,
+    coordination_validation::validate_coordination,
     cycle::validate_cycles,
     llm_validation::{GraphApplyDependencies, normalize_llm_node},
     normalize::{normalize_limits, unreachable_warnings},
@@ -128,7 +129,9 @@ fn normalize_node(node: DraftGraphNode, issues: &mut Vec<ValidationIssue>) -> Gr
         if outputs.is_empty()
             && matches!(
                 node.kind,
-                DraftNodeKind::Llm { .. } | DraftNodeKind::Merge { .. }
+                DraftNodeKind::Llm { .. }
+                    | DraftNodeKind::Merge { .. }
+                    | DraftNodeKind::JoinByKey { .. }
             )
         {
             outputs.push(default_output());
@@ -190,18 +193,10 @@ fn validate_nodes(
         validate_execution_policy(node, issues);
         unique_ports(node, issues);
         validate_router(node, limits, issues);
-        validate_merge(node, issues);
+        validate_coordination(node, limits, issues);
     }
     if entries == 0 {
         issues.push(issue("graph_has_no_input_node", "/nodes"));
-    }
-}
-
-fn validate_merge(node: &GraphNode, issues: &mut Vec<ValidationIssue>) {
-    if matches!(&node.kind, DraftNodeKind::Merge { .. })
-        && (node.inputs.len() < 2 || node.outputs.len() != 1)
-    {
-        issues.push(issue("invalid_merge_shape", format!("/nodes/{}", node.id)));
     }
 }
 

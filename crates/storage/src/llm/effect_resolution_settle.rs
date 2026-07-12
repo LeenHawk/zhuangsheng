@@ -235,10 +235,14 @@ async fn abort_run<C: ConnectionTrait>(
     )).await?;
     connection
         .execute_raw(sql(
-            "UPDATE run_execution_counters SET open_waits = 0 WHERE run_id = ?",
+            "UPDATE run_execution_counters SET open_waits = 0, coordinator_buffered_values = 0 WHERE run_id = ?",
             vec![context.run_id.clone().into()],
         ))
         .await?;
+    connection.execute_raw(sql(
+        "UPDATE coordination_buffer_items SET status = 'cancelled', terminal_at = ? WHERE run_id = ? AND status = 'indexed'",
+        vec![now.into(), context.run_id.clone().into()],
+    )).await?;
     connection.execute_raw(sql(
         "UPDATE scheduler_wakeups SET status = 'done', claimed_by = NULL, lease_until = NULL WHERE run_id = ? AND status IN ('pending','claimed')",
         vec![context.run_id.clone().into()],

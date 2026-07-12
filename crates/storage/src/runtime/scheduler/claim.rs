@@ -11,7 +11,7 @@ use super::{
     events::{Event, append_event, finish_wakeup},
     llm_context::load_llm_context_snapshot,
     llm_snapshot::ensure_llm_snapshot,
-    load::load_inputs,
+    load::{load_coordination, load_inputs},
     read_set::load_router_memory,
     router::load_control_snapshot,
 };
@@ -208,6 +208,7 @@ async fn claim_attempt<C: ConnectionTrait>(
         router_control: load_control_snapshot(connection, &node, &instance_id).await?,
         execution_snapshot,
         context_snapshot,
+        coordination: load_coordination(connection, &node, &inputs_id).await?,
         node,
     }))))
 }

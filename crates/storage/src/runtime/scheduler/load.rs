@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use sea_orm::ConnectionTrait;
 use serde_json::Value;
 use zhuangsheng_core::graph::{DraftNodeKind, GraphNode};
+use zhuangsheng_core::scheduler::ClaimedCoordinationSnapshot;
 
 use crate::{
     StorageError, StorageResult,
@@ -46,6 +47,22 @@ pub(super) async fn load_inputs<C: ConnectionTrait>(
             Ok(result)
         }
     }
+}
+
+pub(super) async fn load_coordination<C: ConnectionTrait>(
+    connection: &C,
+    node: &GraphNode,
+    inputs_object_id: &str,
+) -> StorageResult<Option<ClaimedCoordinationSnapshot>> {
+    if !matches!(&node.kind, DraftNodeKind::JoinByKey { .. }) {
+        return Ok(None);
+    }
+    let envelope: Value = load_object_json(connection, inputs_object_id).await?;
+    let join_key = envelope
+        .pointer("/coordination/joinKey")
+        .cloned()
+        .ok_or_else(|| integrity("join coordination key missing"))?;
+    Ok(Some(ClaimedCoordinationSnapshot { join_key }))
 }
 
 pub(super) async fn load_object_id_for_port<C: ConnectionTrait>(

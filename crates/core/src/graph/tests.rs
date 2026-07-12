@@ -123,3 +123,56 @@ fn merge_any_requires_two_inputs_and_materializes_one_output() {
             .any(|issue| issue.code == "invalid_merge_shape")
     );
 }
+
+#[test]
+fn join_by_key_requires_complete_valid_selectors_and_bounded_limits() {
+    let draft: GraphDraft = serde_json::from_value(json!({
+        "graphId":"graph-join",
+        "nodes":[
+            {"id":"left","kind":"input"},
+            {"id":"right","kind":"input"},
+            {
+                "id":"join",
+                "kind":"join_by_key",
+                "inputs":[{"name":"left"},{"name":"right"}],
+                "keySelectors":{"left":"/id","right":"/id"},
+                "maxOpenKeys":8,
+                "maxBufferedPerKeyPerPort":4
+            },
+            {"id":"output","kind":"output","outputKey":"items"}
+        ],
+        "edges":[
+            {"from":{"nodeId":"left","output":"default"},"to":{"nodeId":"join","input":"left"}},
+            {"from":{"nodeId":"right","output":"default"},"to":{"nodeId":"join","input":"right"}},
+            {"from":{"nodeId":"join","output":"default"},"to":{"nodeId":"output","input":"default"}}
+        ],
+        "outputContract":[{"key":"items","collection":"append","required":true}],
+        "limits":{"maxCoordinatorBufferedValues":8}
+    }))
+    .unwrap();
+    let applied = apply_graph(draft.clone(), 1, 1).unwrap();
+    assert_eq!(applied.definition.nodes[2].outputs[0].name, "default");
+
+    let mut invalid = draft;
+    let DraftNodeKind::JoinByKey {
+        key_selectors,
+        max_open_keys,
+        ..
+    } = &mut invalid.nodes[2].kind
+    else {
+        unreachable!()
+    };
+    key_selectors.remove("right");
+    key_selectors.insert("left".into(), "not-a-pointer".into());
+    *max_open_keys = 9;
+    let DomainError::GraphValidation(issues) = apply_graph(invalid, 1, 1).unwrap_err() else {
+        panic!("expected graph validation")
+    };
+    for code in [
+        "join_key_selectors_mismatch",
+        "invalid_join_key_selector",
+        "invalid_join_by_key_limits",
+    ] {
+        assert!(issues.iter().any(|issue| issue.code == code), "{code}");
+    }
+}

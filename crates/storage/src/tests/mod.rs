@@ -26,6 +26,8 @@ mod llm_tool_support;
 mod llm_tool_test_helpers;
 mod memory;
 mod runtime_control;
+mod runtime_join_by_key;
+mod runtime_join_support;
 mod runtime_merge;
 mod runtime_router;
 mod runtime_router_long_memory;

@@ -15,6 +15,7 @@ mod m20260712_000014_fix_tool_read_set_fk;
 mod m20260712_000015_tool_registry;
 mod m20260712_000016_llm_stream_chunks;
 mod m20260712_000017_llm_output_repairs;
+mod m20260712_000018_join_by_key;
 
 use sea_orm_migration::prelude::*;
 
@@ -41,6 +42,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260712_000015_tool_registry::Migration),
             Box::new(m20260712_000016_llm_stream_chunks::Migration),
             Box::new(m20260712_000017_llm_output_repairs::Migration),
+            Box::new(m20260712_000018_join_by_key::Migration),
         ]
     }
 }

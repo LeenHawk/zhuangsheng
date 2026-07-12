@@ -12,10 +12,15 @@ use crate::{
 };
 
 use super::{
-    activate::QueueHead,
+    activation_inputs::QueueHead,
     events::{Event, add_object_ref, append_event, fail_run},
     load::object_metadata,
 };
+
+pub(super) struct ActivationFailure<'a> {
+    pub code: &'a str,
+    pub safe_message: &'a str,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,16 +41,16 @@ pub(super) async fn fail_input_activation<C: ConnectionTrait>(
     instance_id: &str,
     attempt_id: &str,
     activation_seq: i64,
+    failure: ActivationFailure<'_>,
     now: i64,
 ) -> StorageResult<()> {
-    let inputs_id = failed_inputs(connection, heads, instance_id, now).await?;
-    let safe_message = "node input does not satisfy its selector or schema";
+    let inputs_id = failed_inputs(connection, heads, instance_id, failure.code, now).await?;
     let error_id = put_inline_object(
         connection,
         &canonical::to_vec(&json!({
             "schemaVersion":1,
-            "code":"input_contract_violation",
-            "safeMessage":safe_message,
+            "code":failure.code,
+            "safeMessage":failure.safe_message,
             "retryClass":"never"
         }))?,
         now,
@@ -110,23 +115,17 @@ pub(super) async fn fail_input_activation<C: ConnectionTrait>(
         importance: "critical",
         node_instance_id: Some(instance_id),
         attempt_id: Some(attempt_id),
-        payload: json!({"schemaVersion":1,"nodeId":node.id,"code":"input_contract_violation","safeMessage":safe_message}),
+        payload: json!({"schemaVersion":1,"nodeId":node.id,"code":failure.code,"safeMessage":failure.safe_message}),
         now,
     }).await?;
-    fail_run(
-        connection,
-        run_id,
-        "input_contract_violation",
-        safe_message,
-        now,
-    )
-    .await
+    fail_run(connection, run_id, failure.code, failure.safe_message, now).await
 }
 
 async fn failed_inputs<C: ConnectionTrait>(
     connection: &C,
     heads: &[QueueHead],
     instance_id: &str,
+    failure_code: &str,
     now: i64,
 ) -> StorageResult<String> {
     let mut ports = Map::new();
@@ -151,7 +150,7 @@ async fn failed_inputs<C: ConnectionTrait>(
         &canonical::to_vec(&json!({
             "schemaVersion":1,
             "ports":ports,
-            "activationError":{"code":"input_contract_violation"}
+            "activationError":{"code":failure_code}
         }))?,
         now,
     )

@@ -1,10 +1,13 @@
 mod activate;
 mod activation_failure;
+mod activation_inputs;
 mod attempt_state;
 mod claim;
 mod emit;
 mod events;
 mod finalize;
+mod join_by_key;
+mod join_by_key_buffer;
 mod llm_context;
 mod llm_read_set;
 mod llm_snapshot;

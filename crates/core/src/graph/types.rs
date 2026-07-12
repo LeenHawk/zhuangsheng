@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{JsonSchemaSpec, SchemaCompilationDraft};
@@ -66,6 +68,11 @@ pub enum DraftNodeKind {
     },
     Merge {
         mode: MergeMode,
+    },
+    JoinByKey {
+        key_selectors: BTreeMap<String, String>,
+        max_open_keys: u64,
+        max_buffered_per_key_per_port: u64,
     },
 }
 

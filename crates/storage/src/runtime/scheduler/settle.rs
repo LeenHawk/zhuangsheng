@@ -10,7 +10,10 @@ use crate::{
     },
 };
 
-use super::events::{Event, add_object_ref, append_event, fail_run, finish_wakeup};
+use super::{
+    events::{Event, add_object_ref, append_event, fail_run, finish_wakeup},
+    join_by_key_buffer,
+};
 
 impl SqliteStore {
     pub(crate) async fn settle_run(
@@ -62,6 +65,7 @@ impl SqliteStore {
             transaction.commit().await?;
             return Ok(());
         }
+        join_by_key_buffer::strand(&transaction, run_id, now).await?;
         append_stranded_events(&transaction, run_id, now).await?;
         let outputs = build_outputs(&transaction, run_id, &revision.definition).await?;
         let outputs_id =

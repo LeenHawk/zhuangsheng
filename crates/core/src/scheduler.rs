@@ -42,6 +42,12 @@ pub struct ClaimedAttempt {
     pub router_control: Option<RouterControlSnapshot>,
     pub execution_snapshot: Option<LlmNodeExecutionSnapshot>,
     pub context_snapshot: Option<ClaimedContextSnapshot>,
+    pub coordination: Option<ClaimedCoordinationSnapshot>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClaimedCoordinationSnapshot {
+    pub join_key: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -279,6 +285,39 @@ fn execute_builtin(attempt: &ClaimedAttempt) -> BuiltinResult {
             };
             BuiltinResult::Completed {
                 outputs: [(output.name.clone(), value)].into(),
+            }
+        }
+        DraftNodeKind::JoinByKey { .. } => {
+            let Some(coordination) = &attempt.coordination else {
+                return BuiltinResult::Failed {
+                    code: "join_coordination_snapshot_missing".into(),
+                    safe_message: "Join coordination snapshot is missing".into(),
+                };
+            };
+            let Some(output) = attempt.node.outputs.first() else {
+                return BuiltinResult::Failed {
+                    code: "join_output_missing".into(),
+                    safe_message: "Join node has no output".into(),
+                };
+            };
+            let values: serde_json::Map<String, Value> = attempt
+                .node
+                .inputs
+                .iter()
+                .filter_map(|input| {
+                    attempt
+                        .inputs
+                        .get(&input.name)
+                        .cloned()
+                        .map(|value| (input.name.clone(), value))
+                })
+                .collect();
+            BuiltinResult::Completed {
+                outputs: [(
+                    output.name.clone(),
+                    serde_json::json!({"key":coordination.join_key,"values":values}),
+                )]
+                .into(),
             }
         }
     }
