@@ -1,6 +1,7 @@
 pub mod artifact;
 pub mod channel;
 pub mod context;
+pub mod conversation;
 mod error;
 pub mod graph;
 pub mod memory;

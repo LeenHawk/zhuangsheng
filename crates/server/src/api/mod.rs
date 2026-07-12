@@ -2,6 +2,7 @@ pub mod artifact;
 mod artifact_upload;
 pub mod channel;
 pub mod context;
+pub mod conversation;
 pub mod error;
 pub mod graph;
 pub mod memory;
@@ -14,8 +15,8 @@ use std::sync::Arc;
 
 use zhuangsheng_core::application::{
     artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
-    graph::GraphService, memory::MemoryService, preset::ContextPresetService,
-    secret::SecretStoreService,
+    conversation::ConversationService, graph::GraphService, memory::MemoryService,
+    preset::ContextPresetService, secret::SecretStoreService,
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
@@ -28,6 +29,7 @@ pub struct AppState {
     pub channel_service: Arc<dyn ChannelService>,
     pub preset_service: Arc<dyn ContextPresetService>,
     pub context_service: Arc<dyn ContextService>,
+    pub conversation_service: Arc<dyn ConversationService>,
     pub memory_service: Arc<dyn MemoryService>,
     pub runtime_service: Arc<dyn RuntimeService>,
     pub secret_service: Arc<dyn SecretStoreService>,

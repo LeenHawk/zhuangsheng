@@ -1,6 +1,7 @@
 pub mod artifact;
 mod config;
 pub mod context;
+pub mod conversation;
 mod error;
 pub mod graph;
 pub mod llm;

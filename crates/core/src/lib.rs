@@ -2,6 +2,7 @@ pub mod application;
 pub mod artifact;
 pub mod canonical;
 pub mod compatibility;
+pub mod conversation;
 pub mod error;
 pub mod graph;
 pub mod llm;

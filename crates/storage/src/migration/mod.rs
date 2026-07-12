@@ -19,6 +19,7 @@ mod m20260712_000018_join_by_key;
 mod m20260712_000019_aggregation_windows;
 mod m20260712_000020_artifact_staging;
 mod m20260712_000021_artifacts;
+mod m20260712_000022_conversations;
 
 use sea_orm_migration::prelude::*;
 
@@ -49,6 +50,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260712_000019_aggregation_windows::Migration),
             Box::new(m20260712_000020_artifact_staging::Migration),
             Box::new(m20260712_000021_artifacts::Migration),
+            Box::new(m20260712_000022_conversations::Migration),
         ]
     }
 }

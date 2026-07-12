@@ -14,8 +14,8 @@ use serde::Serialize;
 use tower_http::trace::TraceLayer;
 use zhuangsheng_core::application::{
     artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
-    graph::GraphService, memory::MemoryService, preset::ContextPresetService,
-    secret::SecretStoreService, tool::ToolRegistryService,
+    conversation::ConversationService, graph::GraphService, memory::MemoryService,
+    preset::ContextPresetService, secret::SecretStoreService, tool::ToolRegistryService,
 };
 use zhuangsheng_core::runtime::RuntimeService;
 
@@ -32,6 +32,7 @@ pub struct AppServices {
     pub channel: Arc<dyn ChannelService>,
     pub preset: Arc<dyn ContextPresetService>,
     pub context: Arc<dyn ContextService>,
+    pub conversation: Arc<dyn ConversationService>,
     pub memory: Arc<dyn MemoryService>,
     pub runtime: Arc<dyn RuntimeService>,
     pub secret: Arc<dyn SecretStoreService>,
@@ -46,6 +47,7 @@ pub fn app(services: AppServices) -> Router {
         channel_service: services.channel,
         preset_service: services.preset,
         context_service: services.context,
+        conversation_service: services.conversation,
         memory_service: services.memory,
         runtime_service: services.runtime,
         secret_service: services.secret,
@@ -62,6 +64,7 @@ pub fn app(services: AppServices) -> Router {
         .merge(api::channel::routes())
         .merge(api::preset::routes())
         .merge(api::context::routes())
+        .merge(api::conversation::routes())
         .merge(api::memory::routes())
         .merge(api::runtime::routes())
         .merge(api::secret::routes())

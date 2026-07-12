@@ -7,8 +7,8 @@ use std::{
 use zhuangsheng_core::{
     application::{
         artifact::ArtifactStagingService, channel::ChannelService, context::ContextService,
-        graph::GraphService, memory::MemoryService, preset::ContextPresetService,
-        secret::SecretStoreService, tool::ToolRegistryService,
+        conversation::ConversationService, graph::GraphService, memory::MemoryService,
+        preset::ContextPresetService, secret::SecretStoreService, tool::ToolRegistryService,
     },
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
@@ -34,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
     let channel_service: Arc<dyn ChannelService> = store.clone();
     let preset_service: Arc<dyn ContextPresetService> = store.clone();
     let context_service: Arc<dyn ContextService> = store.clone();
+    let conversation_service: Arc<dyn ConversationService> = store.clone();
     let memory_service: Arc<dyn MemoryService> = store.clone();
     let runtime_service: Arc<dyn RuntimeService> = store.clone();
     let secret_service: Arc<dyn SecretStoreService> = store.clone();
@@ -56,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
             channel: channel_service,
             preset: preset_service,
             context: context_service,
+            conversation: conversation_service,
             memory: memory_service,
             runtime: runtime_service,
             secret: secret_service,
