@@ -2,11 +2,16 @@ use std::collections::HashSet;
 
 use crate::{ValidationIssue, selector};
 
-use super::{InputSelector, LlmNodeConfig, MemoryToolCapability, StaticMemoryReadSource};
+use super::{
+    FinalValueSource, InputSelector, LlmNodeConfig, MemoryToolCapability, StaticContextWriteOp,
+    StaticMemoryReadSource,
+};
 
 pub(super) fn validate_llm_memory(
     config: &LlmNodeConfig,
     node_id: &str,
+    input_names: &HashSet<String>,
+    output_names: &HashSet<String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
     let Some(memory) = &config.memory else {
@@ -65,11 +70,34 @@ pub(super) fn validate_llm_memory(
             ));
         }
     }
-    let mut write_scopes = HashSet::new();
+    let read_aliases: HashSet<_> = memory
+        .node
+        .reads
+        .iter()
+        .map(|read| read.alias.as_str())
+        .collect();
+    let mut write_ids = HashSet::new();
     for write in &memory.node.working_writes {
-        if write.scope.trim().is_empty()
+        let value_valid = match (&write.op, &write.value_from) {
+            (StaticContextWriteOp::Remove, None) => true,
+            (StaticContextWriteOp::Remove, Some(_)) | (_, None) => false,
+            (_, Some(value)) => {
+                valid_name(&value.source_name)
+                    && selector::validate(&value.selector).is_ok()
+                    && match value.source {
+                        FinalValueSource::Input => input_names.contains(&value.source_name),
+                        FinalValueSource::Output => output_names.contains(&value.source_name),
+                        FinalValueSource::Binding => {
+                            read_aliases.contains(value.source_name.as_str())
+                        }
+                    }
+            }
+        };
+        if !valid_name(&write.id)
+            || !write_ids.insert(write.id.as_str())
+            || write.target_scope != "run-context"
             || !valid_pointer(&write.path)
-            || !write_scopes.insert((write.scope.as_str(), write.path.as_str()))
+            || !value_valid
         {
             issues.push(issue(
                 "invalid_llm_memory_write",

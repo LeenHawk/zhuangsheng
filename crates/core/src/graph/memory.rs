@@ -77,8 +77,43 @@ pub enum PreExecutionValueSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StaticContextWrite {
-    pub scope: String,
+    pub id: String,
+    pub timing: StaticContextWriteTiming,
+    pub target_scope: String,
     pub path: String,
+    pub op: StaticContextWriteOp,
+    pub value_from: Option<FinalValueSelector>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StaticContextWriteTiming {
+    AfterNodeCompleted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StaticContextWriteOp {
+    Add,
+    Replace,
+    Append,
+    Remove,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalValueSelector {
+    pub source: FinalValueSource,
+    pub source_name: String,
+    pub selector: InputSelector,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FinalValueSource {
+    Input,
+    Output,
+    Binding,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

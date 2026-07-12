@@ -15,10 +15,10 @@ use crate::{
 };
 
 use super::{
+    attempt_finish::{complete_rows, fail_attempt, settle_interrupt_after_attempt},
     attempt_state::AttemptState,
     emit::StoredValue,
     events::{Event, add_object_ref, append_event, enqueue_wakeup, finish_wakeup},
-    finalize::{complete_rows, fail_attempt, settle_interrupt_after_attempt},
 };
 
 #[allow(clippy::too_many_arguments)]

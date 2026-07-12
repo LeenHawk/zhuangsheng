@@ -195,7 +195,7 @@ impl SqliteStore {
             vec![attempt_id.clone().into(), instance_id.clone().into(), format!("attempt:{instance_id}:1").into(), run_id.into()],
         )).await?;
         resolve_router_reads(&transaction, run_id, &attempt_id, node, now).await?;
-        resolve_llm_reads(&transaction, run_id, &attempt_id, node, now).await?;
+        resolve_llm_reads(&transaction, run_id, &instance_id, &attempt_id, node, now).await?;
         for head in &heads {
             let consumed = transaction.execute_raw(sql(
                 "UPDATE edge_queue_values SET consumed_by_instance_id = ?, consumed_at = ? WHERE id = ? AND consumed_at IS NULL",

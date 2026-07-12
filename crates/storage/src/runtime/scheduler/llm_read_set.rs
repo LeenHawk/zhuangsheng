@@ -24,6 +24,7 @@ use super::{
 pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
     connection: &C,
     run_id: &str,
+    node_instance_id: &str,
     attempt_id: &str,
     node: &GraphNode,
     now: i64,
@@ -34,7 +35,7 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
     let Some(memory) = &config.memory else {
         return Ok(());
     };
-    if memory.node.reads.is_empty() {
+    if memory.node.reads.is_empty() && memory.node.working_writes.is_empty() {
         return Ok(());
     }
     let run = connection
@@ -47,6 +48,12 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
     let context_id: String = run.try_get("", "context_id")?;
     let branch_id: String = run.try_get("", "branch_id")?;
     let context = load_context(connection, &context_id, &branch_id).await?;
+    if !memory.node.working_writes.is_empty() {
+        connection.execute_raw(sql(
+            "INSERT OR IGNORE INTO node_static_write_bases (node_instance_id,context_id,branch_id,base_commit_id,created_at) VALUES (?,?,?,?,?)",
+            vec![node_instance_id.into(),context_id.clone().into(),branch_id.clone().into(),context.head_commit_id.clone().into(),now.into()],
+        )).await?;
+    }
     for read in &memory.node.reads {
         let resolved = match &read.source {
             StaticMemoryReadSource::WorkingContext { path, .. } => {

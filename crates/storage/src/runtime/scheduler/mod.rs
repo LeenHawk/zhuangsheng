@@ -3,6 +3,7 @@ mod activation_failure;
 mod activation_inputs;
 mod aggregator;
 mod aggregator_close;
+mod attempt_finish;
 mod attempt_state;
 mod claim;
 mod conversation_history;
@@ -23,6 +24,7 @@ mod recovery;
 mod router;
 mod service;
 mod settle;
+mod static_writes;
 mod timers;
 
 pub(crate) use events::{Event, add_object_ref, append_event, enqueue_wakeup, fail_run};

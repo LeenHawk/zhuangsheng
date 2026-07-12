@@ -32,6 +32,8 @@ pub(super) fn normalize_llm_node(
     decoder: u32,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    let input_names: HashSet<_> = node.inputs.iter().map(|port| port.name.clone()).collect();
+    let output_names: HashSet<_> = node.outputs.iter().map(|port| port.name.clone()).collect();
     let DraftNodeKind::Llm { config } = &mut node.kind else {
         return;
     };
@@ -63,7 +65,13 @@ pub(super) fn normalize_llm_node(
     normalize_output(config);
     normalize_streaming(config);
     normalize_limits(config, channel, &node.id, issues);
-    super::llm_memory_validation::validate_llm_memory(config, &node.id, issues);
+    super::llm_memory_validation::validate_llm_memory(
+        config,
+        &node.id,
+        &input_names,
+        &output_names,
+        issues,
+    );
     validate_request(config, &node.id, issues);
     validate_tools(config, channel, dependencies, &node.id, issues);
     let requirements = llm_model_requirements(config);

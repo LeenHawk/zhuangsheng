@@ -40,6 +40,7 @@ mod llm_opaque_bundle;
 mod llm_output_repair;
 mod llm_started_recovery;
 mod llm_static_context;
+mod llm_static_writes;
 mod llm_stream_chunk;
 mod llm_terminal_fencing;
 mod llm_tool_approval;
