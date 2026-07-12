@@ -90,7 +90,7 @@ pub(crate) async fn enqueue_wakeup<C: ConnectionTrait>(
     Ok(())
 }
 
-pub(super) async fn fail_run<C: ConnectionTrait>(
+pub(crate) async fn fail_run<C: ConnectionTrait>(
     connection: &C,
     run_id: &str,
     code: &str,
@@ -123,7 +123,7 @@ pub(super) async fn fail_run<C: ConnectionTrait>(
         .map_err(|_| StorageError::Integrity("invalid terminal run epoch".into()))?;
     fence_run_effects(connection, run_id, terminal_epoch, now).await?;
     connection.execute(sql(
-        "UPDATE node_attempts SET status = 'cancelled', worker_id = NULL, lease_until = NULL, finished_at = ? WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('queued','leased','running')",
+        "UPDATE node_attempts SET status = 'cancelled', worker_id = NULL, lease_until = NULL, finished_at = ? WHERE node_instance_id IN (SELECT id FROM node_instances WHERE run_id = ?) AND status IN ('queued','leased','running','waiting')",
         vec![now.into(), run_id.into()],
     )).await?;
     connection.execute(sql(

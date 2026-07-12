@@ -6,8 +6,9 @@ mod scheduler;
 mod service;
 mod start;
 mod views;
+mod waits;
 
 pub(crate) use scheduler::{
-    Event, add_object_ref, append_event, copy_attempt_reads, enqueue_wakeup,
+    Event, add_object_ref, append_event, copy_attempt_reads, enqueue_wakeup, fail_run,
 };
 pub use zhuangsheng_core::runtime::*;

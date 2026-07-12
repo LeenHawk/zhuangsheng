@@ -13,7 +13,10 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use zhuangsheng_core::runtime::{RunContextCommand, RunControlCommand, RunView, StartRunCommand};
+use zhuangsheng_core::runtime::{
+    RunContextCommand, RunControlCommand, RunView, StartRunCommand, SubmitWaitResponseCommand,
+    ToolApprovalDecision, ToolApprovalDecisionKind, WaitDeliveryView, WaitResponsePayload,
+};
 
 use super::{
     AppState,
@@ -40,15 +43,48 @@ struct RunControlBody {
     reason: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubmitWaitResponseBody {
+    delivery_id: String,
+    response: ExternalWaitResponse,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ExternalWaitResponse {
+    BlockerDecisions { decisions: Vec<BlockerDecisionBody> },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum BlockerDecisionBody {
+    ToolCall {
+        #[serde(rename = "blockerId")]
+        blocker_id: String,
+        #[serde(rename = "callDigest")]
+        call_digest: String,
+        decision: ToolApprovalDecisionKind,
+        reason: Option<String>,
+    },
+    MemoryProposal {
+        #[serde(rename = "blockerId")]
+        blocker_id: String,
+        decision: ToolApprovalDecisionKind,
+    },
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/graphs/{graph_revision_id}/runs", post(start_run))
         .route("/v1/runs/{run_id}", get(get_run))
         .route("/v1/runs/{run_id}/outputs", get(get_outputs))
+        .route("/v1/runs/{run_id}/waits", get(list_open_waits))
         .route("/v1/runs/{run_id}/events", get(run_events))
         .route("/v1/runs/{run_id}/interrupt", post(interrupt_run))
         .route("/v1/runs/{run_id}/resume", post(resume_run))
         .route("/v1/runs/{run_id}/cancel", post(cancel_run))
+        .route("/v1/waits/{wait_id}/responses", post(submit_wait_response))
         .route("/v1/values/{value_ref}", get(get_value))
 }
 
@@ -98,6 +134,13 @@ async fn get_outputs(
     Path(run_id): Path<String>,
 ) -> ApiResult<Json<zhuangsheng_core::runtime::RunOutputsView>> {
     Ok(Json(state.runtime_service.get_run_outputs(&run_id).await?))
+}
+
+async fn list_open_waits(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+) -> ApiResult<Json<Vec<zhuangsheng_core::runtime::WaitView>>> {
+    Ok(Json(state.runtime_service.list_open_waits(&run_id).await?))
 }
 
 async fn run_events(
@@ -197,6 +240,54 @@ async fn cancel_run(
 ) -> ApiResult<Json<RunView>> {
     let command = control_command(run_id, &headers, body)?;
     Ok(Json(state.runtime_service.request_cancel(command).await?))
+}
+
+async fn submit_wait_response(
+    State(state): State<AppState>,
+    Path(wait_id): Path<String>,
+    body: Result<Json<SubmitWaitResponseBody>, JsonRejection>,
+) -> ApiResult<Json<WaitDeliveryView>> {
+    let Json(body) =
+        body.map_err(|error| ApiError::bad_request("invalid_json_body", error.body_text()))?;
+    let decisions = match body.response {
+        ExternalWaitResponse::BlockerDecisions { decisions } => decisions
+            .into_iter()
+            .map(|decision| match decision {
+                BlockerDecisionBody::ToolCall {
+                    blocker_id,
+                    call_digest,
+                    decision,
+                    reason,
+                } => Ok(ToolApprovalDecision {
+                    tool_call_id: blocker_id,
+                    call_digest,
+                    decision,
+                    reason,
+                }),
+                BlockerDecisionBody::MemoryProposal {
+                    blocker_id,
+                    decision,
+                } => Err(ApiError::bad_request(
+                    "unsupported_wait_response",
+                    format!(
+                        "memory proposal blocker {blocker_id} decision {decision:?} is not supported yet"
+                    ),
+                )),
+            })
+            .collect::<ApiResult<Vec<_>>>()?,
+    };
+    Ok(Json(
+        state
+            .runtime_service
+            .submit_wait_response(SubmitWaitResponseCommand {
+                wait_id,
+                delivery_id: body.delivery_id,
+                actor_kind: "human".into(),
+                actor_id: Some("local-user".into()),
+                payload: WaitResponsePayload::ToolApproval { decisions },
+            })
+            .await?,
+    ))
 }
 
 fn control_command(

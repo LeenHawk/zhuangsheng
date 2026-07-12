@@ -1,10 +1,11 @@
 use sea_orm::ConnectionTrait;
 use zhuangsheng_core::{
     canonical,
-    graph::ToolApprovalPolicy,
+    graph::{ToolApprovalPolicy, ToolGrant},
     llm::{
-        EffectAttemptFence, LlmLogicalCallStatus, LlmLoopCheckpoint, PrepareToolCallCommand,
-        TOOL_CALL_POLICY_VERSION, ToolCallCheckpointStatus, ToolCallDigestMaterial,
+        EffectAttemptFence, LlmLogicalCallStatus, LlmLoopCheckpoint, PrepareToolApprovalCall,
+        PrepareToolCallCommand, TOOL_CALL_POLICY_VERSION, ToolCallCheckpointStatus,
+        ToolCallDigestMaterial,
     },
 };
 
@@ -14,11 +15,69 @@ use super::validation::LedgerContext;
 
 pub(super) struct ValidatedToolCall {
     pub arguments: serde_json::Value,
+    pub grant: ToolGrant,
+    pub requires_approval: bool,
 }
 
 pub(super) fn validate_tool_material(
     context: &LedgerContext,
     command: &PrepareToolCallCommand,
+) -> StorageResult<ValidatedToolCall> {
+    validate_material(
+        context,
+        &command.checkpoint,
+        ToolMaterialInput {
+            binding_id: &command.binding_id,
+            tool_id: &command.tool_id,
+            tool_version: &command.tool_version,
+            call_digest: &command.call_digest,
+            arguments_bytes: &command.arguments_bytes,
+            descriptor_digest: &command.descriptor_digest,
+            schema_compilation_digests: &command.schema_compilation_digests,
+            implementation_digest: &command.implementation_digest,
+            descriptor_requires_approval: command.descriptor_requires_approval,
+        },
+    )
+}
+
+pub(super) fn validate_approval_tool_material(
+    context: &LedgerContext,
+    checkpoint: &LlmLoopCheckpoint,
+    command: &PrepareToolApprovalCall,
+) -> StorageResult<ValidatedToolCall> {
+    validate_material(
+        context,
+        checkpoint,
+        ToolMaterialInput {
+            binding_id: &command.binding_id,
+            tool_id: &command.tool_id,
+            tool_version: &command.tool_version,
+            call_digest: &command.call_digest,
+            arguments_bytes: &command.arguments_bytes,
+            descriptor_digest: &command.descriptor_digest,
+            schema_compilation_digests: &command.schema_compilation_digests,
+            implementation_digest: &command.implementation_digest,
+            descriptor_requires_approval: command.descriptor_requires_approval,
+        },
+    )
+}
+
+struct ToolMaterialInput<'a> {
+    binding_id: &'a str,
+    tool_id: &'a str,
+    tool_version: &'a str,
+    call_digest: &'a str,
+    arguments_bytes: &'a [u8],
+    descriptor_digest: &'a str,
+    schema_compilation_digests: &'a [String],
+    implementation_digest: &'a str,
+    descriptor_requires_approval: bool,
+}
+
+fn validate_material(
+    context: &LedgerContext,
+    checkpoint: &LlmLoopCheckpoint,
+    command: ToolMaterialInput<'_>,
 ) -> StorageResult<ValidatedToolCall> {
     let grant = context
         .snapshot
@@ -27,27 +86,26 @@ pub(super) fn validate_tool_material(
         .find(|grant| grant.binding_id == command.binding_id)
         .cloned()
         .ok_or_else(|| StorageError::InvalidArgument("tool binding is not pinned".into()))?;
-    let registry = command
-        .checkpoint
+    let registry = checkpoint
         .registry_snapshot
         .entries
         .iter()
         .find(|entry| entry.tool_id == command.tool_id && entry.version == command.tool_version)
         .ok_or_else(|| StorageError::InvalidArgument("tool registry entry is not pinned".into()))?;
-    let arguments: serde_json::Value = serde_json::from_slice(&command.arguments_bytes)
+    let arguments: serde_json::Value = serde_json::from_slice(command.arguments_bytes)
         .map_err(|_| StorageError::InvalidArgument("tool arguments are not valid JSON".into()))?;
     let canonical_arguments = canonical::to_vec(&arguments)?;
     let effective_approval =
         command.descriptor_requires_approval || grant.approval == Some(ToolApprovalPolicy::Always);
     let material = ToolCallDigestMaterial {
-        binding_id: command.binding_id.clone(),
-        tool_id: command.tool_id.clone(),
-        tool_version: command.tool_version.clone(),
+        binding_id: command.binding_id.to_owned(),
+        tool_id: command.tool_id.to_owned(),
+        tool_version: command.tool_version.to_owned(),
         arguments: arguments.clone(),
         grant: grant.clone(),
-        descriptor_digest: command.descriptor_digest.clone(),
-        schema_compilation_digests: command.schema_compilation_digests.clone(),
-        implementation_digest: command.implementation_digest.clone(),
+        descriptor_digest: command.descriptor_digest.to_owned(),
+        schema_compilation_digests: command.schema_compilation_digests.to_vec(),
+        implementation_digest: command.implementation_digest.to_owned(),
         policy_version: TOOL_CALL_POLICY_VERSION,
     };
     if grant.tool_id != command.tool_id
@@ -57,13 +115,16 @@ pub(super) fn validate_tool_material(
         || registry.implementation_digest != command.implementation_digest
         || canonical_arguments != command.arguments_bytes
         || material.digest()? != command.call_digest
-        || effective_approval
     {
         return Err(StorageError::InvalidArgument(
             "tool call material does not match its pinned grant and registry entry".into(),
         ));
     }
-    Ok(ValidatedToolCall { arguments })
+    Ok(ValidatedToolCall {
+        arguments,
+        grant,
+        requires_approval: effective_approval,
+    })
 }
 
 pub(super) struct ToolCheckpointExpectation<'a> {
@@ -231,6 +292,63 @@ pub(super) fn validate_tool_replay_fence(
         || u64::try_from(call.attempt_epoch).ok() != Some(fence.run_control_epoch)
     {
         return Err(StorageError::Conflict("effect_attempt_fence"));
+    }
+    Ok(())
+}
+
+pub(super) async fn validate_tool_start_policy<C: ConnectionTrait>(
+    connection: &C,
+    context: &LedgerContext,
+    call: &FencedToolCall,
+) -> StorageResult<()> {
+    let max_concurrent = context
+        .snapshot
+        .limits
+        .max_concurrent_tools
+        .ok_or_else(|| StorageError::Integrity("tool concurrency limit is not pinned".into()))?;
+    let rows = connection.query_all(sql(
+        "SELECT tc.id, tc.call_index, tc.status, e.classification FROM tool_calls tc LEFT JOIN effects e ON e.tool_call_id = tc.id WHERE tc.model_call_id = ? ORDER BY tc.call_index",
+        vec![call.model_call_id.clone().into()],
+    )).await?;
+    let running = rows
+        .iter()
+        .filter(|row| row.try_get::<String>("", "status").as_deref() == Ok("running"))
+        .count();
+    if u64::try_from(running)
+        .ok()
+        .is_none_or(|count| count >= max_concurrent)
+    {
+        return Err(StorageError::Conflict("tool_concurrency_limit"));
+    }
+    let current_non_idempotent = call.classification == "non_idempotent";
+    for row in rows {
+        let id: String = row.try_get("", "id")?;
+        if id == call.tool_call_id {
+            continue;
+        }
+        let status: String = row.try_get("", "status")?;
+        let classification: Option<String> = row.try_get("", "classification")?;
+        let call_index = u64::try_from(row.try_get::<i64>("", "call_index")?)
+            .map_err(|_| StorageError::Integrity("invalid sibling tool call index".into()))?;
+        if status == "outcome_unknown" {
+            return Err(StorageError::Conflict("tool_batch_outcome_unknown"));
+        }
+        if status == "running" && classification.as_deref() == Some("non_idempotent") {
+            return Err(StorageError::Conflict("tool_non_idempotent_serial"));
+        }
+        if current_non_idempotent && status == "running" {
+            return Err(StorageError::Conflict("tool_non_idempotent_serial"));
+        }
+        let terminal = matches!(
+            status.as_str(),
+            "completed" | "failed" | "denied" | "cancelled_before_start" | "abandoned_unknown"
+        );
+        if call_index < call.call_index
+            && !terminal
+            && (current_non_idempotent || classification.as_deref() == Some("non_idempotent"))
+        {
+            return Err(StorageError::Conflict("tool_non_idempotent_serial"));
+        }
     }
     Ok(())
 }

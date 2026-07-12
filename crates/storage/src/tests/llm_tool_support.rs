@@ -6,7 +6,7 @@ use zhuangsheng_core::{
         graph::{ApplyGraphCommand, CreateGraphCommand, UpdateGraphDraftCommand},
         preset::{CreateContextPresetCommand, PublishContextPresetVersionCommand},
     },
-    graph::{ArtifactGrant, DraftNodeKind, ToolApprovalPolicy, ToolGrant},
+    graph::{ArtifactGrant, DraftNodeKind, LlmMemoryBinding, ToolApprovalPolicy, ToolGrant},
     llm::context::{ContextAssemblyMode, ContextAssemblySpec},
     runtime::{RunContextCommand, StartRunCommand},
     scheduler::{ClaimedAttempt, Scheduler, SchedulerWork},
@@ -38,6 +38,21 @@ pub(super) fn echo_grant() -> ToolGrant {
 }
 
 pub(super) async fn prepare_running_tool_attempt(store: &SqliteStore) -> ClaimedAttempt {
+    prepare_running_tool_attempt_with_bindings(store, echo_grant(), None).await
+}
+
+pub(super) async fn prepare_running_tool_attempt_with_memory(
+    store: &SqliteStore,
+    memory: LlmMemoryBinding,
+) -> ClaimedAttempt {
+    prepare_running_tool_attempt_with_bindings(store, echo_grant(), Some(memory)).await
+}
+
+async fn prepare_running_tool_attempt_with_bindings(
+    store: &SqliteStore,
+    grant: ToolGrant,
+    memory: Option<LlmMemoryBinding>,
+) -> ClaimedAttempt {
     let channel = store
         .create_channel(CreateChannelCommand {
             name: "Tool LLM".into(),
@@ -97,7 +112,8 @@ pub(super) async fn prepare_running_tool_attempt(store: &SqliteStore) -> Claimed
             _ => None,
         })
         .unwrap();
-    config.tools.push(echo_grant());
+    config.tools.push(grant);
+    config.memory = memory;
     let updated = store
         .update_graph_draft(UpdateGraphDraftCommand {
             graph_id: graph.graph.id.clone(),

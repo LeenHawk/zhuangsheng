@@ -7,8 +7,65 @@ use zhuangsheng_core::{
         FinishModelCallCommand, LlmLogicalCallStatus, LlmLoopCheckpoint, ModelCallEffectOutcome,
         ResolveEffectUnknownCommand, StartModelCallCommand,
     },
+    runtime::{
+        SubmitWaitResponseCommand, ToolApprovalDecision, ToolApprovalDecisionKind,
+        WaitResponsePayload,
+    },
     scheduler::ClaimedAttempt,
 };
+
+#[tokio::test]
+async fn generic_wait_response_rejects_effect_blocker_without_partial_delivery() {
+    let store = store().await;
+    prepare_unknown(&store).await;
+    let wait_id: String = store
+        .db
+        .query_one(sql(
+            "SELECT wait_id FROM wait_blockers WHERE blocker_kind = 'effect' AND blocker_id = 'effect-1'",
+            vec![],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "wait_id")
+        .unwrap();
+    let error = store
+        .submit_wait_response(
+            SubmitWaitResponseCommand {
+                wait_id: wait_id.clone(),
+                delivery_id: "wrong-generic-delivery".into(),
+                actor_kind: "human".into(),
+                actor_id: Some("user-1".into()),
+                payload: WaitResponsePayload::ToolApproval {
+                    decisions: vec![ToolApprovalDecision {
+                        tool_call_id: "not-an-effect".into(),
+                        call_digest: "not-an-effect".into(),
+                        decision: ToolApprovalDecisionKind::Approve,
+                        reason: None,
+                    }],
+                },
+            },
+            now_ms() + 3,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        StorageError::Conflict("effect_resolution_required")
+    ));
+    let deliveries: i64 = store
+        .db
+        .query_one(sql(
+            "SELECT COUNT(*) AS count FROM wait_deliveries WHERE wait_id = ?",
+            vec![wait_id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "count")
+        .unwrap();
+    assert_eq!(deliveries, 0);
+}
 
 use crate::{
     SqliteStore, StorageError,

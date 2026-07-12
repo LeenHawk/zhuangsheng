@@ -19,7 +19,7 @@ use super::{
     tool_ledger_retry::prepare_retry,
     tool_validation::{
         ToolCheckpointExpectation, load_tool_attempt, validate_tool_checkpoint,
-        validate_tool_fence, validate_tool_material,
+        validate_tool_fence, validate_tool_material, validate_tool_start_policy,
     },
     validation::load_ledger_context,
 };
@@ -39,6 +39,11 @@ impl SqliteStore {
         )
         .await?;
         let material = validate_tool_material(&context, &command)?;
+        if material.requires_approval {
+            return Err(StorageError::InvalidArgument(
+                "tool call requires an approval batch".into(),
+            ));
+        }
         let retry_json = canonical::to_string(&command.retry_policy)?;
         if let Some(existing) = load_existing(&transaction, &command, &retry_json).await? {
             transaction.commit().await?;
@@ -233,6 +238,7 @@ impl SqliteStore {
         {
             return Err(StorageError::Conflict("tool_effect_status"));
         }
+        validate_tool_start_policy(&transaction, &context, &call).await?;
         let attempt = transaction.execute(sql(
             "UPDATE effect_attempts SET status = 'started', provider_request_id = ?, started_at = ? WHERE id = ? AND status = 'prepared'",
             vec![command.provider_request_id.into(), now.into(), command.effect_attempt_id.clone().into()],

@@ -338,6 +338,42 @@ async fn memory_http_flow_uses_service_contract_and_typed_commands() {
     assert_eq!(results["records"].as_array().unwrap().len(), 1);
 }
 
+#[tokio::test]
+async fn wait_response_route_uses_typed_blocker_decisions() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    let app = app(
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store,
+    );
+    let response = call(
+        &app,
+        request(
+            "POST",
+            "/v1/waits/wait-1/responses",
+            json!({
+                "deliveryId":"delivery-1",
+                "response":{
+                    "type":"blocker_decisions",
+                    "decisions":[{
+                        "kind":"memory_proposal",
+                        "blockerId":"proposal-1",
+                        "decision":"approve"
+                    }]
+                }
+            }),
+            &[],
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert_eq!(response["error"]["code"], "unsupported_wait_response");
+}
+
 fn request(method: &str, uri: &str, body: Value, headers: &[(&str, String)]) -> Request<Body> {
     let mut builder = Request::builder()
         .method(method)

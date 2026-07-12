@@ -3,11 +3,11 @@ use zhuangsheng_core::{
     application::ApplicationError,
     runtime::{
         DurableRunEventView, RunControlCommand, RunOutputsView, RunView, RuntimeService,
-        StartRunCommand,
+        StartRunCommand, SubmitWaitResponseCommand, WaitDeliveryView, WaitView,
     },
 };
 
-use crate::SqliteStore;
+use crate::{SqliteStore, graph::helpers::now_ms};
 
 #[async_trait]
 impl RuntimeService for SqliteStore {
@@ -23,6 +23,12 @@ impl RuntimeService for SqliteStore {
 
     async fn get_run_outputs(&self, run_id: &str) -> Result<RunOutputsView, ApplicationError> {
         SqliteStore::get_run_outputs(self, run_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn list_open_waits(&self, run_id: &str) -> Result<Vec<WaitView>, ApplicationError> {
+        SqliteStore::list_open_waits(self, run_id)
             .await
             .map_err(Into::into)
     }
@@ -67,6 +73,15 @@ impl RuntimeService for SqliteStore {
         command: RunControlCommand,
     ) -> Result<RunView, ApplicationError> {
         SqliteStore::request_cancel(self, command)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn submit_wait_response(
+        &self,
+        command: SubmitWaitResponseCommand,
+    ) -> Result<WaitDeliveryView, ApplicationError> {
+        SqliteStore::submit_wait_response(self, command, now_ms())
             .await
             .map_err(Into::into)
     }

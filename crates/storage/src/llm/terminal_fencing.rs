@@ -28,8 +28,124 @@ pub(crate) async fn fence_run_effects<C: ConnectionTrait>(
     for row in &rows {
         fence_effect(connection, row, run_id, terminal_epoch, now).await?;
     }
+    let unmaterialized =
+        fence_unmaterialized_tool_calls(connection, run_id, terminal_epoch, now).await?;
     u64::try_from(rows.len())
-        .map_err(|_| StorageError::Integrity("terminal effect count overflow".into()))
+        .ok()
+        .and_then(|count| count.checked_add(unmaterialized))
+        .ok_or_else(|| StorageError::Integrity("terminal effect count overflow".into()))
+}
+
+async fn fence_unmaterialized_tool_calls<C: ConnectionTrait>(
+    connection: &C,
+    run_id: &str,
+    terminal_epoch: u64,
+    now: i64,
+) -> StorageResult<u64> {
+    let rows = connection.query_all(sql(
+        "SELECT tc.id AS tool_call_id, tc.node_instance_id FROM tool_calls tc JOIN node_instances ni ON ni.id = tc.node_instance_id WHERE ni.run_id = ? AND tc.status IN ('requested','validated','awaiting_approval') AND NOT EXISTS (SELECT 1 FROM effects e WHERE e.tool_call_id = tc.id) ORDER BY tc.node_instance_id, tc.call_index",
+        vec![run_id.into()],
+    )).await?;
+    for row in &rows {
+        let tool_call_id: String = row.try_get("", "tool_call_id")?;
+        let node_instance_id: String = row.try_get("", "node_instance_id")?;
+        if connection.execute(sql(
+            "UPDATE tool_calls SET status = 'cancelled_before_start', finished_at = ? WHERE id = ? AND status IN ('requested','validated','awaiting_approval')",
+            vec![now.into(), tool_call_id.clone().into()],
+        )).await?.rows_affected() != 1 {
+            return Err(StorageError::Conflict("terminal_tool_owner"));
+        }
+        update_unmaterialized_checkpoint(
+            connection,
+            &node_instance_id,
+            &tool_call_id,
+            run_id,
+            terminal_epoch,
+            now,
+        )
+        .await?;
+        abort_open_tool_blocker(connection, &tool_call_id, run_id, terminal_epoch, now).await?;
+    }
+    u64::try_from(rows.len())
+        .map_err(|_| StorageError::Integrity("terminal tool count overflow".into()))
+}
+
+async fn update_unmaterialized_checkpoint<C: ConnectionTrait>(
+    connection: &C,
+    node_instance_id: &str,
+    tool_call_id: &str,
+    run_id: &str,
+    terminal_epoch: u64,
+    now: i64,
+) -> StorageResult<()> {
+    let row = connection
+        .query_one(sql(
+            "SELECT checkpoint_object_id FROM llm_loop_checkpoints WHERE node_instance_id = ?",
+            vec![node_instance_id.into()],
+        ))
+        .await?
+        .ok_or_else(|| StorageError::Integrity("terminal tool checkpoint missing".into()))?;
+    let mut checkpoint: LlmLoopCheckpoint = load_object_json(
+        connection,
+        &row.try_get::<String>("", "checkpoint_object_id")?,
+    )
+    .await?;
+    if !checkpoint.checksum_is_valid() {
+        return Err(StorageError::Integrity(
+            "terminal tool checkpoint checksum is invalid".into(),
+        ));
+    }
+    let call = checkpoint
+        .current_batch
+        .iter_mut()
+        .find(|call| call.tool_call_id == tool_call_id && call.effect_id.is_none())
+        .ok_or_else(|| StorageError::Integrity("terminal tool checkpoint is missing".into()))?;
+    call.status = ToolCallCheckpointStatus::CancelledBeforeStart;
+    call.output_ref = None;
+    call.wait_id = None;
+    checkpoint.effect_watermark = format!("run-terminal:{run_id}:{terminal_epoch}");
+    checkpoint = checkpoint.seal()?;
+    persist_checkpoint(connection, &checkpoint, now).await
+}
+
+async fn abort_open_tool_blocker<C: ConnectionTrait>(
+    connection: &C,
+    tool_call_id: &str,
+    run_id: &str,
+    terminal_epoch: u64,
+    now: i64,
+) -> StorageResult<()> {
+    let blocker = connection.query_one(sql(
+        "SELECT wait_id FROM wait_blockers WHERE blocker_kind = 'tool_call' AND blocker_id = ? AND status = 'open'",
+        vec![tool_call_id.into()],
+    )).await?;
+    let Some(blocker) = blocker else {
+        return Ok(());
+    };
+    let wait_id: String = blocker.try_get("", "wait_id")?;
+    let decision = canonical::to_vec(&json!({
+        "schemaVersion": 1,
+        "kind": "run_terminal_cancel_before_start",
+        "runId": run_id,
+        "terminalEpoch": terminal_epoch,
+        "toolCallId": tool_call_id,
+    }))?;
+    let decision_id = put_inline_object(connection, &decision, now).await?;
+    if connection.execute(sql(
+        "UPDATE wait_blockers SET status = 'aborted', decision_object_id = ? WHERE wait_id = ? AND blocker_kind = 'tool_call' AND blocker_id = ? AND status = 'open'",
+        vec![decision_id.clone().into(), wait_id.clone().into(), tool_call_id.into()],
+    )).await?.rows_affected() != 1 {
+        return Err(StorageError::Conflict("terminal_tool_blocker"));
+    }
+    add_object_ref(
+        connection,
+        &decision_id,
+        "node_wait",
+        &wait_id,
+        "terminal_decision",
+        now,
+    )
+    .await
 }
 
 async fn fence_effect<C: ConnectionTrait>(
