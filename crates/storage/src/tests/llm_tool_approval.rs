@@ -263,7 +263,10 @@ async fn identical_digest_blockers_require_distinct_complete_decisions() {
     assert_eq!(open, 2);
 
     let zhuangsheng_core::runtime::WaitResponsePayload::ToolApproval { decisions } =
-        &mut response.payload;
+        &mut response.payload
+    else {
+        unreachable!("tool approval fixture")
+    };
     decisions.push(zhuangsheng_core::runtime::ToolApprovalDecision {
         tool_call_id: "tool-call-2".into(),
         call_digest: setup.call_digest.clone(),

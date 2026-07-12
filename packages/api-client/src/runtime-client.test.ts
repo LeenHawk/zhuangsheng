@@ -17,6 +17,7 @@ describe("runtime action clients", () => {
             status: "resolved",
             preparedToolCallIds: ["tool_1"],
             deniedToolCallIds: [],
+            decidedMemoryProposalIds: [],
             replayed: false,
           }
         : {
@@ -89,5 +90,27 @@ describe("runtime action clients", () => {
     expect(request.input).toBe("https://roleplay.example/v1/effects/effect%2F1/resolution");
     expect(request.init.headers).toMatchObject({ "idempotency-key": "resolution-key" });
     expect(JSON.parse(request.init.body as string)).not.toHaveProperty("idempotencyKey");
+  });
+
+  it("submits memory proposal decisions as their own blocker variant", async () => {
+    let body: unknown;
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      body = JSON.parse(init?.body as string);
+      return Response.json({
+        waitId: "wait_1", deliveryId: "delivery_1", status: "resolved",
+        preparedToolCallIds: [], deniedToolCallIds: [],
+        decidedMemoryProposalIds: ["proposal_1"], replayed: false,
+      });
+    });
+    await new HttpRuntimeClient("https://roleplay.example").submitMemoryProposalDecisions("wait_1", {
+      deliveryId: "delivery_1",
+      decisions: [{ proposalId: "proposal_1", decision: "approve" }],
+    });
+    expect(body).toEqual({
+      deliveryId: "delivery_1",
+      response: { type: "blocker_decisions", decisions: [{
+        kind: "memory_proposal", blockerId: "proposal_1", decision: "approve",
+      }] },
+    });
   });
 });

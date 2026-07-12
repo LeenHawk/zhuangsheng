@@ -7,6 +7,9 @@ mod effect_resolution;
 mod effect_resolution_helpers;
 mod effect_resolution_settle;
 mod effect_wait;
+mod memory_proposal_tool;
+mod memory_proposal_tool_validation;
+mod memory_proposal_wait;
 mod memory_search_tool;
 mod memory_search_tool_replay;
 mod memory_search_tool_validation;
@@ -38,6 +41,7 @@ mod tool_ledger_retry;
 mod tool_validation;
 mod validation;
 mod wait_delivery;
+mod wait_delivery_io;
 mod wait_delivery_settle;
 mod wait_delivery_validation;
 

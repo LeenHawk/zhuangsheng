@@ -14,8 +14,15 @@ export interface ToolApprovalCallView {
   expiresAt: number;
 }
 
+export interface MemoryProposalReviewItem {
+  proposalId: string;
+  toolCallId: string;
+  proposal: MemoryProposalView;
+}
+
 export type WaitRequestView =
   | { kind: "tool_approval"; modelCallId: string; calls: ToolApprovalCallView[] }
+  | { kind: "memory_proposal_review"; modelCallId: string; proposals: MemoryProposalReviewItem[] }
   | { kind: "secret_store_unlocked"; reason: string; channelId: string }
   | {
       kind: "effect_resolution";
@@ -65,12 +72,24 @@ export interface SubmitToolApprovalInput {
   decisions: ToolApprovalDecisionInput[];
 }
 
+export interface MemoryProposalDecisionInput {
+  proposalId: string;
+  decision: "approve" | "reject";
+}
+
+export interface SubmitMemoryProposalDecisionInput {
+  deliveryId: string;
+  decisions: MemoryProposalDecisionInput[];
+}
+
 export interface WaitDeliveryView {
   waitId: string;
   deliveryId: string;
   status: "resolved";
   preparedToolCallIds: string[];
   deniedToolCallIds: string[];
+  decidedMemoryProposalIds: string[];
   replayed: boolean;
 }
 import type { EffectResolutionKind } from "./effect-types";
+import type { MemoryProposalView } from "./memory-types";

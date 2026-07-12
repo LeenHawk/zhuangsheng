@@ -87,6 +87,7 @@ pub(super) async fn replay_memory_search_batch<C: ConnectionTrait>(
     }
     Ok(MemorySearchToolBatchView {
         calls: views,
+        checkpoint,
         replayed: true,
     })
 }

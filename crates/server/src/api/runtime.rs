@@ -14,8 +14,9 @@ use axum::{
 use serde::Deserialize;
 use serde_json::Value;
 use zhuangsheng_core::runtime::{
-    RunContextCommand, RunControlCommand, RunView, StartRunCommand, SubmitWaitResponseCommand,
-    ToolApprovalDecision, ToolApprovalDecisionKind, WaitDeliveryView, WaitResponsePayload,
+    MemoryProposalDecision, RunContextCommand, RunControlCommand, RunView, StartRunCommand,
+    SubmitWaitResponseCommand, ToolApprovalDecision, ToolApprovalDecisionKind, WaitDeliveryView,
+    WaitResponsePayload,
 };
 
 use super::{
@@ -49,20 +50,20 @@ struct RunControlBody {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SubmitWaitResponseBody {
     delivery_id: String,
     response: ExternalWaitResponse,
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum ExternalWaitResponse {
     BlockerDecisions { decisions: Vec<BlockerDecisionBody> },
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum BlockerDecisionBody {
     ToolCall {
         #[serde(rename = "blockerId")]
@@ -282,32 +283,48 @@ async fn submit_wait_response(
 ) -> ApiResult<Json<WaitDeliveryView>> {
     let Json(body) =
         body.map_err(|error| ApiError::bad_request("invalid_json_body", error.body_text()))?;
-    let decisions = match body.response {
-        ExternalWaitResponse::BlockerDecisions { decisions } => decisions
-            .into_iter()
-            .map(|decision| match decision {
-                BlockerDecisionBody::ToolCall {
-                    blocker_id,
-                    call_digest,
-                    decision,
-                    reason,
-                } => Ok(ToolApprovalDecision {
-                    tool_call_id: blocker_id,
-                    call_digest,
-                    decision,
-                    reason,
-                }),
-                BlockerDecisionBody::MemoryProposal {
-                    blocker_id,
-                    decision,
-                } => Err(ApiError::bad_request(
-                    "unsupported_wait_response",
-                    format!(
-                        "memory proposal blocker {blocker_id} decision {decision:?} is not supported yet"
-                    ),
-                )),
-            })
-            .collect::<ApiResult<Vec<_>>>()?,
+    let payload = match body.response {
+        ExternalWaitResponse::BlockerDecisions { decisions } => {
+            let mut tool_decisions = Vec::new();
+            let mut memory_decisions = Vec::new();
+            for decision in decisions {
+                match decision {
+                    BlockerDecisionBody::ToolCall {
+                        blocker_id,
+                        call_digest,
+                        decision,
+                        reason,
+                    } => tool_decisions.push(ToolApprovalDecision {
+                        tool_call_id: blocker_id,
+                        call_digest,
+                        decision,
+                        reason,
+                    }),
+                    BlockerDecisionBody::MemoryProposal {
+                        blocker_id,
+                        decision,
+                    } => memory_decisions.push(MemoryProposalDecision {
+                        proposal_id: blocker_id,
+                        decision,
+                    }),
+                }
+            }
+            if tool_decisions.is_empty() == memory_decisions.is_empty() {
+                return Err(ApiError::bad_request(
+                    "invalid_wait_response",
+                    "blocker decisions must contain exactly one supported blocker kind",
+                ));
+            }
+            if memory_decisions.is_empty() {
+                WaitResponsePayload::ToolApproval {
+                    decisions: tool_decisions,
+                }
+            } else {
+                WaitResponsePayload::MemoryProposal {
+                    decisions: memory_decisions,
+                }
+            }
+        }
     };
     Ok(Json(
         state
@@ -317,7 +334,7 @@ async fn submit_wait_response(
                 delivery_id: body.delivery_id,
                 actor_kind: "human".into(),
                 actor_id: Some("local-user".into()),
-                payload: WaitResponsePayload::ToolApproval { decisions },
+                payload,
             })
             .await?,
     ))

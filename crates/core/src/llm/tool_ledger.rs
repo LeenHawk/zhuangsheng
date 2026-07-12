@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     application::memory::MemorySearchCommand,
-    graph::{EffectClassification, MemoryToolGrant, ToolGrant},
+    graph::{EffectClassification, ToolGrant},
 };
 
 use super::{
@@ -11,10 +11,6 @@ use super::{
 };
 
 pub const TOOL_CALL_POLICY_VERSION: u32 = 1;
-pub const MEMORY_SEARCH_TOOL_ID: &str = "builtin.search_memory";
-pub const MEMORY_SEARCH_TOOL_VERSION: &str = "1";
-pub const MEMORY_SEARCH_BINDING_ID: &str = "memory.search_memory";
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolCallDigestMaterial {
@@ -30,20 +26,6 @@ pub struct ToolCallDigestMaterial {
 }
 
 impl ToolCallDigestMaterial {
-    pub fn digest(&self) -> crate::DomainResult<String> {
-        crate::canonical::hash(self)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MemorySearchToolCallDigestMaterial {
-    pub query: MemorySearchCommand,
-    pub grant: MemoryToolGrant,
-    pub policy_version: u32,
-}
-
-impl MemorySearchToolCallDigestMaterial {
     pub fn digest(&self) -> crate::DomainResult<String> {
         crate::canonical::hash(self)
     }
@@ -94,10 +76,11 @@ pub struct MemorySearchToolEnvelope {
     pub truncated: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemorySearchToolBatchView {
     pub calls: Vec<MemorySearchToolCallView>,
+    pub checkpoint: LlmLoopCheckpoint,
     pub replayed: bool,
 }
 

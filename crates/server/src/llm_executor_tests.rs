@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -12,13 +9,13 @@ use zhuangsheng_core::{
         preset::{CreateContextPresetCommand, PublishContextPresetVersionCommand},
     },
     graph::{
-        DraftNodeKind, EffectClassification, GraphDraft, HostedToolBinding, LlmNodeStreaming,
-        LlmOutputSpec, StreamingAudience, ToolEffectSpec, ToolGrant,
+        EffectClassification, HostedToolBinding, LlmMemoryBinding, LlmNodeStreaming,
+        StreamingAudience, ToolEffectSpec, ToolGrant,
     },
     llm::{
         ChannelCapability, ChannelCredential, ChannelModel, ChannelModelCatalog,
-        ChannelTransportPolicy, ContentGenerationKind, LlmChannelRevision, LlmChannelRevisionSpec,
-        ModelCapabilities, ModelCatalogPolicy, Operation, OperationKey, Provider, SecretRef,
+        ChannelTransportPolicy, LlmChannelRevision, LlmChannelRevisionSpec, ModelCapabilities,
+        ModelCatalogPolicy, Operation, OperationKey, Provider, SecretRef,
         adapter::WireGenerationRequest,
         context::{
             ContextAssemblyMode, ContextAssemblySpec, ContextBudgetPolicy, ContextBudgetStrategy,
@@ -28,20 +25,25 @@ use zhuangsheng_core::{
     },
     runtime::{RunContextCommand, RunOutputValueView, RunStatus, StartRunCommand},
     scheduler::Scheduler,
-    schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
 };
 
 mod count_recovery;
 mod counting_provider;
 mod counting_provider_recovery;
+mod graph_fixture;
 mod hosted_tools;
+mod memory_search_tools;
+mod memory_tools;
 mod model_recovery;
 mod opaque_storage;
 mod output_repair;
+mod provider_fixture;
 mod secret_wait;
 mod streaming;
 mod tool_recovery;
 mod tool_registry;
+use graph_fixture::graph_draft;
+use provider_fixture::{now_ms, operation, provider_response};
 use zhuangsheng_storage::SqliteStore;
 
 use crate::{
@@ -183,26 +185,51 @@ async fn create_llm_graph(
     credential: Option<SecretRef>,
     tool: Option<ToolGrant>,
 ) -> String {
-    create_llm_graph_inner(store, json_output, credential, tool, None, None, false).await
+    create_llm_graph_inner(
+        store,
+        LlmGraphFixture {
+            json_output,
+            credential,
+            tool,
+            ..Default::default()
+        },
+    )
+    .await
+}
+
+async fn create_memory_llm_graph(store: &SqliteStore, memory: LlmMemoryBinding) -> String {
+    create_llm_graph_inner(
+        store,
+        LlmGraphFixture {
+            memory: Some(memory),
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 async fn create_counting_llm_graph(store: &SqliteStore) -> String {
-    create_llm_graph_inner(store, false, None, None, None, None, true).await
+    create_llm_graph_inner(
+        store,
+        LlmGraphFixture {
+            provider_count: true,
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 async fn create_streaming_llm_graph(store: &SqliteStore, persist_chunks: bool) -> String {
     create_llm_graph_inner(
         store,
-        false,
-        None,
-        None,
-        None,
-        Some(LlmNodeStreaming {
-            enabled: true,
-            audience: StreamingAudience::Both,
-            persist_chunks,
-        }),
-        false,
+        LlmGraphFixture {
+            streaming: Some(LlmNodeStreaming {
+                enabled: true,
+                audience: StreamingAudience::Both,
+                persist_chunks,
+            }),
+            ..Default::default()
+        },
     )
     .await
 }
@@ -210,37 +237,47 @@ async fn create_streaming_llm_graph(store: &SqliteStore, persist_chunks: bool) -
 pub(super) async fn create_hosted_llm_graph(store: &SqliteStore) -> String {
     create_llm_graph_inner(
         store,
-        false,
-        None,
-        None,
-        Some(HostedToolBinding {
-            binding_id: "search".into(),
-            operation_key: operation(),
-            hosted_kind: "web_search".into(),
-            model_facing_config: [("search_context_size".into(), json!("low"))].into(),
-            resource_scopes: vec!["internet:public".into()],
-            effect: ToolEffectSpec {
-                classification: EffectClassification::Idempotent,
-                operation_key: "hosted.web_search".into(),
-                requires_approval: false,
-            },
-            max_uses_per_model_call: 1,
-        }),
-        None,
-        false,
+        LlmGraphFixture {
+            hosted: Some(HostedToolBinding {
+                binding_id: "search".into(),
+                operation_key: operation(),
+                hosted_kind: "web_search".into(),
+                model_facing_config: [("search_context_size".into(), json!("low"))].into(),
+                resource_scopes: vec!["internet:public".into()],
+                effect: ToolEffectSpec {
+                    classification: EffectClassification::Idempotent,
+                    operation_key: "hosted.web_search".into(),
+                    requires_approval: false,
+                },
+                max_uses_per_model_call: 1,
+            }),
+            ..Default::default()
+        },
     )
     .await
 }
 
-async fn create_llm_graph_inner(
-    store: &SqliteStore,
+#[derive(Default)]
+struct LlmGraphFixture {
     json_output: bool,
     credential: Option<SecretRef>,
     tool: Option<ToolGrant>,
     hosted: Option<HostedToolBinding>,
     streaming: Option<LlmNodeStreaming>,
+    memory: Option<LlmMemoryBinding>,
     provider_count: bool,
-) -> String {
+}
+
+async fn create_llm_graph_inner(store: &SqliteStore, fixture: LlmGraphFixture) -> String {
+    let LlmGraphFixture {
+        json_output,
+        credential,
+        tool,
+        hosted,
+        streaming,
+        memory,
+        provider_count,
+    } = fixture;
     let channel = store
         .create_channel(CreateChannelCommand {
             name: "Fake LLM".into(),
@@ -254,7 +291,11 @@ async fn create_llm_graph_inner(
             expected_head_revision_id: None,
             spec: channel_spec(
                 credential,
-                tool.is_some() || hosted.is_some(),
+                tool.is_some()
+                    || hosted.is_some()
+                    || memory
+                        .as_ref()
+                        .is_some_and(|memory| !memory.tools.is_empty()),
                 hosted.is_some(),
                 streaming.is_some(),
                 provider_count,
@@ -295,10 +336,15 @@ async fn create_llm_graph_inner(
                 &graph.graph.id,
                 &channel.id,
                 &preset.id,
-                json_output,
-                tool,
-                hosted,
-                streaming,
+                LlmGraphFixture {
+                    json_output,
+                    credential: None,
+                    tool,
+                    hosted,
+                    streaming,
+                    memory,
+                    provider_count,
+                },
             ),
             idempotency_key: "llm-e2e-draft".into(),
         })
@@ -421,139 +467,4 @@ fn channel_spec(
             .into_iter()
             .collect(),
     }
-}
-
-fn provider_response(text: &str) -> ProviderHttpResponse {
-    ProviderHttpResponse {
-        status: 200,
-        provider_request_id: Some("request-test".into()),
-        body: serde_json::to_vec(&json!({
-            "id":"response-1",
-            "created_at":1,
-            "object":"response",
-            "output":[{
-                "type":"message",
-                "id":"message-1",
-                "role":"assistant",
-                "status":"completed",
-                "content":[{"type":"output_text","text":text,"annotations":[]}]
-            }],
-            "status":"completed",
-            "usage":{
-                "input_tokens":12,
-                "output_tokens":7,
-                "total_tokens":19,
-                "output_tokens_details":{"reasoning_tokens":0}
-            }
-        }))
-        .unwrap(),
-    }
-}
-
-fn graph_draft(
-    graph_id: &str,
-    channel_id: &str,
-    preset_id: &str,
-    json_output: bool,
-    tool: Option<ToolGrant>,
-    hosted: Option<HostedToolBinding>,
-    streaming: Option<LlmNodeStreaming>,
-) -> GraphDraft {
-    let mut draft: GraphDraft = serde_json::from_value(json!({
-        "graphId":graph_id,
-        "nodes":[
-            {"id":"input","kind":"input","runInputSelector":{"type":"whole_value"}},
-            {
-                "id":"generate",
-                "kind":"llm",
-                "model":{
-                    "channelId":channel_id,
-                    "modelId":"roleplay-model",
-                    "operationKey":{"operation":"generate_content","kind":"open_ai_responses"}
-                },
-                "context":{"type":"preset","presetId":preset_id}
-            },
-            {"id":"output","kind":"output","outputKey":"reply"}
-        ],
-        "edges":[
-            {"from":{"nodeId":"input","output":"default"},"to":{"nodeId":"generate","input":"default"}},
-            {"from":{"nodeId":"generate","output":"default"},"to":{"nodeId":"output","input":"default"}}
-        ],
-        "outputContract":[{"key":"reply","collection":"single","required":true}]
-    }))
-    .unwrap();
-    if json_output {
-        let config = draft
-            .nodes
-            .iter_mut()
-            .find_map(|node| match &mut node.kind {
-                DraftNodeKind::Llm { config } => Some(config),
-                _ => None,
-            })
-            .unwrap();
-        config.output = Some(LlmOutputSpec::Json {
-            schema: JsonSchemaSpec {
-                schema_version: 1,
-                dialect: DIALECT_2020_12.into(),
-                validation_profile_version: 1,
-                format_policy_version: 1,
-                document: json!({
-                    "type":"object",
-                    "required":["reply"],
-                    "additionalProperties":false,
-                    "properties":{"reply":{"type":"string"}}
-                }),
-                limits: JsonSchemaLimits::default(),
-            },
-            strict: true,
-        });
-    }
-    if let Some(tool) = tool {
-        let config = draft
-            .nodes
-            .iter_mut()
-            .find_map(|node| match &mut node.kind {
-                DraftNodeKind::Llm { config } => Some(config),
-                _ => None,
-            })
-            .unwrap();
-        config.tools.push(tool);
-    }
-    if let Some(hosted) = hosted {
-        let config = draft
-            .nodes
-            .iter_mut()
-            .find_map(|node| match &mut node.kind {
-                DraftNodeKind::Llm { config } => Some(config),
-                _ => None,
-            })
-            .unwrap();
-        config.hosted_tools.push(hosted);
-    }
-    if let Some(streaming) = streaming {
-        let config = draft
-            .nodes
-            .iter_mut()
-            .find_map(|node| match &mut node.kind {
-                DraftNodeKind::Llm { config } => Some(config),
-                _ => None,
-            })
-            .unwrap();
-        config.streaming = Some(streaming);
-    }
-    draft
-}
-
-fn operation() -> OperationKey {
-    OperationKey::content_generation(
-        Operation::GenerateContent,
-        ContentGenerationKind::OpenAiResponses,
-    )
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
 }

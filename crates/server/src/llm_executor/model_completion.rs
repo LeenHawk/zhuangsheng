@@ -148,6 +148,7 @@ pub(super) async fn finish_decoded_model_call(
         checkpoint,
         decoded,
         resolved_tools: built.resolved_tools,
+        resolved_memory_tools: built.resolved_memory_tools,
         transcript: persisted_transcript.ok_or(ApplicationError::Internal)?,
     })))
 }

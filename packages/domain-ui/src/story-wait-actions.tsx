@@ -2,6 +2,7 @@ import { CheckCircle2, CircleAlert } from "lucide-react";
 
 import type {
   EffectResolutionKind,
+  MemoryProposalDecisionInput,
   SecretStoreStatusView,
   ToolApprovalDecisionInput,
   WaitView,
@@ -12,6 +13,7 @@ import type { HandledWaitSummary } from "./story-detail";
 import { SecretUnlockCard } from "./secret-unlock-card";
 import { ToolApprovalCard } from "./tool-approval-card";
 import { EffectResolutionCard } from "./effect-resolution-card";
+import { MemoryProposalReviewCard } from "./memory-proposal-review-card";
 
 interface StoryWaitActionsProps {
   waits: WaitView[];
@@ -21,6 +23,7 @@ interface StoryWaitActionsProps {
   loadError: string | null;
   actionErrors: Record<string, string>;
   onSubmitApproval: (wait: WaitView, decisions: ToolApprovalDecisionInput[]) => Promise<void>;
+  onSubmitMemoryProposals: (wait: WaitView, decisions: MemoryProposalDecisionInput[]) => Promise<void>;
   onSubmitSecretPassword: (wait: WaitView, mode: "initialize" | "unlock", password: string) => Promise<void>;
   onResolveEffect: (wait: WaitView, kind: EffectResolutionKind, reason: string) => Promise<void>;
   onReload: () => void;
@@ -38,6 +41,9 @@ export function StoryWaitActions(props: StoryWaitActionsProps) {
         };
         if (wait.request.kind === "tool_approval") {
           return <ToolApprovalCard key={wait.id} {...common} onSubmit={props.onSubmitApproval} />;
+        }
+        if (wait.request.kind === "memory_proposal_review") {
+          return <MemoryProposalReviewCard key={wait.id} {...common} onSubmit={props.onSubmitMemoryProposals} />;
         }
         if (wait.request.kind === "secret_store_unlocked") {
           return <SecretUnlockCard key={wait.id} {...common} status={props.secretStatus} onSubmit={props.onSubmitSecretPassword} />;

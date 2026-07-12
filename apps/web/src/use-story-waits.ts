@@ -4,6 +4,7 @@ import {
   createIdempotencyKey,
   type EffectResolutionKind,
   type SecretStoreStatusView,
+  type MemoryProposalDecisionInput,
   type ToolApprovalDecisionInput,
   type WaitView,
 } from "@zhuangsheng/api-client";
@@ -64,6 +65,16 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
         ? `已批准 ${result.preparedToolCallIds.length} 项工具操作`
         : `已批准 ${result.preparedToolCallIds.length} 项，拒绝 ${result.deniedToolCallIds.length} 项`;
       rememberHandled(wait, summary);
+      await reload();
+    });
+  };
+
+  const submitMemoryProposals = async (wait: WaitView, decisions: MemoryProposalDecisionInput[]) => {
+    const deliveryId = deliveryIds.current[wait.id] ?? createIdempotencyKey();
+    deliveryIds.current[wait.id] = deliveryId;
+    await act(wait, async () => {
+      const result = await client.runtime.submitMemoryProposalDecisions(wait.id, { deliveryId, decisions });
+      rememberHandled(wait, `已处理 ${result.decidedMemoryProposalIds.length} 项长期记忆提案`);
       await reload();
     });
   };
@@ -143,6 +154,7 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
     waitError,
     actionErrors,
     submitApproval,
+    submitMemoryProposals,
     submitSecretPassword,
     resolveEffect,
     reloadWaits: () => void reload(),

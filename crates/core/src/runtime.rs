@@ -57,6 +57,13 @@ pub struct ToolApprovalDecision {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryProposalDecision {
+    pub proposal_id: String,
+    pub decision: ToolApprovalDecisionKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
@@ -65,6 +72,9 @@ pub struct ToolApprovalDecision {
 pub enum WaitResponsePayload {
     ToolApproval {
         decisions: Vec<ToolApprovalDecision>,
+    },
+    MemoryProposal {
+        decisions: Vec<MemoryProposalDecision>,
     },
 }
 
@@ -92,6 +102,8 @@ pub struct WaitDeliveryView {
     pub status: WaitDeliveryStatus,
     pub prepared_tool_call_ids: Vec<String>,
     pub denied_tool_call_ids: Vec<String>,
+    #[serde(default)]
+    pub decided_memory_proposal_ids: Vec<String>,
     pub replayed: bool,
 }
 

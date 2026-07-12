@@ -8,13 +8,14 @@ use crate::{
 };
 
 use super::{
-    ResolvedToolDescriptor, ToolRegistrySnapshot,
+    ResolvedMemoryTool, ResolvedToolDescriptor, ToolRegistrySnapshot,
     context::{ContextAssemblyOutput, ContextAssemblySnapshotConfig, ContextConfigSnapshot},
     ir::{
         LlmRequestIr, LlmTurnItemIr, MetadataValue, OpaqueContinuationRef, ResponseFormatIr,
         validate_request_ir,
     },
     request_builder_hosted::resolve_hosted_tools,
+    request_builder_memory::resolve_memory_tools,
     request_builder_tools::resolve_tools,
 };
 
@@ -38,6 +39,7 @@ pub struct LlmRequestBuildOutput {
     pub request: LlmRequestIr,
     pub request_digest: String,
     pub resolved_tools: Vec<ResolvedRequestTool>,
+    pub resolved_memory_tools: Vec<ResolvedMemoryTool>,
     pub resolved_hosted_tools: Vec<ResolvedHostedTool>,
 }
 
@@ -72,11 +74,14 @@ pub fn build_llm_request(
     input: LlmRequestBuildInput<'_>,
 ) -> Result<LlmRequestBuildOutput, LlmRequestBuildError> {
     validate_execution(input.execution, input.context, input.model_call_no)?;
-    let (tools, resolved_tools) = resolve_tools(
+    let (mut tools, resolved_tools) = resolve_tools(
         input.execution,
         input.registry_snapshot,
         input.tool_descriptors,
     )?;
+    let (memory_tools, resolved_memory_tools) =
+        resolve_memory_tools(input.execution, tools.iter().map(|tool| tool.name.as_str()))?;
+    tools.extend(memory_tools);
     let (hosted_tools, resolved_hosted_tools) =
         resolve_hosted_tools(input.execution, input.approved_hosted_bindings)?;
     let transcript = build_transcript(input.context, input.transcript_tail)?;
@@ -138,6 +143,7 @@ pub fn build_llm_request(
         request,
         request_digest,
         resolved_tools,
+        resolved_memory_tools,
         resolved_hosted_tools,
     })
 }

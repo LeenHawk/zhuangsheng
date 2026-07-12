@@ -89,7 +89,12 @@ pub(super) fn normalize_llm_node(
 pub fn llm_model_requirements(config: &super::LlmNodeConfig) -> ModelCapabilityRequirements {
     ModelCapabilityRequirements {
         streaming: config.streaming.as_ref().is_some_and(|value| value.enabled),
-        tool_calling: !config.tools.is_empty() || !config.hosted_tools.is_empty(),
+        tool_calling: !config.tools.is_empty()
+            || !config.hosted_tools.is_empty()
+            || config
+                .memory
+                .as_ref()
+                .is_some_and(|memory| !memory.tools.is_empty()),
         structured_output: matches!(config.output, Some(LlmOutputSpec::Json { .. })),
         vision_input: false,
     }
@@ -325,6 +330,14 @@ fn validate_tools(
 ) {
     let mut bindings = HashSet::new();
     let mut names = HashSet::new();
+    if let Some(memory) = &config.memory {
+        for grant in &memory.tools {
+            names.insert(match grant.capability {
+                super::MemoryToolCapability::SearchMemory => "search_memory",
+                super::MemoryToolCapability::ProposeMemoryChange => "propose_memory_change",
+            });
+        }
+    }
     for grant in &config.tools {
         let resolved = dependencies
             .tool_descriptors

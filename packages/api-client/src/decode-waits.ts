@@ -1,8 +1,10 @@
 import { DecodeError } from "./decode-error";
 import { boolean, nullableString, number, record, string, stringArray } from "./decode-helpers";
 import { decodeEffectResolutionKind } from "./decode-effect";
+import { decodeMemoryProposal } from "./decode-memory";
 import type {
   ToolApprovalCallView,
+  MemoryProposalReviewItem,
   WaitBlockerView,
   WaitDeliveryView,
   WaitKind,
@@ -29,6 +31,7 @@ export const decodeWaitDelivery = (value: unknown): WaitDeliveryView => {
     status: item.status,
     preparedToolCallIds: stringArray(item.preparedToolCallIds, "waitDelivery.preparedToolCallIds"),
     deniedToolCallIds: stringArray(item.deniedToolCallIds, "waitDelivery.deniedToolCallIds"),
+    decidedMemoryProposalIds: stringArray(item.decidedMemoryProposalIds, "waitDelivery.decidedMemoryProposalIds"),
     replayed: boolean(item.replayed, "waitDelivery.replayed"),
   };
 };
@@ -101,6 +104,16 @@ const decodeRequest = (
     }
     return { kind: item.kind, modelCallId: string(item.modelCallId, `${path}.modelCallId`), calls };
   }
+  if (waitKind === "approval" && item.kind === "memory_proposal_review") {
+    if (!Array.isArray(item.proposals)) throw new DecodeError(`${path}.proposals`);
+    const proposals = item.proposals.map((proposal, index) =>
+      decodeProposal(proposal, `${path}.proposals[${index}]`));
+    const blockerIds = blockers.filter((blocker) => blocker.kind === "memory_proposal" && blocker.status === "open").map((blocker) => blocker.id);
+    if (!sameIds(proposals.map((proposal) => proposal.proposalId), blockerIds)) {
+      throw new DecodeError(`${path}.proposals`);
+    }
+    return { kind: item.kind, modelCallId: string(item.modelCallId, `${path}.modelCallId`), proposals };
+  }
   if (waitKind === "secret_store_unlocked" && item.kind === "secret_store_unlocked") {
     return {
       kind: item.kind,
@@ -146,6 +159,15 @@ const decodeCall = (value: unknown, path: string): ToolApprovalCallView => {
     callDigest: string(item.callDigest, `${path}.callDigest`),
     riskSummary: string(item.riskSummary, `${path}.riskSummary`),
     expiresAt: number(item.expiresAt, `${path}.expiresAt`),
+  };
+};
+
+const decodeProposal = (value: unknown, path: string): MemoryProposalReviewItem => {
+  const item = record(value, path);
+  return {
+    proposalId: string(item.proposalId, `${path}.proposalId`),
+    toolCallId: string(item.toolCallId, `${path}.toolCallId`),
+    proposal: decodeMemoryProposal(item.proposal, `${path}.proposal`),
   };
 };
 

@@ -35,6 +35,7 @@ mod counting_pause;
 mod counting_provider;
 mod counting_state;
 mod hosted_tools;
+mod memory_tools;
 mod model_call;
 mod model_completed_resume;
 mod model_completion;
@@ -53,6 +54,7 @@ mod tool_retry;
 use attempt_resume::{AttemptResume, resume_attempt};
 #[cfg(test)]
 pub(crate) use counting_pause::CountPause;
+use memory_tools::{MemoryDispatchResult, dispatch_memory_tool_batch};
 use model_call::{ModelCallInput, ModelCallResult, run_model_call};
 #[cfg(test)]
 pub(crate) use model_completed_resume::CompletedModelPause;
@@ -360,6 +362,19 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
             #[cfg(test)]
             if let Some(pause) = &self.completed_model_pause {
                 pause.wait_once().await;
+            }
+            match dispatch_memory_tool_batch(self, attempt, execution, &completed, now).await? {
+                MemoryDispatchResult::NoCalls => {}
+                MemoryDispatchResult::Settled(settled) => {
+                    transcript_tail = settled
+                        .transcript
+                        .get(base_transcript_len..)
+                        .ok_or(ApplicationError::Internal)?
+                        .to_vec();
+                    prior_checkpoint = Some(settled.checkpoint);
+                    continue;
+                }
+                MemoryDispatchResult::Terminal(result) => return Ok(result),
             }
             let tool_plan = match plan_initial_tool_batch(InitialToolBatchInput {
                 execution,

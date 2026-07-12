@@ -10,6 +10,7 @@ import type {
   ToolApprovalDecisionInput,
   WaitView,
   EffectResolutionKind,
+  MemoryProposalDecisionInput,
 } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
 
@@ -46,6 +47,7 @@ export interface StoryDetailProps {
   onRegenerateCandidate: (turnId: string, userCommitId: string) => Promise<void>;
   onSelectCandidate: (turnId: string, runId: string) => Promise<void>;
   onSubmitApproval: (wait: WaitView, decisions: ToolApprovalDecisionInput[]) => Promise<void>;
+  onSubmitMemoryProposals: (wait: WaitView, decisions: MemoryProposalDecisionInput[]) => Promise<void>;
   onSubmitSecretPassword: (
     wait: WaitView,
     mode: "initialize" | "unlock",
@@ -104,6 +106,7 @@ export function StoryDetail(props: StoryDetailProps) {
           loadError={props.waitError}
           actionErrors={props.waitActionErrors}
           onSubmitApproval={props.onSubmitApproval}
+          onSubmitMemoryProposals={props.onSubmitMemoryProposals}
           onSubmitSecretPassword={props.onSubmitSecretPassword}
           onResolveEffect={props.onResolveEffect}
           onReload={props.onReloadWaits}

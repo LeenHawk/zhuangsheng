@@ -108,6 +108,7 @@ impl SqliteStore {
         transaction.commit().await?;
         Ok(MemorySearchToolBatchView {
             calls: views,
+            checkpoint,
             replayed: false,
         })
     }

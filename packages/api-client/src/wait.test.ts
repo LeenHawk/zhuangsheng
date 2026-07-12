@@ -41,6 +41,26 @@ describe("wait and secret decoders", () => {
     });
   });
 
+  it("binds inspectable memory proposals to their exact blocker set", () => {
+    const wait = {
+      ...baseWait(),
+      kind: "approval",
+      request: {
+        schemaVersion: 1,
+        kind: "memory_proposal_review",
+        modelCallId: "call_1",
+        proposals: [{ proposalId: "proposal_1", toolCallId: "tool_1", proposal: proposal() }],
+      },
+      blockers: [{ kind: "memory_proposal", id: "proposal_1", order: 0, status: "open", decisionRef: null }],
+    };
+    expect(decodeOpenWaits([wait], "run_1")[0]?.request).toMatchObject({
+      kind: "memory_proposal_review",
+      proposals: [{ proposalId: "proposal_1", proposal: { reason: "Observed preference" } }],
+    });
+    wait.blockers[0]!.id = "different_proposal";
+    expect(() => decodeOpenWaits([wait], "run_1")).toThrow(DecodeError);
+  });
+
   it("binds effect-resolution details to the exact effect blocker", () => {
     const wait = {
       ...baseWait(),
@@ -124,4 +144,14 @@ const baseWait = () => ({
   acceptedDeliveryId: null,
   createdAt: 1,
   resolvedAt: null,
+});
+
+const proposal = () => ({
+  id: "proposal_1", scopeId: "roleplay", memoryId: "memory_1",
+  expectedHeadCommitId: null, changeType: "create", contentRef: "object_2",
+  proposedContent: { schemaVersion: 1, text: "Alice prefers tea", tags: ["preference"], attributes: {} },
+  reason: "Observed preference", evidenceRefs: ["message_1"],
+  requestedBy: { kind: "node", id: "node_1" }, schemaVersion: 1, policyVersion: 1,
+  originRunId: "run_1", originNodeInstanceId: "node_1", appliedCommitId: null,
+  status: "awaiting_review", createdAt: 1, updatedAt: 1,
 });

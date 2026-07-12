@@ -45,34 +45,13 @@ impl SqliteStore {
             transaction.commit().await?;
             return Ok(view);
         }
-        let proposal = load_proposal(&transaction, &command.proposal_id).await?;
-        if proposal.status != command.expected_status {
-            return Err(StorageError::Conflict("memory_proposal_status"));
+        if transaction.query_one_raw(sql(
+            "SELECT 1 AS present FROM wait_blockers WHERE blocker_kind='memory_proposal' AND blocker_id=? AND status='open'",
+            vec![command.proposal_id.clone().into()],
+        )).await?.is_some() {
+            return Err(StorageError::Conflict("memory_proposal_wait_required"));
         }
-        let next = match command.decision {
-            MemoryProposalDecision::Approve => MemoryProposalStatus::Approved,
-            MemoryProposalDecision::Reject => MemoryProposalStatus::Rejected,
-        };
-        let updated = transaction.execute_raw(sql(
-            "UPDATE memory_change_proposals SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
-            vec![proposal_status(next).into(), now.into(), command.proposal_id.clone().into(), proposal_status(command.expected_status).into()],
-        )).await?;
-        if updated.rows_affected() != 1 {
-            return Err(StorageError::Conflict("memory_proposal_status"));
-        }
-        insert_transition(&transaction, &command, next, now).await?;
-        if next == MemoryProposalStatus::Rejected
-            && proposal.change_type == MemoryProposalChangeType::Create
-        {
-            let discarded = transaction.execute_raw(sql(
-                "UPDATE memory_records SET status = 'discarded', updated_at = ? WHERE id = ? AND status = 'reserved' AND head_commit_id IS NULL",
-                vec![now.into(), proposal.memory_id.clone().into()],
-            )).await?;
-            if discarded.rows_affected() != 1 {
-                return Err(StorageError::Conflict("memory_reservation"));
-            }
-        }
-        let view = load_proposal(&transaction, &command.proposal_id).await?;
+        let view = decide_in(&transaction, &command, now).await?;
         receipt::finish(
             &transaction,
             &receipt_scope,
@@ -88,6 +67,51 @@ impl SqliteStore {
         transaction.commit().await?;
         Ok(view)
     }
+}
+
+pub(crate) async fn decide_in<C: ConnectionTrait>(
+    connection: &C,
+    command: &DecideMemoryProposalCommand,
+    now: i64,
+) -> StorageResult<MemoryChangeProposalView> {
+    if command.idempotency_key.is_empty()
+        || !matches!(
+            command.expected_status,
+            MemoryProposalStatus::AwaitingConfirmation | MemoryProposalStatus::AwaitingReview
+        )
+    {
+        return Err(StorageError::InvalidArgument(
+            "memory proposal decision precondition is invalid".into(),
+        ));
+    }
+    let proposal = load_proposal(connection, &command.proposal_id).await?;
+    if proposal.status != command.expected_status {
+        return Err(StorageError::Conflict("memory_proposal_status"));
+    }
+    let next = match command.decision {
+        MemoryProposalDecision::Approve => MemoryProposalStatus::Approved,
+        MemoryProposalDecision::Reject => MemoryProposalStatus::Rejected,
+    };
+    let updated = connection.execute_raw(sql(
+            "UPDATE memory_change_proposals SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
+            vec![proposal_status(next).into(), now.into(), command.proposal_id.clone().into(), proposal_status(command.expected_status).into()],
+        )).await?;
+    if updated.rows_affected() != 1 {
+        return Err(StorageError::Conflict("memory_proposal_status"));
+    }
+    insert_transition(connection, command, next, now).await?;
+    if next == MemoryProposalStatus::Rejected
+        && proposal.change_type == MemoryProposalChangeType::Create
+    {
+        let discarded = connection.execute_raw(sql(
+                "UPDATE memory_records SET status = 'discarded', updated_at = ? WHERE id = ? AND status = 'reserved' AND head_commit_id IS NULL",
+                vec![now.into(), proposal.memory_id.clone().into()],
+            )).await?;
+        if discarded.rows_affected() != 1 {
+            return Err(StorageError::Conflict("memory_reservation"));
+        }
+    }
+    load_proposal(connection, &command.proposal_id).await
 }
 
 async fn insert_transition<C: ConnectionTrait>(

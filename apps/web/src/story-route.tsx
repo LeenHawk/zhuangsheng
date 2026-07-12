@@ -87,6 +87,7 @@ export function StoryRoute() {
       onRegenerateCandidate={actions.regenerateCandidate}
       onSelectCandidate={actions.selectCandidate}
       onSubmitApproval={waits.submitApproval}
+      onSubmitMemoryProposals={waits.submitMemoryProposals}
       onSubmitSecretPassword={waits.submitSecretPassword}
       onResolveEffect={waits.resolveEffect}
       onReloadWaits={waits.reloadWaits}

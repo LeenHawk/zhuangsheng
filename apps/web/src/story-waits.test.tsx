@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { WaitView } from "@zhuangsheng/api-client";
@@ -19,6 +19,7 @@ describe("StoryWaitActions", () => {
       loadError={null}
       actionErrors={{}}
       onSubmitApproval={onSubmitApproval}
+      onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
       onResolveEffect={async () => undefined}
       onReload={() => undefined}
@@ -46,6 +47,7 @@ describe("StoryWaitActions", () => {
       loadError={null}
       actionErrors={{}}
       onSubmitApproval={async () => undefined}
+      onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={onSubmitSecretPassword}
       onResolveEffect={async () => undefined}
       onReload={() => undefined}
@@ -62,6 +64,33 @@ describe("StoryWaitActions", () => {
     ));
   });
 
+  it("shows inspectable memory proposal content before requiring every decision", async () => {
+    const onSubmitMemoryProposals = vi.fn(async () => undefined);
+    const wait = memoryProposalWait();
+    const view = render(<StoryWaitActions
+      waits={[wait]}
+      handled={[]}
+      secretStatus={null}
+      pendingWaitId={null}
+      loadError={null}
+      actionErrors={{}}
+      onSubmitApproval={async () => undefined}
+      onSubmitMemoryProposals={onSubmitMemoryProposals}
+      onSubmitSecretPassword={async () => undefined}
+      onResolveEffect={async () => undefined}
+      onReload={() => undefined}
+    />);
+    const card = within(view.container);
+    expect(card.getByText("Alice prefers green tea")).toBeInTheDocument();
+    const submit = card.getByRole("button", { name: "提交全部决定" });
+    expect(submit).toBeDisabled();
+    fireEvent.click(card.getByRole("button", { name: "批准提案" }));
+    fireEvent.click(submit);
+    await waitFor(() => expect(onSubmitMemoryProposals).toHaveBeenCalledWith(wait, [{
+      proposalId: "proposal_1", decision: "approve",
+    }]));
+  });
+
   it("requires an audited decision before resolving an unknown effect", async () => {
     const onResolveEffect = vi.fn(async () => undefined);
     const wait = effectWait();
@@ -73,6 +102,7 @@ describe("StoryWaitActions", () => {
       loadError={null}
       actionErrors={{}}
       onSubmitApproval={async () => undefined}
+      onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
       onResolveEffect={onResolveEffect}
       onReload={() => undefined}
@@ -113,6 +143,29 @@ const approvalWait = (): WaitView => ({
     status: "open",
     decisionRef: null,
   }],
+});
+
+const memoryProposalWait = (): WaitView => ({
+  ...baseWait(),
+  kind: "approval",
+  request: {
+    kind: "memory_proposal_review",
+    modelCallId: "model_call_1",
+    proposals: [{
+      proposalId: "proposal_1",
+      toolCallId: "tool_call_1",
+      proposal: {
+        id: "proposal_1", scopeId: "roleplay", memoryId: "memory_1",
+        expectedHeadCommitId: null, changeType: "create", contentRef: "object_2",
+        proposedContent: { schemaVersion: 1, text: "Alice prefers green tea", tags: ["preference"], attributes: {} },
+        reason: "The conversation established a stable preference", evidenceRefs: ["message_1"],
+        requestedBy: { kind: "node", id: "node_1" }, schemaVersion: 1, policyVersion: 1,
+        originRunId: "run_1", originNodeInstanceId: "node_1", appliedCommitId: null,
+        status: "awaiting_review", createdAt: 1, updatedAt: 1,
+      },
+    }],
+  },
+  blockers: [{ kind: "memory_proposal", id: "proposal_1", order: 0, status: "open", decisionRef: null }],
 });
 
 const secretWait = (): WaitView => ({

@@ -122,6 +122,7 @@ pub(super) fn reconstruct_completed_model_call(
             opaque_attachments: Vec::new(),
         },
         resolved_tools: built.resolved_tools,
+        resolved_memory_tools: built.resolved_memory_tools,
         transcript: state.transcript,
     })
 }

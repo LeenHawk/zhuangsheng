@@ -52,6 +52,7 @@ pub(super) struct CompletedModelCall {
     pub checkpoint: LlmLoopCheckpoint,
     pub decoded: DecodedTerminalDraft,
     pub resolved_tools: Vec<ResolvedRequestTool>,
+    pub resolved_memory_tools: Vec<zhuangsheng_core::llm::ResolvedMemoryTool>,
     pub transcript: Vec<zhuangsheng_core::llm::ir::LlmTurnItemIr>,
 }
 

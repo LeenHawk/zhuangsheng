@@ -6,7 +6,10 @@ use zhuangsheng_core::{
     application::tool::{ToolCallOutput, ToolOutputPart},
     canonical,
     llm::{
-        LlmLogicalCallStatus, SettleToolBatchCommand, SettledToolBatch, ToolCallCheckpointStatus,
+        LlmLogicalCallStatus, MEMORY_PROPOSAL_BINDING_ID, MEMORY_PROPOSAL_TOOL_ID,
+        MEMORY_PROPOSAL_TOOL_NAME, MEMORY_PROPOSAL_TOOL_VERSION, MEMORY_SEARCH_BINDING_ID,
+        MEMORY_SEARCH_TOOL_ID, MEMORY_SEARCH_TOOL_NAME, MEMORY_SEARCH_TOOL_VERSION,
+        SettleToolBatchCommand, SettledToolBatch, ToolCallCheckpointStatus,
         ir::{LlmContentPartIr, LlmTurnItemIr, ToolResultOutcome, validate_transcript_ir},
     },
 };
@@ -60,15 +63,16 @@ impl SqliteStore {
         }
         for (ordinal, row) in rows.iter().enumerate() {
             let call = &unresolved[ordinal];
-            let binding = context
+            let custom_binding = context
                 .snapshot
                 .tools
                 .iter()
-                .find(|grant| grant.binding_id == row.binding_id)
-                .ok_or_else(|| {
-                    StorageError::Integrity("tool binding snapshot is missing".into())
-                })?;
-            let exposed_name = binding.exposed_name.as_deref().unwrap_or(&row.tool_id);
+                .find(|grant| grant.binding_id == row.binding_id);
+            let exposed_name = if let Some(binding) = custom_binding {
+                binding.exposed_name.as_deref().unwrap_or(&row.tool_id)
+            } else {
+                memory_tool_name(&context.snapshot, row)?
+            };
             if call.name != exposed_name || row.call_index != ordinal as u64 {
                 return Err(StorageError::InvalidArgument(
                     "tool batch order or binding does not match transcript".into(),
@@ -125,6 +129,7 @@ struct TerminalToolCall {
     call_index: u64,
     binding_id: String,
     tool_id: String,
+    tool_version: String,
     status: String,
     output_ref: Option<String>,
     error_ref: Option<String>,
@@ -137,7 +142,7 @@ async fn load_terminal_calls<C: ConnectionTrait>(
 ) -> StorageResult<Vec<TerminalToolCall>> {
     connection
         .query_all_raw(sql(
-            "SELECT tc.id, tc.call_index, tc.binding_id, tc.tool_id, tc.status, tc.output_object_id, tc.error_object_id, output.byte_size AS output_size FROM tool_calls tc LEFT JOIN content_objects output ON output.id = tc.output_object_id WHERE tc.model_call_id = ? ORDER BY tc.call_index",
+            "SELECT tc.id, tc.call_index, tc.binding_id, tc.tool_id, tc.tool_version, tc.status, tc.output_object_id, tc.error_object_id, output.byte_size AS output_size FROM tool_calls tc LEFT JOIN content_objects output ON output.id = tc.output_object_id WHERE tc.model_call_id = ? ORDER BY tc.call_index",
             vec![model_call_id.into()],
         ))
         .await?
@@ -153,6 +158,7 @@ async fn load_terminal_calls<C: ConnectionTrait>(
                     .map_err(|_| StorageError::Integrity("invalid tool call index".into()))?,
                 binding_id: row.try_get("", "binding_id")?,
                 tool_id: row.try_get("", "tool_id")?,
+                tool_version: row.try_get("", "tool_version")?,
                 status,
                 output_ref: row.try_get("", "output_object_id")?,
                 error_ref: row.try_get("", "error_object_id")?,
@@ -172,14 +178,19 @@ async fn result_content<C: ConnectionTrait>(
     row: &TerminalToolCall,
 ) -> StorageResult<(ToolResultOutcome, Vec<LlmContentPartIr>)> {
     if row.status == "completed" {
-        let descriptor = snapshot
+        let max_bytes = if let Some(descriptor) = snapshot
             .tool_descriptors
             .iter()
             .find(|item| item.descriptor.tool_id == row.tool_id)
-            .ok_or_else(|| StorageError::Integrity("tool descriptor snapshot is missing".into()))?;
-        if row.output_size.is_none_or(|size| {
-            size == 0 || size > descriptor.descriptor.limits.max_llm_result_bytes
-        }) {
+        {
+            descriptor.descriptor.limits.max_llm_result_bytes
+        } else {
+            memory_tool_output_limit(snapshot, row)?
+        };
+        if row
+            .output_size
+            .is_none_or(|size| size == 0 || size > max_bytes)
+        {
             return Err(StorageError::InvalidArgument(
                 "tool output exceeds its pinned model-result limit".into(),
             ));
@@ -227,6 +238,75 @@ async fn result_content<C: ConnectionTrait>(
         },
         vec![LlmContentPartIr::Text { text: safe_message }],
     ))
+}
+
+fn memory_tool_name<'a>(
+    snapshot: &'a zhuangsheng_core::graph::LlmNodeExecutionSnapshot,
+    row: &TerminalToolCall,
+) -> StorageResult<&'a str> {
+    let capability = match (
+        row.binding_id.as_str(),
+        row.tool_id.as_str(),
+        row.tool_version.as_str(),
+    ) {
+        (MEMORY_SEARCH_BINDING_ID, MEMORY_SEARCH_TOOL_ID, MEMORY_SEARCH_TOOL_VERSION) => {
+            zhuangsheng_core::graph::MemoryToolCapability::SearchMemory
+        }
+        (MEMORY_PROPOSAL_BINDING_ID, MEMORY_PROPOSAL_TOOL_ID, MEMORY_PROPOSAL_TOOL_VERSION) => {
+            zhuangsheng_core::graph::MemoryToolCapability::ProposeMemoryChange
+        }
+        _ => {
+            return Err(StorageError::Integrity(
+                "tool binding snapshot is missing".into(),
+            ));
+        }
+    };
+    let grants = snapshot
+        .memory
+        .as_ref()
+        .map(|memory| {
+            memory
+                .tools
+                .iter()
+                .filter(|grant| grant.capability == capability)
+                .count()
+        })
+        .unwrap_or(0);
+    if grants != 1 {
+        return Err(StorageError::Integrity(
+            "memory tool grant is missing or ambiguous".into(),
+        ));
+    }
+    Ok(match capability {
+        zhuangsheng_core::graph::MemoryToolCapability::SearchMemory => MEMORY_SEARCH_TOOL_NAME,
+        zhuangsheng_core::graph::MemoryToolCapability::ProposeMemoryChange => {
+            MEMORY_PROPOSAL_TOOL_NAME
+        }
+    })
+}
+
+fn memory_tool_output_limit(
+    snapshot: &zhuangsheng_core::graph::LlmNodeExecutionSnapshot,
+    row: &TerminalToolCall,
+) -> StorageResult<u64> {
+    let _ = memory_tool_name(snapshot, row)?;
+    Ok(match row.tool_id.as_str() {
+        MEMORY_SEARCH_TOOL_ID => 4 * 1024 * 1024,
+        MEMORY_PROPOSAL_TOOL_ID => snapshot
+            .memory
+            .as_ref()
+            .and_then(|memory| {
+                memory.tools.iter().find(|grant| {
+                    grant.capability
+                        == zhuangsheng_core::graph::MemoryToolCapability::ProposeMemoryChange
+                })
+            })
+            .and_then(|grant| grant.max_proposal_bytes)
+            .unwrap_or(0)
+            .saturating_add(64 * 1024),
+        _ => 0,
+    }
+    .min(16 * 1024 * 1024))
 }
 
 fn unresolved_calls(transcript: &[LlmTurnItemIr]) -> Vec<zhuangsheng_core::llm::ir::ToolCallIr> {

@@ -60,6 +60,7 @@ applied graph revision
 - 有序 LLM transcript IR、stream finalizer、usage/error 映射
 - 多轮 tool loop、多个 tool call、顺序稳定回填和 loop checkpoint
 - Tool Registry、显式 grant、hosted tool binding、approval 和副作用分类
+- `search_memory` / `propose_memory_change` 是固定名称、固定 schema、受 pinned memory grant 约束的内建 capability；search 结果和 proposal 审批结果都作为有序 ToolResult 回填同一 LLM loop
 - ContextPreset revision、snapshot、受信角色/provenance、确定性预算与安全 preview
 - provider count；失败时使用许可证兼容、版本固定的 local tokenizer，否则明确标记为 `estimate`
 - text output；opt-in JSON output + schema validation
@@ -97,6 +98,7 @@ applied graph revision
 - 所有 token 的长期持久化和完整 provider raw response 保留
 - 完整 SillyTavern 历史行为兼容
 - Tauri 内嵌 Axum server
+- 同一 model response 内把 memory capability 与 custom tool 混合编排，或把 search 与 proposal 混在同一 batch；阶段一要求同一 memory batch capability 同质并在违反时 fail closed，多个同质调用仍按 call order 执行/审批
 - desktop/mobile/web 完整功能对等、离线体验和最终视觉打磨
 
 ## 实现顺序

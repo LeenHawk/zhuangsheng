@@ -34,6 +34,7 @@ mod llm_initial_model_call;
 mod llm_ledger;
 mod llm_ledger_recovery;
 mod llm_ledger_retry;
+mod llm_memory_proposal_tool;
 mod llm_memory_search_support;
 mod llm_memory_search_tool;
 mod llm_opaque_bundle;

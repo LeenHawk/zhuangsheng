@@ -387,7 +387,7 @@ async fn memory_http_flow_uses_service_contract_and_typed_commands() {
 }
 
 #[tokio::test]
-async fn wait_response_route_uses_typed_blocker_decisions() {
+async fn wait_response_route_accepts_typed_memory_proposal_decisions() {
     let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
     let app = test_app(store);
     let response = call(
@@ -408,10 +408,48 @@ async fn wait_response_route_uses_typed_blocker_decisions() {
             }),
             &[],
         ),
-        StatusCode::BAD_REQUEST,
+        StatusCode::NOT_FOUND,
     )
     .await;
-    assert_eq!(response["error"]["code"], "unsupported_wait_response");
+    assert_eq!(response["error"]["code"], "not_found");
+}
+
+#[tokio::test]
+async fn wait_response_route_rejects_mixed_or_open_memory_decisions() {
+    let store = Arc::new(SqliteStore::connect("sqlite::memory:").await.unwrap());
+    let app = test_app(store);
+    for (delivery, decisions) in [
+        (
+            "mixed",
+            json!([
+                {"kind":"memory_proposal","blockerId":"proposal-1","decision":"approve"},
+                {"kind":"tool_call","blockerId":"tool-1","callDigest":"sha256:call","decision":"reject"}
+            ]),
+        ),
+        (
+            "open",
+            json!([{"kind":"memory_proposal","blockerId":"proposal-1","decision":"approve","unexpected":true}]),
+        ),
+    ] {
+        let response = call(
+            &app,
+            request(
+                "POST",
+                "/v1/waits/wait-1/responses",
+                json!({
+                    "deliveryId":delivery,
+                    "response":{"type":"blocker_decisions","decisions":decisions}
+                }),
+                &[],
+            ),
+            StatusCode::BAD_REQUEST,
+        )
+        .await;
+        assert!(matches!(
+            response["error"]["code"].as_str(),
+            Some("invalid_wait_response" | "invalid_json_body")
+        ));
+    }
 }
 
 fn request(method: &str, uri: &str, body: Value, headers: &[(&str, String)]) -> Request<Body> {

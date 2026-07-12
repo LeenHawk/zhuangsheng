@@ -7,4 +7,7 @@ mod receipt;
 mod search;
 mod service;
 
+pub(crate) use decide::decide_in;
+pub(crate) use propose::propose_in;
+pub(crate) use query::load_proposal;
 pub(crate) use search::search_in;

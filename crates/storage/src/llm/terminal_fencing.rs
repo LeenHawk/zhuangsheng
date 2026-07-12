@@ -116,24 +116,28 @@ async fn abort_open_tool_blocker<C: ConnectionTrait>(
     now: i64,
 ) -> StorageResult<()> {
     let blocker = connection.query_one_raw(sql(
-        "SELECT wait_id FROM wait_blockers WHERE blocker_kind = 'tool_call' AND blocker_id = ? AND status = 'open'",
-        vec![tool_call_id.into()],
+        "SELECT wb.wait_id,wb.blocker_kind,wb.blocker_id FROM wait_blockers wb LEFT JOIN memory_proposal_tool_calls mt ON wb.blocker_kind='memory_proposal' AND mt.proposal_id=wb.blocker_id WHERE wb.status='open' AND ((wb.blocker_kind='tool_call' AND wb.blocker_id=?) OR mt.tool_call_id=?)",
+        vec![tool_call_id.into(),tool_call_id.into()],
     )).await?;
     let Some(blocker) = blocker else {
         return Ok(());
     };
     let wait_id: String = blocker.try_get("", "wait_id")?;
+    let blocker_kind: String = blocker.try_get("", "blocker_kind")?;
+    let blocker_id: String = blocker.try_get("", "blocker_id")?;
     let decision = canonical::to_vec(&json!({
         "schemaVersion": 1,
         "kind": "run_terminal_cancel_before_start",
         "runId": run_id,
         "terminalEpoch": terminal_epoch,
         "toolCallId": tool_call_id,
+        "blockerKind": blocker_kind,
+        "blockerId": blocker_id,
     }))?;
     let decision_id = put_inline_object(connection, &decision, now).await?;
     if connection.execute_raw(sql(
-        "UPDATE wait_blockers SET status = 'aborted', decision_object_id = ? WHERE wait_id = ? AND blocker_kind = 'tool_call' AND blocker_id = ? AND status = 'open'",
-        vec![decision_id.clone().into(), wait_id.clone().into(), tool_call_id.into()],
+        "UPDATE wait_blockers SET status = 'aborted', decision_object_id = ? WHERE wait_id = ? AND blocker_kind = ? AND blocker_id = ? AND status = 'open'",
+        vec![decision_id.clone().into(), wait_id.clone().into(), blocker_kind.into(), blocker_id.into()],
     )).await?.rows_affected() != 1 {
         return Err(StorageError::Conflict("terminal_tool_blocker"));
     }

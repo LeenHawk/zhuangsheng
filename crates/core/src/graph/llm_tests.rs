@@ -9,7 +9,7 @@ use crate::{
     },
 };
 
-use super::{GraphApplyDependencies, GraphDraft, apply_graph_with_dependencies};
+use super::{DraftNodeKind, GraphApplyDependencies, GraphDraft, apply_graph_with_dependencies};
 
 fn operation() -> OperationKey {
     OperationKey::content_generation(
@@ -165,5 +165,58 @@ fn llm_apply_rejects_invalid_static_context_write() {
         issues
             .iter()
             .any(|issue| issue.code == "invalid_llm_memory_write")
+    );
+}
+
+#[test]
+fn llm_apply_rejects_custom_tool_name_colliding_with_memory_capability() {
+    let mut draft: GraphDraft = serde_json::from_value(json!({
+        "graphId":"graph_memory_tool_collision",
+        "nodes":[
+            {"id":"input","kind":"input","runInputSelector":{"type":"whole_value"}},
+            {
+                "id":"llm",
+                "kind":"llm",
+                "model":{"channelId":"channel_1","modelId":"model_1","operationKey":{"operation":"generate_content","kind":"open_ai_responses"}},
+                "context":{"type":"inline","spec":{"mode":"chat","items":[]}},
+                "memory":{"reads":[],"workingWrites":[],"tools":[{"capability":"search_memory","scopes":["story"],"maxResults":5}]},
+                "tools":[]
+            },
+            {"id":"output","kind":"output","outputKey":"reply"}
+        ],
+        "edges":[
+            {"from":{"nodeId":"input","output":"default"},"to":{"nodeId":"llm","input":"default"}},
+            {"from":{"nodeId":"llm","output":"default"},"to":{"nodeId":"output","input":"default"}}
+        ],
+        "outputContract":[{"key":"reply","collection":"single","required":true}]
+    })).unwrap();
+    let DraftNodeKind::Llm { config } = &mut draft.nodes[1].kind else {
+        panic!("expected llm node")
+    };
+    config.tools.push(super::ToolGrant {
+        binding_id: "custom-binding".into(),
+        tool_id: "custom-tool".into(),
+        version: "1".into(),
+        exposed_name: Some("search_memory".into()),
+        approval: None,
+        scopes: vec![],
+        artifact: super::ArtifactGrant {
+            read_scopes: vec![],
+            write_scopes: vec![],
+            allowed_media_types: vec![],
+            max_objects: 1,
+            max_bytes: 1,
+        },
+        constraints: Default::default(),
+        failure_policy: None,
+    });
+    let error = apply_graph_with_dependencies(draft, 1, 1, &dependencies(None)).unwrap_err();
+    let DomainError::GraphValidation(issues) = error else {
+        panic!("expected graph validation")
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == "invalid_tool_grant")
     );
 }

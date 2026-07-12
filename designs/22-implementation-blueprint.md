@@ -153,11 +153,12 @@ Notifier 丢失不能影响正确性；周期扫描必须能发现所有 durable
 
 - 完整 StatePatch/commit/projection、fork/merge（M1 已有最小 root branch 骨架）
 - Memory binding、proposal、review/apply
+- 固定 `search_memory` capability 记录 query/scope snapshot/read set 并回填确定性 ToolResult；固定 `propose_memory_change` capability 创建 canonical proposal 与 durable review wait，审批后恢复同一 LLM loop
 - CreateConversation root snapshot/commit/branch、append-only ConversationContext、Turn/Candidate 与选择 head
 - fork 和阶段一 merge
 - compaction/GC roots
 
-验收：fresh workspace 可原子得到 `messages: []` 的 Conversation root；消息 row/append patch/commit/head 不会部分可见；regenerate 候选相互隔离；失败 run 不推进 active head；并发相同路径写产生 conflict；不同路径按已定策略提交；GC 后所有被 branch/checkpoint/evidence 引用的对象仍存在。
+验收：fresh workspace 可原子得到 `messages: []` 的 Conversation root；消息 row/append patch/commit/head 不会部分可见；regenerate 候选相互隔离；失败 run 不推进 active head；并发相同路径写产生 conflict；不同路径按已定策略提交；memory search 重放不漂移，proposal wait 的批量审批/拒绝与 resume 原子且可幂等重放，terminal cancel 会中止 blocker；GC 后所有被 branch/checkpoint/evidence 引用的对象仍存在。
 
 ### M6：Adapter 与端到端
 

@@ -6,7 +6,8 @@ use crate::{
     canonical,
     graph::{
         ArtifactGrant, EffectClassification, GenerationOptionsIr, HostedToolBinding,
-        LlmNodeExecutionSnapshot, LlmNodeLimits, LlmOutputSpec, LlmRequestOptions,
+        LlmMemoryBinding, LlmNodeExecutionSnapshot, LlmNodeLimits, LlmOutputSpec,
+        LlmRequestOptions, MemoryToolCapability, MemoryToolGrant, NodeMemoryBinding,
         ToolApprovalPolicy, ToolEffectSpec, ToolGrant, ToolScopeGrant, ToolScopeKind,
     },
     llm::{
@@ -93,6 +94,47 @@ fn descriptor_approval_cannot_be_disabled_by_the_grant() {
     let fixture = fixture_with_tool(true);
     let output = build(&fixture, &BTreeSet::new()).unwrap();
     assert!(output.resolved_tools[0].requires_approval);
+}
+
+#[test]
+fn memory_capability_tools_are_fixed_and_do_not_require_registry_entries() {
+    let mut fixture = fixture();
+    fixture.execution.memory = Some(LlmMemoryBinding {
+        node: NodeMemoryBinding::default(),
+        tools: vec![
+            MemoryToolGrant {
+                capability: MemoryToolCapability::SearchMemory,
+                scopes: vec!["story".into()],
+                max_results: Some(10),
+                max_proposal_bytes: None,
+            },
+            MemoryToolGrant {
+                capability: MemoryToolCapability::ProposeMemoryChange,
+                scopes: vec!["story".into()],
+                max_results: None,
+                max_proposal_bytes: Some(4096),
+            },
+        ],
+    });
+    let output = build(&fixture, &BTreeSet::new()).unwrap();
+    assert_eq!(
+        output
+            .request
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["search_memory", "propose_memory_change"]
+    );
+    assert_eq!(output.resolved_memory_tools.len(), 2);
+    assert!(output.resolved_tools.is_empty());
+    assert!(
+        output
+            .request
+            .tools
+            .iter()
+            .all(|tool| { tool.input_schema.document["additionalProperties"] == false })
+    );
 }
 
 #[test]

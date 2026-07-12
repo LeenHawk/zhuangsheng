@@ -69,6 +69,7 @@ describe("StoryDetail", () => {
       onRegenerateCandidate: async () => undefined,
       onSelectCandidate: async () => undefined,
       onSubmitApproval: async () => undefined,
+      onSubmitMemoryProposals: async () => undefined,
       onSubmitSecretPassword: async () => undefined,
       onResolveEffect: async () => undefined,
       onReloadWaits: () => undefined,
@@ -172,6 +173,7 @@ describe("StoryDetail", () => {
       onRegenerateCandidate={onRegenerateCandidate}
       onSelectCandidate={onSelectCandidate}
       onSubmitApproval={async () => undefined}
+      onSubmitMemoryProposals={async () => undefined}
       onSubmitSecretPassword={async () => undefined}
       onResolveEffect={async () => undefined}
       onReloadWaits={() => undefined}

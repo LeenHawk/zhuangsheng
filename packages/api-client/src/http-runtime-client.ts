@@ -4,7 +4,7 @@ import { assertJson, decodeRun, decodeRunList, decodeRunOutputs } from "./decode
 import { DecodeError } from "./decode-error";
 import { requestJson } from "./http-json";
 import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
-import type { SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
+import type { SubmitMemoryProposalDecisionInput, SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
 import type { EffectResolutionView, ResolveEffectUnknownInput } from "./effect-types";
 import type {
   RunControlInput,
@@ -134,6 +134,38 @@ export class HttpRuntimeClient {
     const decided = input.decisions.map((decision) => decision.toolCallId);
     const settled = [...result.preparedToolCallIds, ...result.deniedToolCallIds];
     if (result.waitId !== waitId || result.deliveryId !== input.deliveryId || !sameIds(decided, settled)) {
+      throw new DecodeError("waitDelivery");
+    }
+    return result;
+  }
+
+  async submitMemoryProposalDecisions(
+    waitId: string,
+    input: SubmitMemoryProposalDecisionInput,
+  ): Promise<WaitDeliveryView> {
+    const result = decodeWaitDelivery(await requestJson(
+      this.baseUrl,
+      `/v1/waits/${encodeURIComponent(waitId)}/responses`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          deliveryId: input.deliveryId,
+          response: {
+            type: "blocker_decisions",
+            decisions: input.decisions.map((decision) => ({
+              kind: "memory_proposal",
+              blockerId: decision.proposalId,
+              decision: decision.decision,
+            })),
+          },
+        }),
+      },
+    ));
+    const decided = input.decisions.map((decision) => decision.proposalId);
+    if (result.waitId !== waitId || result.deliveryId !== input.deliveryId
+      || !sameIds(decided, result.decidedMemoryProposalIds)
+      || result.preparedToolCallIds.length !== 0 || result.deniedToolCallIds.length !== 0) {
       throw new DecodeError("waitDelivery");
     }
     return result;

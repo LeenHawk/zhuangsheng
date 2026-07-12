@@ -21,99 +21,106 @@ use super::{
 impl SqliteStore {
     pub async fn propose_memory_change(
         &self,
-        mut command: ProposeMemoryChangeCommand,
+        command: ProposeMemoryChangeCommand,
     ) -> StorageResult<MemoryChangeProposalView> {
-        if command.idempotency_key.is_empty() {
-            return Err(StorageError::InvalidArgument(
-                "memory proposal idempotency key is required".into(),
-            ));
-        }
-        validate_proposal_material(
-            &command.scope_id,
-            &command.reason,
-            &command.evidence_refs,
-            command.schema_version,
-            command.policy_version,
-        )?;
-        let (change_type, normalized_content) = match &mut command.change {
-            MemoryProposalChangeInput::Create { content } => {
-                let normalized = normalize_content(content.clone())?;
-                *content = normalized.clone();
-                ("create", Some(normalized))
-            }
-            MemoryProposalChangeInput::ReplaceContent { content } => {
-                let normalized = normalize_content(content.clone())?;
-                *content = normalized.clone();
-                ("replace_content", Some(normalized))
-            }
-            MemoryProposalChangeInput::MarkObsolete => ("mark_obsolete", None),
-            MemoryProposalChangeInput::DeleteTombstone => ("delete_tombstone", None),
-        };
-        validate_target_shape(&command, change_type)?;
-        let digest = canonical::hash(&command)?;
-        let receipt_scope = format!("memory-scope:{}:proposals", command.scope_id);
-        let now = now_ms();
         let transaction = self.db.begin().await?;
-        if let Some(view) = receipt::replay(
-            &transaction,
-            &receipt_scope,
-            &command.idempotency_key,
-            &digest,
-        )
-        .await?
-        {
-            transaction.commit().await?;
-            return Ok(view);
-        }
-        transaction.execute_raw(sql(
-            "INSERT OR IGNORE INTO memory_scopes (id, revision_no, created_at, updated_at) VALUES (?, 0, ?, ?)",
-            vec![command.scope_id.clone().into(), now.into(), now.into()],
-        )).await?;
-        let memory_id = match change_type {
-            "create" => reserve_memory(&transaction, &command.scope_id, now).await?,
-            _ => validate_existing_target(&transaction, &command).await?,
-        };
-        let content_id = match normalized_content {
-            Some(content) => {
-                Some(put_inline_object(&transaction, &canonical::to_vec(&content)?, now).await?)
-            }
-            None => None,
-        };
-        let proposal_id = new_id("memproposal");
-        transaction.execute_raw(sql(
-            "INSERT INTO memory_change_proposals (id, scope_id, memory_id, expected_head_commit_id, change_type, content_object_id, reason, evidence_refs_json, requested_by_kind, requested_by_id, schema_version, policy_version, origin_run_id, origin_node_instance_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_review', ?, ?)",
-            vec![proposal_id.clone().into(), command.scope_id.clone().into(), memory_id.into(), command.expected_head_commit_id.clone().into(), change_type.into(), content_id.clone().into(), command.reason.clone().into(), canonical::to_string(&command.evidence_refs)?.into(), actor_kind(command.requested_by.kind).into(), command.requested_by.id.clone().into(), i64::from(command.schema_version).into(), i64::from(command.policy_version).into(), command.origin_run_id.clone().into(), command.origin_node_instance_id.clone().into(), now.into(), now.into()],
-        )).await?;
-        insert_initial_transitions(
-            &transaction,
-            &proposal_id,
-            actor_kind(command.requested_by.kind),
-            command.requested_by.id.as_deref(),
-            now,
-        )
-        .await?;
-        if let Some(content_id) = &content_id {
-            transaction.execute_raw(sql(
-                "INSERT INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'memory_proposal', ?, 'content', ?)",
-                vec![content_id.clone().into(), proposal_id.clone().into(), now.into()],
-            )).await?;
-        }
-        let view = load_proposal(&transaction, &proposal_id).await?;
-        receipt::finish(
-            &transaction,
-            &receipt_scope,
-            &command.idempotency_key,
-            &digest,
-            "propose_memory_change",
-            "memory_proposal",
-            &proposal_id,
-            &view,
-            now,
-        )
-        .await?;
+        let view = propose_in(&transaction, command, now_ms()).await?;
         transaction.commit().await?;
         Ok(view)
     }
+}
+
+pub(crate) async fn propose_in<C: ConnectionTrait>(
+    connection: &C,
+    mut command: ProposeMemoryChangeCommand,
+    now: i64,
+) -> StorageResult<MemoryChangeProposalView> {
+    if command.idempotency_key.is_empty() {
+        return Err(StorageError::InvalidArgument(
+            "memory proposal idempotency key is required".into(),
+        ));
+    }
+    validate_proposal_material(
+        &command.scope_id,
+        &command.reason,
+        &command.evidence_refs,
+        command.schema_version,
+        command.policy_version,
+    )?;
+    let (change_type, normalized_content) = match &mut command.change {
+        MemoryProposalChangeInput::Create { content } => {
+            let normalized = normalize_content(content.clone())?;
+            *content = normalized.clone();
+            ("create", Some(normalized))
+        }
+        MemoryProposalChangeInput::ReplaceContent { content } => {
+            let normalized = normalize_content(content.clone())?;
+            *content = normalized.clone();
+            ("replace_content", Some(normalized))
+        }
+        MemoryProposalChangeInput::MarkObsolete => ("mark_obsolete", None),
+        MemoryProposalChangeInput::DeleteTombstone => ("delete_tombstone", None),
+    };
+    validate_target_shape(&command, change_type)?;
+    let digest = canonical::hash(&command)?;
+    let receipt_scope = format!("memory-scope:{}:proposals", command.scope_id);
+    if let Some(view) = receipt::replay(
+        connection,
+        &receipt_scope,
+        &command.idempotency_key,
+        &digest,
+    )
+    .await?
+    {
+        return Ok(view);
+    }
+    connection.execute_raw(sql(
+            "INSERT OR IGNORE INTO memory_scopes (id, revision_no, created_at, updated_at) VALUES (?, 0, ?, ?)",
+            vec![command.scope_id.clone().into(), now.into(), now.into()],
+        )).await?;
+    let memory_id = match change_type {
+        "create" => reserve_memory(connection, &command.scope_id, now).await?,
+        _ => validate_existing_target(connection, &command).await?,
+    };
+    let content_id = match normalized_content {
+        Some(content) => {
+            Some(put_inline_object(connection, &canonical::to_vec(&content)?, now).await?)
+        }
+        None => None,
+    };
+    let proposal_id = new_id("memproposal");
+    connection.execute_raw(sql(
+            "INSERT INTO memory_change_proposals (id, scope_id, memory_id, expected_head_commit_id, change_type, content_object_id, reason, evidence_refs_json, requested_by_kind, requested_by_id, schema_version, policy_version, origin_run_id, origin_node_instance_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_review', ?, ?)",
+            vec![proposal_id.clone().into(), command.scope_id.clone().into(), memory_id.into(), command.expected_head_commit_id.clone().into(), change_type.into(), content_id.clone().into(), command.reason.clone().into(), canonical::to_string(&command.evidence_refs)?.into(), actor_kind(command.requested_by.kind).into(), command.requested_by.id.clone().into(), i64::from(command.schema_version).into(), i64::from(command.policy_version).into(), command.origin_run_id.clone().into(), command.origin_node_instance_id.clone().into(), now.into(), now.into()],
+        )).await?;
+    insert_initial_transitions(
+        connection,
+        &proposal_id,
+        actor_kind(command.requested_by.kind),
+        command.requested_by.id.as_deref(),
+        now,
+    )
+    .await?;
+    if let Some(content_id) = &content_id {
+        connection.execute_raw(sql(
+                "INSERT INTO content_object_refs (object_id, owner_kind, owner_id, role, created_at) VALUES (?, 'memory_proposal', ?, 'content', ?)",
+                vec![content_id.clone().into(), proposal_id.clone().into(), now.into()],
+            )).await?;
+    }
+    let view = load_proposal(connection, &proposal_id).await?;
+    receipt::finish(
+        connection,
+        &receipt_scope,
+        &command.idempotency_key,
+        &digest,
+        "propose_memory_change",
+        "memory_proposal",
+        &proposal_id,
+        &view,
+        now,
+    )
+    .await?;
+    Ok(view)
 }
 
 fn validate_target_shape(
