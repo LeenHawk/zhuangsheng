@@ -1,6 +1,9 @@
 mod claude;
 mod claude_stream;
 mod common;
+mod count;
+#[cfg(test)]
+mod count_tests;
 mod gemini;
 mod gemini_stream;
 mod generation;
@@ -20,6 +23,7 @@ mod types;
 
 pub use claude::{decode_claude_terminal, encode_claude_request};
 pub use claude_stream::ClaudeStreamDecoder;
+pub use count::{decode_count_terminal, encode_count_request};
 pub use gemini::{decode_gemini_terminal, encode_gemini_request};
 pub use gemini_stream::GeminiStreamDecoder;
 pub use generation::{

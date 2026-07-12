@@ -11,6 +11,7 @@ use crate::{
 };
 
 use super::output_repair_resume::load_output_repair_resume;
+use super::resume_count::load_retry_ready_count_call;
 use super::resume_model::load_retry_ready_model_call;
 use super::validation::validate_node_attempt_fence;
 
@@ -50,6 +51,7 @@ impl SqliteStore {
         let transcript = load_transcript(&transaction, &checkpoint.transcript_ref).await?;
         let repair = load_output_repair_resume(&transaction, &checkpoint, &transcript).await?;
         let retry_ready_model_call = load_retry_ready_model_call(&transaction, &checkpoint).await?;
+        let retry_ready_count_call = load_retry_ready_count_call(&transaction, &checkpoint).await?;
         let prepared_tool_calls = load_prepared_calls(
             &transaction,
             &command.fence.invoking_node_attempt_id,
@@ -64,6 +66,7 @@ impl SqliteStore {
             output_repairs_used: repair.used,
             pending_output_repair: repair.pending,
             retry_ready_model_call,
+            retry_ready_count_call,
             prepared_tool_calls,
             retry_ready_tool_calls,
         }))

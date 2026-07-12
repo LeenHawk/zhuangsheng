@@ -18,7 +18,7 @@ use zhuangsheng_core::{
     llm::{
         ChannelCapability, ChannelCredential, ChannelModel, ChannelModelCatalog,
         ChannelTransportPolicy, ContentGenerationKind, LlmChannelRevision, LlmChannelRevisionSpec,
-        ModelCapabilities, ModelCatalogPolicy, Operation, OperationKey, SecretRef,
+        ModelCapabilities, ModelCatalogPolicy, Operation, OperationKey, Provider, SecretRef,
         adapter::WireGenerationRequest,
         context::{
             ContextAssemblyMode, ContextAssemblySpec, ContextBudgetPolicy, ContextBudgetStrategy,
@@ -30,6 +30,9 @@ use zhuangsheng_core::{
     schema::{DIALECT_2020_12, JsonSchemaLimits, JsonSchemaSpec},
 };
 
+mod count_recovery;
+mod counting_provider;
+mod counting_provider_recovery;
 mod hosted_tools;
 mod model_recovery;
 mod opaque_storage;
@@ -49,6 +52,11 @@ struct FakeProvider {
     text: &'static str,
 }
 
+struct CountAwareProvider {
+    store: Arc<SqliteStore>,
+    run_id: String,
+}
+
 #[async_trait]
 impl ProviderTransport for FakeProvider {
     async fn send(
@@ -58,6 +66,27 @@ impl ProviderTransport for FakeProvider {
         _credential: Option<&zhuangsheng_core::application::secret::SecretValue>,
     ) -> Result<ProviderHttpResponse, ProviderHttpError> {
         Ok(provider_response(self.text))
+    }
+}
+
+#[async_trait]
+impl ProviderTransport for CountAwareProvider {
+    async fn send(
+        &self,
+        _channel: &LlmChannelRevision,
+        _wire: &WireGenerationRequest,
+        _credential: Option<&zhuangsheng_core::application::secret::SecretValue>,
+    ) -> Result<ProviderHttpResponse, ProviderHttpError> {
+        let events = self
+            .store
+            .list_run_events(&self.run_id, 0, 200)
+            .await
+            .unwrap();
+        assert!(events.iter().any(|event| {
+            event.event_type == "llm.count.completed"
+                && event.payload["resultSource"] == json!("estimate")
+        }));
+        Ok(provider_response("你好，旅行者。"))
     }
 }
 
@@ -77,8 +106,9 @@ async fn scheduler_executes_first_llm_call_through_durable_effect() {
         .unwrap();
     let executor = Arc::new(LocalLlmExecutor::with_provider(
         store.clone(),
-        Arc::new(FakeProvider {
-            text: "你好，旅行者。",
+        Arc::new(CountAwareProvider {
+            store: store.clone(),
+            run_id: run.id.clone(),
         }),
     ));
     Scheduler::new(store.clone(), "llm-e2e-worker")
@@ -100,6 +130,13 @@ async fn scheduler_executes_first_llm_call_through_durable_effect() {
         events
             .iter()
             .any(|event| event.event_type == "node.completed")
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type == "llm.count.completed")
+            .count(),
+        1
     );
 }
 
@@ -145,7 +182,11 @@ async fn create_llm_graph(
     credential: Option<SecretRef>,
     tool: Option<ToolGrant>,
 ) -> String {
-    create_llm_graph_inner(store, json_output, credential, tool, None, None).await
+    create_llm_graph_inner(store, json_output, credential, tool, None, None, false).await
+}
+
+async fn create_counting_llm_graph(store: &SqliteStore) -> String {
+    create_llm_graph_inner(store, false, None, None, None, None, true).await
 }
 
 async fn create_streaming_llm_graph(store: &SqliteStore, persist_chunks: bool) -> String {
@@ -160,6 +201,7 @@ async fn create_streaming_llm_graph(store: &SqliteStore, persist_chunks: bool) -
             audience: StreamingAudience::Both,
             persist_chunks,
         }),
+        false,
     )
     .await
 }
@@ -184,6 +226,7 @@ pub(super) async fn create_hosted_llm_graph(store: &SqliteStore) -> String {
             max_uses_per_model_call: 1,
         }),
         None,
+        false,
     )
     .await
 }
@@ -195,6 +238,7 @@ async fn create_llm_graph_inner(
     tool: Option<ToolGrant>,
     hosted: Option<HostedToolBinding>,
     streaming: Option<LlmNodeStreaming>,
+    provider_count: bool,
 ) -> String {
     let channel = store
         .create_channel(CreateChannelCommand {
@@ -212,6 +256,7 @@ async fn create_llm_graph_inner(
                 tool.is_some() || hosted.is_some(),
                 hosted.is_some(),
                 streaming.is_some(),
+                provider_count,
             ),
             idempotency_key: "llm-e2e-channel-revision".into(),
         })
@@ -308,6 +353,7 @@ fn channel_spec(
     tool_calling: bool,
     hosted: bool,
     streaming: bool,
+    provider_count: bool,
 ) -> LlmChannelRevisionSpec {
     let authenticated = credential.is_some();
     LlmChannelRevisionSpec {
@@ -321,7 +367,14 @@ fn channel_spec(
         credential: credential.map_or(ChannelCredential::None, |api_key_ref| {
             ChannelCredential::Secret { api_key_ref }
         }),
-        operation_keys: vec![operation()],
+        operation_keys: if provider_count {
+            vec![
+                operation(),
+                OperationKey::provider(Operation::CountTokens, Provider::OpenAi),
+            ]
+        } else {
+            vec![operation()]
+        },
         model_catalogs: vec![ChannelModelCatalog {
             operation_key: operation(),
             policy: ModelCatalogPolicy::Allowlist,

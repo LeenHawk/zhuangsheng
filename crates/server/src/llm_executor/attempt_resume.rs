@@ -14,6 +14,7 @@ use crate::llm_executor_support::finalize_failure;
 
 use super::{
     LocalLlmExecutor,
+    count_resume::resume_active_count,
     model_call::{CompletedModelCall, ModelCallResult},
     model_completed_resume::reconstruct_completed_model_call,
     model_retry::{RetryModelCallInput, retry_model_call},
@@ -32,6 +33,7 @@ pub(super) struct ResumeLoopState {
     pub prior_checkpoint: Option<LlmLoopCheckpoint>,
     pub recovered_completed: Option<CompletedModelCall>,
     pub output_repairs_used: u64,
+    pub retry_ready_count_call: Option<zhuangsheng_core::llm::RetryReadyResumeCountCall>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -60,6 +62,9 @@ pub(super) async fn resume_attempt(
         output_repairs_used: state.output_repairs_used,
         ..ResumeLoopState::default()
     };
+    if let Some(resume) = resume_active_count(&mut state, &mut output, base_transcript_len)? {
+        return Ok(resume);
+    }
     let active_status = state
         .checkpoint
         .active_model_effect
@@ -176,7 +181,7 @@ pub(super) async fn resume_attempt(
     Ok(AttemptResume::Continue(Box::new(output)))
 }
 
-fn tail(
+pub(super) fn tail(
     transcript: &[zhuangsheng_core::llm::ir::LlmTurnItemIr],
     base: usize,
 ) -> Result<Vec<zhuangsheng_core::llm::ir::LlmTurnItemIr>, ApplicationError> {

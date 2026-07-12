@@ -28,6 +28,12 @@ use crate::{
 };
 
 mod attempt_resume;
+mod count_resume;
+mod counting;
+#[cfg(test)]
+mod counting_pause;
+mod counting_provider;
+mod counting_state;
 mod hosted_tools;
 mod model_call;
 mod model_completed_resume;
@@ -45,6 +51,8 @@ mod tool_dispatch;
 mod tool_retry;
 
 use attempt_resume::{AttemptResume, resume_attempt};
+#[cfg(test)]
+pub(crate) use counting_pause::CountPause;
 use model_call::{ModelCallInput, ModelCallResult, run_model_call};
 #[cfg(test)]
 pub(crate) use model_completed_resume::CompletedModelPause;
@@ -62,6 +70,10 @@ pub struct LocalLlmExecutor {
     repair_pause: Option<Arc<RepairPreparedPause>>,
     #[cfg(test)]
     completed_model_pause: Option<Arc<CompletedModelPause>>,
+    #[cfg(test)]
+    count_completed_pause: Option<Arc<CountPause>>,
+    #[cfg(test)]
+    count_prepared_pause: Option<Arc<CountPause>>,
 }
 
 impl LocalLlmExecutor {
@@ -75,6 +87,10 @@ impl LocalLlmExecutor {
             repair_pause: None,
             #[cfg(test)]
             completed_model_pause: None,
+            #[cfg(test)]
+            count_completed_pause: None,
+            #[cfg(test)]
+            count_prepared_pause: None,
         })
     }
 
@@ -88,6 +104,10 @@ impl LocalLlmExecutor {
             repair_pause: None,
             #[cfg(test)]
             completed_model_pause: None,
+            #[cfg(test)]
+            count_completed_pause: None,
+            #[cfg(test)]
+            count_prepared_pause: None,
         }
     }
 
@@ -104,6 +124,8 @@ impl LocalLlmExecutor {
             stream_events: StreamEventHub::new(),
             repair_pause: None,
             completed_model_pause: None,
+            count_completed_pause: None,
+            count_prepared_pause: None,
         }
     }
 
@@ -121,6 +143,18 @@ impl LocalLlmExecutor {
     #[cfg(test)]
     pub(crate) fn with_completed_model_pause(mut self, pause: Arc<CompletedModelPause>) -> Self {
         self.completed_model_pause = Some(pause);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_count_completed_pause(mut self, pause: Arc<CountPause>) -> Self {
+        self.count_completed_pause = Some(pause);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_count_prepared_pause(mut self, pause: Arc<CountPause>) -> Self {
+        self.count_prepared_pause = Some(pause);
         self
     }
 }
@@ -241,6 +275,7 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
         let mut prior_checkpoint = resume.prior_checkpoint;
         let mut recovered_completed = resume.recovered_completed;
         let mut output_repairs_used = resume.output_repairs_used;
+        let mut retry_ready_count_call = resume.retry_ready_count_call;
         loop {
             let completed = if let Some(completed) = recovered_completed.take() {
                 completed
@@ -271,6 +306,7 @@ impl LlmAttemptExecutor for LocalLlmExecutor {
                         execution,
                         built,
                         prior_checkpoint: prior_checkpoint.take(),
+                        retry_count: retry_ready_count_call.take(),
                         credential: credential.as_ref(),
                         reserved_output,
                         now,

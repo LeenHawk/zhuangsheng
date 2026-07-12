@@ -23,6 +23,7 @@ mod output_repair;
 mod output_repair_resume;
 mod recovery;
 mod recovery_started;
+mod resume_count;
 mod resume_model;
 mod resume_state;
 mod stream_ledger;

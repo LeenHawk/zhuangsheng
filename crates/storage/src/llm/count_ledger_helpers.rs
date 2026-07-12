@@ -10,7 +10,7 @@ use zhuangsheng_core::{
 
 use crate::{
     StorageError, StorageResult,
-    graph::helpers::sql,
+    graph::helpers::{load_object_json, sql},
     runtime::{Event, append_event},
 };
 
@@ -26,7 +26,7 @@ pub(super) async fn load_existing<C: ConnectionTrait>(
 ) -> StorageResult<Option<PreparedCountCall>> {
     let row = connection
         .query_one_raw(sql(
-            "SELECT cc.id AS count_call_id, cc.originating_attempt_id, cc.channel_id, cc.channel_revision_id, cc.model_id, cc.local_counter_id, cc.local_counter_version, cc.fallback_policy_version, cc.safety_margin_tokens, cc.count_execution_pin_digest, cc.trim_candidate_object_id, cc.trim_candidate_digest, cc.request_digest, cc.request_object_id, cc.status AS count_status, e.id AS effect_id, e.classification, e.idempotency_key, e.retry_policy_json, e.status AS effect_status, ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status FROM count_calls cc JOIN effects e ON e.count_call_id = cc.id JOIN effect_attempts ea ON ea.effect_id = e.id AND ea.attempt_no = 1 WHERE cc.node_instance_id = ? AND cc.count_ordinal = ?",
+            "SELECT cc.id AS count_call_id, cc.originating_attempt_id, cc.channel_id, cc.channel_revision_id, cc.model_id, cc.local_counter_id, cc.local_counter_version, cc.fallback_policy_version, cc.safety_margin_tokens, cc.count_execution_pin_digest, cc.trim_candidate_object_id, cc.trim_candidate_digest, cc.request_digest, cc.request_object_id, cc.status AS count_status, e.id AS effect_id, e.classification, e.idempotency_key, e.retry_policy_json, e.status AS effect_status, ea.id AS effect_attempt_id, ea.invoking_node_attempt_id, ea.status AS attempt_status, cp.checkpoint_object_id FROM count_calls cc JOIN effects e ON e.count_call_id = cc.id JOIN effect_attempts ea ON ea.effect_id = e.id AND ea.attempt_no = 1 JOIN llm_loop_checkpoints cp ON cp.node_instance_id = cc.node_instance_id WHERE cc.node_instance_id = ? AND cc.count_ordinal = ?",
             vec![
                 command.node_instance_id.clone().into(),
                 i64::try_from(command.count_ordinal)
@@ -64,12 +64,19 @@ pub(super) async fn load_existing<C: ConnectionTrait>(
     if !matches {
         return Err(StorageError::Conflict("count_call_replay"));
     }
+    let checkpoint: zhuangsheng_core::llm::LlmLoopCheckpoint = load_object_json(
+        connection,
+        &row.try_get::<String>("", "checkpoint_object_id")?,
+    )
+    .await?;
     Ok(Some(PreparedCountCall {
         count_call_id: command.count_call_id.clone(),
         effect_id: command.effect_id.clone(),
         effect_attempt_id: command.effect_attempt_id.clone(),
         trim_candidate_ref: row.try_get("", "trim_candidate_object_id")?,
         request_ref: row.try_get("", "request_object_id")?,
+        context_snapshot_ref: checkpoint.context_snapshot_ref,
+        transcript_ref: checkpoint.transcript_ref,
         logical_status: parse_logical_status(&row.try_get::<String>("", "count_status")?)?,
         effect_status: parse_effect_status(&row.try_get::<String>("", "effect_status")?)?,
         attempt_status: parse_attempt_status(&row.try_get::<String>("", "attempt_status")?)?,

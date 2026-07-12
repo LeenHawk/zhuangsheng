@@ -220,6 +220,12 @@ zhuangsheng -> gproxy-tokenize（本地 fallback，可选 feature）
 zhuangsheng -X-> gproxy proxy/channel/pipeline/transform
 ```
 
+当前仓库是 `MIT OR Apache-2.0`，样例树中的 `gproxy-tokenize 2.0.8` 是
+`AGPL-3.0-or-later`，因此默认构建暂不直接链接它。Runtime 已实现 provider count、
+durable CountCall/recovery 和明确标记为 `estimate` 的最后一级 fallback；在引入许可证兼容
+且版本固定的 tokenizer（或项目明确采用兼容的 AGPL 分发策略）前，不得把该 estimate
+标记为 `local`，也不得声称已经执行 `gproxy-tokenize`。这一限制不改变上面的目标计数顺序。
+
 本项目复用 taxonomy、wire types 和 endpoint metadata，不复制 protocol 目录，不启用 provider-to-provider transform。若未来复用 `gproxy-transform` 的 stream parser/usage aggregation，只能作为当前 native shape 的辅助，不能把应用层变成反代层。
 
 共享 crate 变更先进入独立版本/tag；taxonomy 或 decoder 语义变化提升对应 compatibility ID，升级时通过显式 support matrix、兼容 reader 和 conformance validation，不静默改变历史 run。

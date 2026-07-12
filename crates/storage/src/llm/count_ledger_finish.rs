@@ -2,7 +2,10 @@ use sea_orm::{ConnectionTrait, TransactionTrait};
 use serde_json::json;
 use zhuangsheng_core::{
     canonical,
-    llm::{CountCallOutcome, CountResultSource, FinishCountCallCommand, LlmLogicalCallStatus},
+    llm::{
+        CountCallOutcome, CountResultSource, FinishCountCallCommand, LlmLogicalCallStatus,
+        LlmLoopCheckpoint,
+    },
 };
 
 use crate::{SqliteStore, StorageError, StorageResult, graph::helpers::put_inline_object};
@@ -22,7 +25,7 @@ impl SqliteStore {
         &self,
         command: FinishCountCallCommand,
         now: i64,
-    ) -> StorageResult<()> {
+    ) -> StorageResult<LlmLoopCheckpoint> {
         let transaction = self.db.begin().await?;
         let call =
             load_count_attempt(&transaction, &command.effect_attempt_id, &command.fence).await?;
@@ -62,7 +65,7 @@ impl SqliteStore {
                 ),
             )?;
             transaction.commit().await?;
-            return Ok(());
+            return Ok(checkpoint);
         }
         validate_count_fence(&call, &command.fence)?;
         validate_fresh_state(&call, &command.outcome)?;
@@ -122,7 +125,7 @@ impl SqliteStore {
         )
         .await?;
         transaction.commit().await?;
-        Ok(())
+        Ok(checkpoint)
     }
 }
 

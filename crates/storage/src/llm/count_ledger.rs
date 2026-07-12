@@ -12,6 +12,7 @@ use zhuangsheng_core::{
 use crate::{
     SqliteStore, StorageError, StorageResult,
     graph::helpers::{put_inline_object, sql},
+    runtime::compute_llm_read_set_digest,
 };
 
 use super::{
@@ -82,6 +83,31 @@ impl SqliteStore {
             put_inline_object(&transaction, &command.trim_candidate_bytes, now).await?;
         let request_ref = put_inline_object(&transaction, &command.request_bytes, now).await?;
         let mut checkpoint = command.checkpoint;
+        if checkpoint.context_snapshot_ref.is_empty() {
+            checkpoint.context_snapshot_ref = context.execution_snapshot_object_id.clone();
+        }
+        if checkpoint.transcript_ref.is_empty() {
+            let transcript = command.initial_transcript.as_ref().ok_or_else(|| {
+                StorageError::InvalidArgument("initial count transcript is missing".into())
+            })?;
+            let authoritative_read_set =
+                compute_llm_read_set_digest(&transaction, &command.originating_attempt_id).await?;
+            if authoritative_read_set != checkpoint.read_set_digest {
+                return Err(StorageError::InvalidArgument(
+                    "initial count read-set digest mismatch".into(),
+                ));
+            }
+            let transcript_bytes = canonical::to_vec(&json!({
+                "schemaVersion":1,
+                "items":transcript,
+            }))?;
+            checkpoint.transcript_ref =
+                put_inline_object(&transaction, &transcript_bytes, now).await?;
+        } else if command.initial_transcript.is_some() {
+            return Err(StorageError::InvalidArgument(
+                "initial transcript is only valid without a checkpoint transcript".into(),
+            ));
+        }
         let active = checkpoint.active_count_effect.as_mut().ok_or_else(|| {
             StorageError::InvalidArgument("prepared count checkpoint is missing".into())
         })?;
@@ -197,6 +223,8 @@ impl SqliteStore {
             effect_attempt_id: command.effect_attempt_id,
             trim_candidate_ref: candidate_ref,
             request_ref,
+            context_snapshot_ref: checkpoint.context_snapshot_ref,
+            transcript_ref: checkpoint.transcript_ref,
             logical_status: LlmLogicalCallStatus::Prepared,
             effect_status: EffectStatus::Pending,
             attempt_status: EffectAttemptStatus::Prepared,
@@ -314,6 +342,10 @@ fn validate_prepare(command: &PrepareCountCallCommand) -> StorageResult<()> {
         || command.request_bytes.len() > 16 * 1024 * 1024
         || command.retry_policy.max_attempts == 0
         || command.retry_policy.max_attempts > 32
+        || command
+            .initial_transcript
+            .as_ref()
+            .is_some_and(|items| items.len() > 4096)
     {
         return Err(StorageError::InvalidArgument(
             "count prepare command is outside supported bounds".into(),

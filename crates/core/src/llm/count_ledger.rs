@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     CountResultSource, EffectAttemptFence, EffectAttemptStatus, EffectRetryPolicy, EffectStatus,
     LlmLogicalCallStatus, LlmLoopCheckpoint, LlmOperationExecutionPin, OperationKey,
+    ir::LlmTurnItemIr,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +37,7 @@ pub struct PrepareCountCallCommand {
     pub effect_idempotency_key: String,
     pub retry_policy: EffectRetryPolicy,
     pub checkpoint: LlmLoopCheckpoint,
+    pub initial_transcript: Option<Vec<LlmTurnItemIr>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,10 +47,21 @@ pub struct PreparedCountCall {
     pub effect_attempt_id: String,
     pub trim_candidate_ref: String,
     pub request_ref: String,
+    pub context_snapshot_ref: String,
+    pub transcript_ref: String,
     pub logical_status: LlmLogicalCallStatus,
     pub effect_status: EffectStatus,
     pub attempt_status: EffectAttemptStatus,
     pub replayed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryReadyResumeCountCall {
+    pub count_call_id: String,
+    pub effect_id: String,
+    pub trim_candidate_bytes: Vec<u8>,
+    pub request_bytes: Vec<u8>,
 }
 
 pub struct StartCountCallCommand {

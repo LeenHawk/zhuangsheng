@@ -4,7 +4,7 @@ use zhuangsheng_core::{
     llm::{
         ActiveModelEffectCheckpoint, LlmLogicalCallStatus, LlmLoopCheckpoint,
         LlmRequestBuildOutput, PrepareInitialModelCallCommand, PrepareModelCallCommand,
-        ResolvedRequestTool,
+        ResolvedRequestTool, RetryReadyResumeCountCall,
         adapter::{AdapterExecutionOptions, DecodedTerminalDraft, encode_generation_request},
     },
     scheduler::{ClaimedAttempt, LlmAttemptExecution},
@@ -14,6 +14,9 @@ use crate::llm_executor_support::{finalize_failure, new_id};
 
 use super::{
     LocalLlmExecutor,
+    counting::count_request,
+    counting_provider::{durable_count_request, provider_count_wire},
+    counting_state::{CountRequestInput, count_candidate_bytes},
     model_effect::{model_effect, model_retry_policy},
     model_request::durable_generation_request,
     model_transport::{PreparedModelCallInput, execute_prepared_model_call},
@@ -30,6 +33,7 @@ pub(super) struct ModelCallInput<'a> {
     pub execution: &'a LlmNodeExecutionSnapshot,
     pub built: LlmRequestBuildOutput,
     pub prior_checkpoint: Option<LlmLoopCheckpoint>,
+    pub retry_count: Option<RetryReadyResumeCountCall>,
     pub credential: Option<&'a SecretValue>,
     pub reserved_output: u64,
     pub now: i64,
@@ -52,6 +56,7 @@ pub(super) async fn run_model_call(
         execution,
         built,
         prior_checkpoint,
+        retry_count,
         credential,
         reserved_output,
         now,
@@ -81,6 +86,26 @@ pub(super) async fn run_model_call(
     };
     let durable_request =
         durable_generation_request(&execution.operation, &built.request, options)?;
+    let provider_count_wire = provider_count_wire(execution, &wire);
+    let count_request_bytes = durable_count_request(&built.request, provider_count_wire.as_ref())?;
+    let prior_checkpoint = Some(
+        count_request(
+            executor,
+            CountRequestInput {
+                attempt,
+                execution,
+                transcript: &built.request.transcript,
+                candidate_bytes: count_candidate_bytes(&built.request)?,
+                request_bytes: count_request_bytes,
+                prior_checkpoint,
+                retry: retry_count,
+                provider_wire: provider_count_wire,
+                credential,
+                now,
+            },
+        )
+        .await?,
+    );
     let model_call_id = new_id("modelcall");
     let effect_id = new_id("effect");
     let effect_attempt_id = new_id("effectattempt");
