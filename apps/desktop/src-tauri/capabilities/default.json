@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Local-first desktop and mobile runtime commands",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

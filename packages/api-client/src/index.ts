@@ -37,5 +37,6 @@ export * from "./context-types";
 export * from "./effect-types";
 export * from "./memory-types";
 export * from "./tool-types";
+export * from "./transport";
 export * from "./decode-tools";
 export * from "./wait-types";
