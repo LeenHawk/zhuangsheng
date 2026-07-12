@@ -15,6 +15,7 @@ use crate::{
 };
 
 use super::{
+    conversation_history,
     events::add_object_ref,
     long_term_read,
     read_set::{ResolvedBinding, ResolvedSelection},
@@ -50,6 +51,9 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
         let resolved = match &read.source {
             StaticMemoryReadSource::WorkingContext { path, .. } => {
                 resolve_working(read, path, &context_id, &branch_id, &context)?
+            }
+            StaticMemoryReadSource::ConversationHistory { .. } => {
+                conversation_history::resolve(connection, &context_id, &branch_id, &context).await?
             }
             StaticMemoryReadSource::LongTermMemory { .. } => {
                 long_term_read::resolve_static(connection, read).await?

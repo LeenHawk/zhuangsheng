@@ -12,7 +12,7 @@ use zhuangsheng_core::{
 
 use crate::{StorageError, StorageResult, graph::helpers::sql};
 
-pub(super) async fn load_active_messages<C: ConnectionTrait>(
+pub(crate) async fn load_active_messages<C: ConnectionTrait>(
     connection: &C,
     conversation_id: &str,
     context_id: &str,

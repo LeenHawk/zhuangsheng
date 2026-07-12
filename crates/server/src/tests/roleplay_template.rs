@@ -65,9 +65,10 @@ async fn user_mode_template_builds_an_applied_compatible_graph_idempotently() {
                     "position":{"type":"start"},"budget":{"required":true}
                 },
                 {
-                    "id":"input","enabled":true,"requestedRole":"user",
-                    "source":{"type":"input","path":"/content"},
-                    "position":{"type":"user_input"},"budget":{"required":true}
+                    "id":"history","enabled":true,"requestedRole":"context",
+                    "source":{"type":"history","bindingId":"history","strategy":{"type":"all"}},
+                    "position":{"type":"history"},"budget":{"required":false},
+                    "overflow":{"type":"keep_recent","count":null}
                 }
             ]}}),
             &[("idempotency-key", "template-preset-publish".into())],
@@ -135,5 +136,9 @@ async fn user_mode_template_builds_an_applied_compatible_graph_idempotently() {
     assert_eq!(
         revision["definition"]["nodes"][1]["model"]["modelId"],
         "role-model"
+    );
+    assert_eq!(
+        revision["definition"]["nodes"][1]["memory"]["reads"][0]["source"]["kind"],
+        "conversation_history"
     );
 }

@@ -108,7 +108,7 @@ describe("first-run settings", () => {
       mode: "chat",
       items: [
         { id: "character", enabled: true, requestedRole: "system", source: { type: "literal", text: expect.stringContaining("角色：Alice") }, budget: { required: true } },
-        { id: "input", enabled: true, requestedRole: "user", source: { type: "input", path: "/content" }, position: { type: "user_input" }, budget: { required: true } },
+        { id: "history", source: { type: "history", bindingId: "history", strategy: { type: "all" } }, position: { type: "history" }, overflow: { type: "keep_recent", count: null } },
       ],
       preview: { content: "metadata_only", count: "local" },
     });

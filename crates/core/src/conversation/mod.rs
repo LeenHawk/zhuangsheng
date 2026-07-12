@@ -2,6 +2,7 @@ mod contracts;
 #[cfg(test)]
 mod contracts_tests;
 mod roleplay;
+mod roleplay_memory;
 mod selection;
 mod types;
 mod views;

@@ -151,7 +151,7 @@ fn roleplay_draft(
         "name": name,
         "nodes": [
             {"id":"input","name":"Conversation input","kind":"input","runInputSelector":{"type":"whole_value"}},
-            {"id":"reply","name":"Role response","kind":"llm","model":{"channelId":channel_id,"modelId":model_id,"operationKey":operation_key},"context":{"type":"preset","presetId":preset_id},"output":{"mode":"json","schema":reply_schema,"strict":true},"streaming":{"enabled":false,"audience":"user","persistChunks":false}},
+            {"id":"reply","name":"Role response","kind":"llm","model":{"channelId":channel_id,"modelId":model_id,"operationKey":operation_key},"context":{"type":"preset","presetId":preset_id},"memory":{"reads":[{"id":"history","as":"history","source":{"kind":"conversation_history","scope":"run-context"},"required":true,"consistency":"snapshot","limit":null,"maxBytes":16777216}],"workingWrites":[],"tools":[]},"output":{"mode":"json","schema":reply_schema,"strict":true},"streaming":{"enabled":false,"audience":"user","persistChunks":false}},
             {"id":"output","name":"Assistant reply","kind":"output","outputKey":"reply"}
         ],
         "edges": [

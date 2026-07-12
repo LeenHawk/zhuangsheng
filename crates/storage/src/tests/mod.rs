@@ -24,6 +24,7 @@ mod conversation_run_profile;
 mod conversation_turn;
 mod graph_apply;
 mod graph_commands;
+mod llm_conversation_history;
 mod llm_count_ledger;
 mod llm_count_recovery;
 mod llm_effect_resolution;

@@ -75,6 +75,9 @@ async fn load_binding<C: ConnectionTrait>(
         StaticMemoryReadSource::WorkingContext { scope, .. } => {
             working_binding(read, scope, envelope)
         }
+        StaticMemoryReadSource::ConversationHistory { scope } => {
+            conversation_history_binding(read, scope, envelope)
+        }
         StaticMemoryReadSource::LongTermMemory { scope, .. } => {
             long_term_binding(read, scope, snapshot_token, envelope)
         }
@@ -83,6 +86,40 @@ async fn load_binding<C: ConnectionTrait>(
             read.id
         ))),
     }
+}
+
+fn conversation_history_binding(
+    read: &StaticMemoryRead,
+    scope: &str,
+    envelope: Value,
+) -> StorageResult<ResolvedContextBinding> {
+    if envelope.get("kind").and_then(Value::as_str) != Some("conversation_history") {
+        return Err(StorageError::Integrity(
+            "conversation history binding kind mismatch".into(),
+        ));
+    }
+    let version = required_string(&envelope, "commitId")?;
+    let values: Vec<ResolvedContextValue> =
+        serde_json::from_value(envelope.get("values").cloned().ok_or_else(|| {
+            StorageError::Integrity("conversation history values missing".into())
+        })?)
+        .map_err(|error| StorageError::Integrity(error.to_string()))?;
+    if values
+        .iter()
+        .any(|value| !matches!(value, ResolvedContextValue::HistoryMessage { .. }))
+    {
+        return Err(StorageError::Integrity(
+            "conversation history contains a non-history value".into(),
+        ));
+    }
+    Ok(ResolvedContextBinding {
+        binding_id: read.id.clone(),
+        scope: scope.into(),
+        version,
+        values,
+        template_value: None,
+        template_provenance: None,
+    })
 }
 
 fn working_binding(

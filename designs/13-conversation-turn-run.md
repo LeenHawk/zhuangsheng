@@ -195,6 +195,8 @@ V1 release manifest 固定如下；两者均使用 schema/profile/format version
 
 Conversation workflow 的 run input 不由 adapter 把用户消息猜成任意 JSON。阶段一只支持 `conversation_message_v1`：ConversationService 预分配 Turn/message/commit IDs，以已持久的 user content 构造 canonical `ConversationRunInputV1`，要求 GraphRevision 显式存在且验证通过对应 `runInputSchema`，再把同一份不可变 RunInputRef 交给 core create-run 事务。Regenerate 必须从原 Turn 重用相同 user message/content/commit 构造同一 input，不接受另一份隐式输入；新 graph revision 不接受该 schema 时创建直接失败。
 
+Role Play starter Graph 使用 `02-memory.md` 的 `conversation_history` static read，把 candidate branch 在 user commit 后的 `ConversationContextV1.messages` 固定为 LLM NodeInstance history binding。该序列已经包含本 Turn user message，因此 preset 不再另行把 `ConversationRunInputV1.content` 注入第二次；历史 content parts 从 immutable message content ref恢复，保留 multimodal 形状。普通自定义 Graph 仍可显式使用 input source，但不能同时把同一 user message作为 history和input重复发送而不在专家配置中明确承担该语义。
+
 ## Conversation Root 与 Bootstrap
 
 `CreateConversationCommand` 是 fresh workspace 和新对话的唯一 bootstrap 入口。服务预分配 conversation/context/root branch/root commit ID，并以 canonical `ConversationContextV1 { schemaVersion: 1, messages: [] }` 创建 WorkingContext。Root commit 的 `aggregateId=contextId`、`lineageKey=rootBranchId`、`operationId=conversation-root:<conversationId>`，没有 parent，以该完整值的 immutable object 作为 initial snapshot；root branch 的 `creationOperationId=conversation-root-branch:<conversationId>`、`parentBranchId=null`、`forkCommitId=headCommitId=rootCommitId`。

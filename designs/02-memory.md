@@ -47,6 +47,7 @@ type StaticMemoryRead = {
   as: string
   source:
     | { kind: "working_context"; scope: string; path: string }
+    | { kind: "conversation_history"; scope: "run-context" }
     | { kind: "long_term_memory"; scope: string; query?: MemoryQuery }
     | { kind: "artifact"; scope: string; artifactRefFrom: PreExecutionValueSelector }
   required?: boolean
@@ -99,6 +100,11 @@ type BoundMemoryValue =
       value?: JsonValue
     }
   | {
+      kind: "conversation_history"
+      commitId: string
+      values: ResolvedContextValue[] // only ordered history_message values
+    }
+  | {
       kind: "long_term_memory"
       records: MemorySearchResult["records"]
       truncated: boolean
@@ -120,6 +126,8 @@ type BoundReadResult = {
 `consistency` 默认是 `snapshot`；只有 Router/节点决策明确要求提交前再次验证 read head 时才使用 `validate_on_commit`。`StaticMemoryRead.limit` 是 long-term read 的唯一结果数上限；draft 缺失时 Apply 补 workspace 的有界默认值（阶段一建议 20）并写入 applied revision。Working-context/artifact read 必须不配 `limit`，其基数由 path/ref 契约决定。
 
 `path` 使用 RFC 6901 JSON Pointer。语义检索结果必须有稳定排序、上限和实际 record version/content hash；这些引用进入 NodeInstance read set，replay 不重新搜索并假设结果相同。
+
+`conversation_history` 是 Conversation workflow 的窄 read：scope 固定为 `run-context`，只接受该 run context/branch head 可重放为 `ConversationContextV1` 的 projection。Storage 按 projection 中 `messages` 的既定顺序逐项校验 message row、commit、immutable content ref/hash 和 provenance，再产生 `ResolvedContextValue.history_message`；不得按全局 message `createdAt` 查询或混入 sibling branch。整个 envelope 与 context head 一起进入 NodeInstance read set，retry/resume 不重新读取后来推进的对话。
 
 阶段一 `search_memory` 使用当前 LongTermMemory projection 的 SQLite FTS5 lexical ranking + 结构化 tag/status filters，score tie 按 memory ID；返回后固定 record commit/content hash。Static read 未给 query 时按 memory ID 读取 scope 内 active records。对 Context 的 `relevanceScoreMicros` 使用稳定结果 ordinal 映射，不持久化平台浮点 BM25 值。FTS index 是可重建 projection，不是 Memory 权威。Embedding/vector retrieval 可以使用 `07-llm-api-overview.md` 的 derived vectors，但高性能 vector index 延后。
 

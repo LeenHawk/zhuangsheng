@@ -137,7 +137,7 @@ export function buildRolePresetSpec(input: RolePresetInput): JsonObject {
     mode: "chat",
     items: [
       { id: "character", name: input.characterName, enabled: true, requestedRole: "system", source: { type: "literal", text }, position: { type: "start" }, order: 0, priority: 100, insertionDepth: 0, budget: { required: true }, overflow: null },
-      { id: "input", name: "Current user message", enabled: true, requestedRole: "user", source: { type: "input", path: "/content" }, position: { type: "user_input" }, order: 0, priority: 100, insertionDepth: 0, budget: { required: true }, overflow: null },
+      { id: "history", name: "Conversation history", enabled: true, requestedRole: "context", source: { type: "history", bindingId: "history", strategy: { type: "all" } }, position: { type: "history" }, order: 0, priority: 90, insertionDepth: 0, budget: { required: false }, overflow: { type: "keep_recent", count: null } },
     ],
     budget: null,
     postProcess: [],

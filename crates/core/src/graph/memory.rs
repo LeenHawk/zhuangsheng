@@ -47,6 +47,9 @@ pub enum StaticMemoryReadSource {
         scope: String,
         path: String,
     },
+    ConversationHistory {
+        scope: String,
+    },
     LongTermMemory {
         scope: String,
         query: Option<MemoryQuery>,

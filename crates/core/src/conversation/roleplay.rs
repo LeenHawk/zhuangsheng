@@ -98,7 +98,7 @@ pub fn analyze_roleplay_compatibility(
     if !config.tools.is_empty() || !config.hosted_tools.is_empty() {
         locked.insert("tool_permissions_require_expert".to_owned());
     }
-    if config.memory.is_some() {
+    if !super::roleplay_memory::is_user_mode_compatible(config.memory.as_ref()) {
         locked.insert("memory_binding_requires_expert".to_owned());
     }
     let context = match &config.context {

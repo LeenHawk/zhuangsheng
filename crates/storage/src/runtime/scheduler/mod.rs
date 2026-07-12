@@ -5,6 +5,7 @@ mod aggregator;
 mod aggregator_close;
 mod attempt_state;
 mod claim;
+mod conversation_history;
 mod emit;
 mod events;
 mod expand_finalize;

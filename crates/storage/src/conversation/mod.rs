@@ -19,3 +19,5 @@ mod service;
 mod submit;
 mod submit_prepare;
 mod submit_rows;
+
+pub(crate) use read_messages::load_active_messages;

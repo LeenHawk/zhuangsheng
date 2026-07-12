@@ -34,6 +34,9 @@ pub(super) fn validate_llm_memory(
             StaticMemoryReadSource::WorkingContext { scope, path } => {
                 scope.trim().is_empty() || !valid_pointer(path)
             }
+            StaticMemoryReadSource::ConversationHistory { scope } => {
+                scope != "run-context" || read.limit.is_some() || !read.required
+            }
             StaticMemoryReadSource::LongTermMemory { scope, query } => {
                 scope.trim().is_empty()
                     || query.as_ref().is_some_and(|query| {
