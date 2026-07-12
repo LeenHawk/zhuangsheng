@@ -1,5 +1,6 @@
 import { decodeChannel, decodeChannelModelDiscovery, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
-import type { ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, PublishChannelInput, PublishPresetInput } from "./config-types";
+import type { ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, PublishChannelInput, PublishPresetInput } from "./config-types";
+import { DecodeError } from "./decode-error";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
 
@@ -31,6 +32,64 @@ export class HttpConfigClient {
         }),
         signal,
       },
+    ));
+  }
+
+  async getChannelRevision(revisionId: string, signal?: AbortSignal): Promise<ChannelRevisionView> {
+    const revision = decodeChannelRevision(await requestJson(
+      this.baseUrl,
+      `/v1/channel-revisions/${encodeURIComponent(revisionId)}`,
+      { signal },
+    ));
+    if (revision.id !== revisionId) throw new DecodeError("channelRevision.id");
+    return revision;
+  }
+
+  async publishDiscoveredModel(
+    channelId: string,
+    source: ChannelRevisionView,
+    discovery: ChannelModelDiscoveryView,
+    model: DiscoveredChannelModel,
+    structuredOutput: boolean,
+    idempotencyKey = createIdempotencyKey(),
+  ): Promise<ChannelRevisionView> {
+    if (source.channelId !== channelId || discovery.channelId !== channelId) {
+      throw new DecodeError("channelModelSelection.channelId");
+    }
+    if (source.id !== discovery.channelRevisionId) {
+      throw new DecodeError("channelModelSelection.channelRevisionId");
+    }
+    const generationCatalogs = source.modelCatalogs.filter((catalog) => {
+      const operation = catalog.operationKey.operation;
+      return operation === "generate_content" || operation === "stream_generate_content";
+    });
+    if (generationCatalogs.length !== 1) {
+      throw new DecodeError("channelModelSelection.generationCatalog");
+    }
+    const selected = {
+      id: model.id,
+      name: model.name,
+      contextWindow: model.contextWindow,
+      maxOutputTokens: model.maxOutputTokens,
+      capabilities: { structuredOutput },
+    };
+    const spec = {
+      operationTaxonomyVersion: source.operationTaxonomyVersion,
+      adapterDecoderVersion: source.adapterDecoderVersion,
+      baseUrl: source.baseUrl,
+      transportPolicy: source.transportPolicy,
+      credential: source.credential,
+      operationKeys: source.operationKeys,
+      modelCatalogs: source.modelCatalogs.map((catalog) =>
+        catalog === generationCatalogs[0]
+          ? { ...catalog, policy: "allowlist", models: [selected] }
+          : catalog),
+      capabilities: source.capabilities,
+    };
+    return decodeChannelRevision(await this.command(
+      `/v1/channels/${encodeURIComponent(channelId)}/revisions`,
+      { expectedHeadRevisionId: source.id, spec },
+      idempotencyKey,
     ));
   }
 

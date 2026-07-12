@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createIdempotencyKey, type ChannelView, type ContextPresetPreviewView, type ContextPresetView, type GenerationProviderKind, type JsonObject, type RolePlayGraphOptionView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
+import { createIdempotencyKey, type ChannelModelDiscoveryView, type ChannelRevisionView, type ChannelView, type ContextPresetPreviewView, type ContextPresetView, type DiscoveredChannelModel, type GenerationProviderKind, type RolePlayGraphOptionView, type RolePlaySettingsView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
+import { buildRolePresetSpec, type RolePresetInput } from "./role-preset-spec";
 
 export interface ChannelSetupInput {
   name: string;
@@ -11,15 +12,6 @@ export interface ChannelSetupInput {
   modelId: string;
   credentialSecretId: string | null;
   structuredOutput: boolean;
-}
-
-export interface RolePresetInput {
-  name: string;
-  characterName: string;
-  identity: string;
-  personality: string;
-  speakingStyle: string;
-  boundaries: string;
 }
 
 export interface SecretSetupInput {
@@ -38,13 +30,16 @@ export function useInitialSetup() {
   const [presets, setPresets] = useState<ContextPresetView[]>([]);
   const [templates, setTemplates] = useState<RolePlayGraphOptionView[]>([]);
   const [preview, setPreview] = useState<ContextPresetPreviewView | null>(null);
+  const [discovery, setDiscovery] = useState<ChannelModelDiscoveryView | null>(null);
+  const [discoverySource, setDiscoverySource] = useState<ChannelRevisionView | null>(null);
+  const [rolePlaySettings, setRolePlaySettings] = useState<RolePlaySettingsView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<"secret" | "channel" | "preset" | "template" | "preview" | null>(null);
+  const [pending, setPending] = useState<"secret" | "channel" | "preset" | "template" | "preview" | "discovery" | "model" | "settings" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const commandKeys = useRef(new Map<string, string>());
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setDiscovery(null); setDiscoverySource(null); setRolePlaySettings(null);
     try {
       const nextStatus = await client.secrets.status(signal);
       const [nextSecrets, nextChannels, nextPresets, nextTemplates] = await Promise.all([
@@ -137,20 +132,50 @@ export function useInitialSetup() {
     finally { setPending(null); }
   };
 
-  return { status, secrets, channels, presets, templates, preview, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset, previewPreset: (preset: ContextPresetView) => void previewPreset(preset), createTemplate };
-}
-
-export function buildRolePresetSpec(input: RolePresetInput): JsonObject {
-  const sections: Array<[string, string]> = [["角色", input.characterName], ["身份", input.identity], ["性格与目标", input.personality], ["说话风格", input.speakingStyle], ["内容边界", input.boundaries]];
-  const text = sections.filter(([, value]) => value.trim()).map(([label, value]) => `${label}：${value.trim()}`).join("\n");
-  return {
-    mode: "chat",
-    items: [
-      { id: "character", name: input.characterName, enabled: true, requestedRole: "system", source: { type: "literal", text }, position: { type: "start" }, order: 0, priority: 100, insertionDepth: 0, budget: { required: true }, overflow: null },
-      { id: "history", name: "Conversation history", enabled: true, requestedRole: "context", source: { type: "history", bindingId: "history", strategy: { type: "all" } }, position: { type: "history" }, order: 0, priority: 90, insertionDepth: 0, budget: { required: false }, overflow: { type: "keep_recent", count: null } },
-    ],
-    budget: null,
-    postProcess: [],
-    preview: { content: "metadata_only", count: "local" },
+  const discoverModels = async (channel: ChannelView) => {
+    if (!channel.headRevisionId) return;
+    setPending("discovery"); setError(null);
+    try {
+      const found = await client.config.discoverModels(channel.id, {
+        revisionId: channel.headRevisionId,
+      });
+      const source = await client.config.getChannelRevision(found.channelRevisionId);
+      setDiscovery(found); setDiscoverySource(source);
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setPending(null); }
   };
+
+  const publishDiscoveredModel = async (
+    model: DiscoveredChannelModel,
+    structuredOutput: boolean,
+  ) => {
+    if (!discovery || !discoverySource) return;
+    const signature = `channel-model:${discovery.channelRevisionId}:${model.id}`;
+    setPending("model"); setError(null);
+    try {
+      const revision = await client.config.publishDiscoveredModel(
+        discovery.channelId,
+        discoverySource,
+        discovery,
+        model,
+        structuredOutput,
+        keyFor(signature),
+      );
+      done(signature); setDiscovery(null); setDiscoverySource(null);
+      setChannels((items) => items.map((item) => item.id === revision.channelId
+        ? { ...item, headRevisionId: revision.id, updatedAt: revision.createdAt }
+        : item));
+    } catch (cause) { setError(messageFor(cause)); throw cause; }
+    finally { setPending(null); }
+  };
+
+  const inspectTemplate = async (template: RolePlayGraphOptionView) => {
+    if (!template.primaryLlmNodeId) return;
+    setPending("settings"); setError(null);
+    try { setRolePlaySettings(await client.graphs.getRolePlaySettings(template.revisionId)); }
+    catch (cause) { setError(messageFor(cause)); }
+    finally { setPending(null); }
+  };
+
+  return { status, secrets, channels, presets, templates, preview, discovery, rolePlaySettings, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset, previewPreset: (preset: ContextPresetView) => void previewPreset(preset), createTemplate, discoverModels: (channel: ChannelView) => void discoverModels(channel), publishDiscoveredModel, inspectTemplate: (template: RolePlayGraphOptionView) => void inspectTemplate(template) };
 }

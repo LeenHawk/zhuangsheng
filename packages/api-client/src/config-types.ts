@@ -40,9 +40,20 @@ export interface ChannelRevisionView {
   operationTaxonomyVersion: 1;
   adapterDecoderVersion: 1;
   baseUrl: string;
+  transportPolicy: JsonObject;
+  credential: JsonObject;
+  operationKeys: JsonObject[];
+  modelCatalogs: Array<{
+    operationKey: JsonObject;
+    policy: "open" | "allowlist";
+    models: JsonObject[];
+  }>;
+  capabilities: JsonObject[];
   contentHash: string;
   createdAt: number;
 }
+
+export type DiscoveredChannelModel = ChannelModelDiscoveryView["models"][number];
 
 export interface ChannelModelDiscoveryView {
   channelId: string;

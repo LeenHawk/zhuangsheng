@@ -1,6 +1,5 @@
 import { DecodeError } from "./decode-error";
-import { boolean, jsonValue, nullableString, number, record, string, stringArray } from "./decode-helpers";
-import type { JsonObject } from "./graph-types";
+import { boolean, jsonObject, nullableString, number, record, string, stringArray } from "./decode-helpers";
 import type { RolePlaySettingsView } from "./roleplay-types";
 import type { RolePlayCompatibilityView, RolePlayGraphOptionView } from "./types";
 
@@ -51,10 +50,7 @@ export const decodeRolePlaySettings = (value: unknown): RolePlaySettingsView => 
   const profileVersion = number(item.profileVersion, `${path}.profileVersion`);
   if (profileVersion !== 1) throw new DecodeError(`${path}.profileVersion`);
   const model = record(item.model, `${path}.model`);
-  const operationKey = jsonValue(model.operationKey, `${path}.model.operationKey`);
-  if (operationKey === null || Array.isArray(operationKey) || typeof operationKey !== "object") {
-    throw new DecodeError(`${path}.model.operationKey`);
-  }
+  const operationKey = jsonObject(model.operationKey, `${path}.model.operationKey`);
   const rawGeneration = item.generation;
   const generation = rawGeneration === null
     ? null
@@ -75,14 +71,6 @@ export const decodeRolePlaySettings = (value: unknown): RolePlaySettingsView => 
     streaming: rawStreaming === null ? null : decodeStreaming(rawStreaming, `${path}.streaming`),
     contextPresetId: nullableString(item.contextPresetId, `${path}.contextPresetId`),
   };
-};
-
-const jsonObject = (value: unknown, path: string): JsonObject => {
-  const decoded = jsonValue(value, path);
-  if (decoded === null || Array.isArray(decoded) || typeof decoded !== "object") {
-    throw new DecodeError(path);
-  }
-  return decoded;
 };
 
 const decodeStreaming = (

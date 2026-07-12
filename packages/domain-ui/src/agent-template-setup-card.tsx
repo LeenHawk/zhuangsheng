@@ -1,12 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Bot, CheckCircle2 } from "lucide-react";
 
-import type { ChannelView, ContextPresetView, RolePlayGraphOptionView } from "@zhuangsheng/api-client";
+import type { ChannelView, ContextPresetView, RolePlayGraphOptionView, RolePlaySettingsView } from "@zhuangsheng/api-client";
 import { Badge, Button, Card, Input } from "@zhuangsheng/ui";
+import { RolePlaySettingsPanel } from "./roleplay-settings-panel";
 
 interface InputValue { name: string; channelId: string; presetId: string }
 
-export function AgentTemplateSetupCard({ channels, presets, templates, pending, onSubmit }: { channels: ChannelView[]; presets: ContextPresetView[]; templates: RolePlayGraphOptionView[]; pending: boolean; onSubmit: (input: InputValue) => Promise<unknown> }) {
+interface Props { channels: ChannelView[]; presets: ContextPresetView[]; templates: RolePlayGraphOptionView[]; settings: RolePlaySettingsView | null; pending: boolean; settingsPending: boolean; onSubmit: (input: InputValue) => Promise<unknown>; onInspect: (template: RolePlayGraphOptionView) => void }
+
+export function AgentTemplateSetupCard({ channels, presets, templates, settings, pending, settingsPending, onSubmit, onInspect }: Props) {
   const usableChannels = channels.filter((item) => item.headRevisionId);
   const usablePresets = presets.filter((item) => item.headVersionId);
   const [form, setForm] = useState<InputValue>({ name: "Role Play Agent", channelId: usableChannels[0]?.id ?? "", presetId: usablePresets[0]?.id ?? "" });
@@ -25,7 +28,7 @@ export function AgentTemplateSetupCard({ channels, presets, templates, pending, 
         <Field label="角色 ContextPreset"><select className="min-h-11 w-full rounded-xl border border-default bg-canvas px-3 text-sm" value={form.presetId} onChange={(event) => set("presetId", event.target.value)}><option value="" disabled>选择已发布角色</option>{usablePresets.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
         <div className="flex items-end"><Button type="submit" disabled={!valid || pending}>{pending ? "正在创建并 Apply…" : "创建 Agent 模板"}</Button></div>
       </form>
-      {templates.length > 0 && <ul className="mt-4 space-y-2">{templates.map((template) => <li key={template.revisionId} className="flex items-center gap-2 rounded-xl bg-success/5 px-3 py-2 text-sm"><CheckCircle2 className="size-4 text-success" /><span>{template.graphName}</span><Badge className="ml-auto" tone={template.compatibility.mode === "editable" ? "success" : "warning"}>{template.compatibility.mode}</Badge></li>)}</ul>}
+      {templates.length > 0 && <ul className="mt-4 space-y-2">{templates.map((template) => <li key={template.revisionId} className="rounded-xl bg-success/5 px-3 py-2 text-sm"><div className="flex items-center gap-2"><CheckCircle2 className="size-4 text-success" /><span>{template.graphName}</span><Badge className="ml-auto" tone={template.compatibility.mode === "editable" ? "success" : "warning"}>{template.compatibility.mode}</Badge>{template.primaryLlmNodeId && <Button size="compact" variant="secondary" disabled={settingsPending} onClick={() => onInspect(template)}>{settingsPending ? "正在读取…" : "查看设置"}</Button>}</div>{settings?.revisionId === template.revisionId && <RolePlaySettingsPanel settings={settings} />}</li>)}</ul>}
     </Card>
   );
 }

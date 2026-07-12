@@ -11,6 +11,8 @@ export function SettingsRoute() {
     presets={setup.presets}
     templates={setup.templates}
     preview={setup.preview}
+    discovery={setup.discovery}
+    rolePlaySettings={setup.rolePlaySettings}
     loading={setup.loading}
     pending={setup.pending}
     error={setup.error}
@@ -20,5 +22,8 @@ export function SettingsRoute() {
     onPublishPreset={setup.publishRolePreset}
     onPreviewPreset={setup.previewPreset}
     onCreateTemplate={setup.createTemplate}
+    onDiscoverModels={setup.discoverModels}
+    onPublishDiscoveredModel={setup.publishDiscoveredModel}
+    onInspectTemplate={setup.inspectTemplate}
   />;
 }

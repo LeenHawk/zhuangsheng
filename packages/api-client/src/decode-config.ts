@@ -1,4 +1,4 @@
-import { boolean, nullableString, number, record, string } from "./decode-helpers";
+import { boolean, jsonObject, nullableString, number, record, string } from "./decode-helpers";
 import { DecodeError } from "./decode-error";
 import type { ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextBudgetAction, ContextCountSource, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView } from "./config-types";
 import type { JsonObject } from "./graph-types";
@@ -36,6 +36,9 @@ export const decodeChannelRevision = (value: unknown): ChannelRevisionView => {
   if (operationTaxonomyVersion !== 1 || adapterDecoderVersion !== 1) {
     throw new DecodeError("channelRevision.version");
   }
+  const operationKeys = jsonObjects(item.operationKeys, "channelRevision.operationKeys");
+  const capabilities = jsonObjects(item.capabilities, "channelRevision.capabilities");
+  if (!Array.isArray(item.modelCatalogs)) throw new DecodeError("channelRevision.modelCatalogs");
   return {
     id: string(item.id, "channelRevision.id"),
     channelId: string(item.channelId, "channelRevision.channelId"),
@@ -43,6 +46,21 @@ export const decodeChannelRevision = (value: unknown): ChannelRevisionView => {
     operationTaxonomyVersion,
     adapterDecoderVersion,
     baseUrl: string(item.baseUrl, "channelRevision.baseUrl"),
+    transportPolicy: jsonObject(item.transportPolicy, "channelRevision.transportPolicy"),
+    credential: jsonObject(item.credential, "channelRevision.credential"),
+    operationKeys,
+    modelCatalogs: item.modelCatalogs.map((raw, index) => {
+      const path = `channelRevision.modelCatalogs[${index}]`;
+      const catalog = record(raw, path);
+      const policy = string(catalog.policy, `${path}.policy`);
+      if (policy !== "open" && policy !== "allowlist") throw new DecodeError(`${path}.policy`);
+      return {
+        operationKey: jsonObject(catalog.operationKey, `${path}.operationKey`),
+        policy,
+        models: jsonObjects(catalog.models, `${path}.models`),
+      };
+    }),
+    capabilities,
     contentHash: string(item.contentHash, "channelRevision.contentHash"),
     createdAt: number(item.createdAt, "channelRevision.createdAt"),
   };
@@ -50,7 +68,7 @@ export const decodeChannelRevision = (value: unknown): ChannelRevisionView => {
 
 export const decodeChannelModelDiscovery = (value: unknown): ChannelModelDiscoveryView => {
   const item = record(value, "channelModelDiscovery");
-  const operationKey = record(item.operationKey, "channelModelDiscovery.operationKey") as JsonObject;
+  const operationKey = jsonObject(item.operationKey, "channelModelDiscovery.operationKey");
   return {
     channelId: string(item.channelId, "channelModelDiscovery.channelId"),
     channelRevisionId: string(item.channelRevisionId, "channelModelDiscovery.channelRevisionId"),
@@ -65,6 +83,11 @@ export const decodeChannelModelDiscovery = (value: unknown): ChannelModelDiscove
       };
     }),
   };
+};
+
+const jsonObjects = (value: unknown, path: string): JsonObject[] => {
+  if (!Array.isArray(value)) throw new DecodeError(path);
+  return value.map((item, index) => jsonObject(item, `${path}[${index}]`));
 };
 
 export const decodeContextPresetVersion = (value: unknown): ContextPresetVersionView => {

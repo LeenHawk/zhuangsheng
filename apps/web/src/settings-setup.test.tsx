@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsSetup } from "@zhuangsheng/domain-ui";
 
 import { client } from "./api";
-import { buildRolePresetSpec, useInitialSetup } from "./use-initial-setup";
+import { buildRolePresetSpec } from "./role-preset-spec";
+import { useInitialSetup } from "./use-initial-setup";
 
 const secret = { secretRef: { scheme: "secret" as const, id: "provider-key" }, name: "Provider key", kind: "api_key" as const, createdAt: 1, updatedAt: 1 };
 
@@ -46,6 +47,8 @@ describe("first-run settings", () => {
       presets={[]}
       templates={[]}
       preview={null}
+      discovery={null}
+      rolePlaySettings={null}
       loading={false}
       pending={null}
       error={null}
@@ -55,6 +58,9 @@ describe("first-run settings", () => {
       onPublishPreset={async () => undefined}
       onPreviewPreset={() => undefined}
       onCreateTemplate={async () => undefined}
+      onDiscoverModels={() => undefined}
+      onPublishDiscoveredModel={async () => undefined}
+      onInspectTemplate={() => undefined}
     />);
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "secret-provider-value" } });
     fireEvent.change(screen.getByLabelText("设置主密码"), { target: { value: "long-master-password" } });
@@ -79,6 +85,8 @@ describe("first-run settings", () => {
       presets={[{ id: "preset_1", name: "Character", headVersionId: "presetver_1", createdAt: 1, updatedAt: 1 }]}
       templates={[]}
       preview={null}
+      discovery={null}
+      rolePlaySettings={null}
       loading={false}
       pending={null}
       error={null}
@@ -88,6 +96,9 @@ describe("first-run settings", () => {
       onPublishPreset={onPublishPreset}
       onPreviewPreset={onPreviewPreset}
       onCreateTemplate={onCreateTemplate}
+      onDiscoverModels={() => undefined}
+      onPublishDiscoveredModel={async () => undefined}
+      onInspectTemplate={() => undefined}
     />);
     fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "roleplay-model" } });
     const structuredOutput = screen.getByLabelText("我确认该模型支持结构化 JSON 输出（角色回复合同需要）");
