@@ -6,6 +6,9 @@ import type {
   ConversationView,
   RolePlayGraphOptionView,
   RunStreamConnectionState,
+  SecretStoreStatusView,
+  ToolApprovalDecisionInput,
+  WaitView,
 } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
 
@@ -13,6 +16,7 @@ import { StoryComposer } from "./story-composer";
 import { shortId } from "./story-format";
 import { StoryMessages } from "./story-messages";
 import { StorySidebar } from "./story-sidebar";
+import { StoryWaitActions } from "./story-wait-actions";
 
 export interface StoryDetailProps {
   story: ConversationView | null;
@@ -27,6 +31,12 @@ export interface StoryDetailProps {
   turnError: string | null;
   candidateError: string | null;
   liveCandidates: StoryLiveCandidate[];
+  waits: WaitView[];
+  handledWaits: HandledWaitSummary[];
+  secretStatus: SecretStoreStatusView | null;
+  waitPendingId: string | null;
+  waitError: string | null;
+  waitActionErrors: Record<string, string>;
   onBack: () => void;
   onReload: () => void;
   onReloadOptions: () => void;
@@ -34,6 +44,13 @@ export interface StoryDetailProps {
   onSubmitMessage: (text: string) => Promise<void>;
   onRegenerateCandidate: (turnId: string, userCommitId: string) => Promise<void>;
   onSelectCandidate: (turnId: string, runId: string) => Promise<void>;
+  onSubmitApproval: (wait: WaitView, decisions: ToolApprovalDecisionInput[]) => Promise<void>;
+  onSubmitSecretPassword: (
+    wait: WaitView,
+    mode: "initialize" | "unlock",
+    password: string,
+  ) => Promise<void>;
+  onReloadWaits: () => void;
 }
 
 export interface StoryLiveCandidate {
@@ -42,6 +59,13 @@ export interface StoryLiveCandidate {
   text: string;
   truncated: boolean;
   error: string | null;
+  refreshVersion: number;
+}
+
+export interface HandledWaitSummary {
+  waitId: string;
+  runId: string;
+  summary: string;
 }
 
 export function StoryDetail(props: StoryDetailProps) {
@@ -65,6 +89,17 @@ export function StoryDetail(props: StoryDetailProps) {
         </header>
         {props.error && <Card className="mt-5 border-danger/30 p-4 text-sm text-danger">{props.error}</Card>}
         <StoryMessages timeline={timeline} loading={props.loading} liveCandidates={props.liveCandidates} />
+        <StoryWaitActions
+          waits={props.waits}
+          handled={props.handledWaits}
+          secretStatus={props.secretStatus}
+          pendingWaitId={props.waitPendingId}
+          loadError={props.waitError}
+          actionErrors={props.waitActionErrors}
+          onSubmitApproval={props.onSubmitApproval}
+          onSubmitSecretPassword={props.onSubmitSecretPassword}
+          onReload={props.onReloadWaits}
+        />
         <StoryComposer
           enabled={story?.runProfile !== null && story?.runProfile !== undefined}
           pending={props.pendingAction !== null || hasRunningCandidate(timeline)}

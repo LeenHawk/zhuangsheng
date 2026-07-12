@@ -19,6 +19,11 @@ export const number = (value: unknown, path: string): number => {
   return value;
 };
 
+export const boolean = (value: unknown, path: string): boolean => {
+  if (typeof value !== "boolean") throw new DecodeError(path);
+  return value;
+};
+
 export const nullableString = (value: unknown, path: string): string | null =>
   value === null ? null : string(value, path);
 

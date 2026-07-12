@@ -55,6 +55,12 @@ describe("StoryDetail", () => {
       turnError: null,
       candidateError: null,
       liveCandidates: [],
+      waits: [],
+      handledWaits: [],
+      secretStatus: null,
+      waitPendingId: null,
+      waitError: null,
+      waitActionErrors: {},
       onBack: () => undefined,
       onReload: () => undefined,
       onReloadOptions: () => undefined,
@@ -62,6 +68,9 @@ describe("StoryDetail", () => {
       onSubmitMessage,
       onRegenerateCandidate: async () => undefined,
       onSelectCandidate: async () => undefined,
+      onSubmitApproval: async () => undefined,
+      onSubmitSecretPassword: async () => undefined,
+      onReloadWaits: () => undefined,
     };
     const view = render(<StoryDetail {...props} story={story} />);
 
@@ -145,7 +154,14 @@ describe("StoryDetail", () => {
         text: "月光落在档案封面上。",
         truncated: false,
         error: null,
+        refreshVersion: 0,
       }]}
+      waits={[]}
+      handledWaits={[]}
+      secretStatus={null}
+      waitPendingId={null}
+      waitError={null}
+      waitActionErrors={{}}
       onBack={() => undefined}
       onReload={() => undefined}
       onReloadOptions={() => undefined}
@@ -153,6 +169,9 @@ describe("StoryDetail", () => {
       onSubmitMessage={async () => undefined}
       onRegenerateCandidate={onRegenerateCandidate}
       onSelectCandidate={onSelectCandidate}
+      onSubmitApproval={async () => undefined}
+      onSubmitSecretPassword={async () => undefined}
+      onReloadWaits={() => undefined}
     />);
 
     fireEvent.click(screen.getByRole("button", { name: "采用这个回复" }));

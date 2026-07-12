@@ -11,6 +11,7 @@ import { StoryDetail } from "@zhuangsheng/domain-ui";
 import { client, messageFor } from "./api";
 import { useStoryActions } from "./use-story-actions";
 import { useStoryStreams } from "./use-story-streams";
+import { useStoryWaits } from "./use-story-waits";
 
 export function StoryRoute() {
   const { conversationId = "" } = useParams();
@@ -24,6 +25,7 @@ export function StoryRoute() {
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const actions = useStoryActions({ conversationId, story, timeline, setStory, setTimeline });
   const liveCandidates = useStoryStreams(conversationId, timeline, setTimeline);
+  const waits = useStoryWaits(liveCandidates);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -71,6 +73,12 @@ export function StoryRoute() {
       turnError={actions.turnError}
       candidateError={actions.candidateError}
       liveCandidates={liveCandidates}
+      waits={waits.waits}
+      handledWaits={waits.handledWaits}
+      secretStatus={waits.secretStatus}
+      waitPendingId={waits.pendingWaitId}
+      waitError={waits.waitError}
+      waitActionErrors={waits.actionErrors}
       onBack={() => navigate("/stories")}
       onReload={() => void reload()}
       onReloadOptions={() => void reloadOptions()}
@@ -78,6 +86,9 @@ export function StoryRoute() {
       onSubmitMessage={actions.submitMessage}
       onRegenerateCandidate={actions.regenerateCandidate}
       onSelectCandidate={actions.selectCandidate}
+      onSubmitApproval={waits.submitApproval}
+      onSubmitSecretPassword={waits.submitSecretPassword}
+      onReloadWaits={waits.reloadWaits}
     />
   );
 }

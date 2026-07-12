@@ -8,8 +8,9 @@ import {
   decodeTimeline,
 } from "./decode";
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
-import { apiErrorFromPayload } from "./api-error";
-import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
+import { requestJson } from "./http-json";
+import { HttpRuntimeClient } from "./http-runtime-client";
+import { HttpSecretClient } from "./http-secret-client";
 import type {
   ConversationListView,
   ConversationRunProfile,
@@ -49,7 +50,13 @@ export interface SelectConversationCandidateInput {
 }
 
 export class HttpApiClient {
-  constructor(private readonly baseUrl = "") {}
+  readonly runtime: HttpRuntimeClient;
+  readonly secrets: HttpSecretClient;
+
+  constructor(private readonly baseUrl = "") {
+    this.runtime = new HttpRuntimeClient(baseUrl);
+    this.secrets = new HttpSecretClient(baseUrl);
+  }
 
   async listConversations(signal?: AbortSignal): Promise<ConversationListView> {
     return decodeConversationList(await this.request("/v1/conversations", { signal }));
@@ -58,7 +65,7 @@ export class HttpApiClient {
   async createConversation(input: CreateConversationInput): Promise<ConversationView> {
     return decodeConversation(await this.request("/v1/conversations", {
       method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
       body: JSON.stringify({ title: input.title?.trim() || null, defaultRun: null }),
     }));
   }
@@ -81,7 +88,7 @@ export class HttpApiClient {
   ): Promise<ConversationRunProfile> {
     return decodeRunProfile(await this.request(`/v1/conversations/${encodeURIComponent(id)}/run-profile`, {
       method: "PUT",
-      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
       body: JSON.stringify(input),
     }));
   }
@@ -93,7 +100,7 @@ export class HttpApiClient {
   ): Promise<SubmitConversationTurnAck> {
     return decodeSubmitTurnAck(await this.request(`/v1/conversations/${encodeURIComponent(id)}/turns`, {
       method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
       body: JSON.stringify(input),
       signal,
     }));
@@ -106,7 +113,7 @@ export class HttpApiClient {
   ): Promise<RegenerateConversationCandidateAck> {
     return decodeRegenerateCandidateAck(await this.request(`/v1/turns/${encodeURIComponent(turnId)}/regenerations`, {
       method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
       body: JSON.stringify(input),
       signal,
     }));
@@ -118,31 +125,17 @@ export class HttpApiClient {
   ): Promise<ConversationSelectionView> {
     return decodeConversationSelection(await this.request(`/v1/turns/${encodeURIComponent(turnId)}/selection`, {
       method: "PUT",
-      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey() },
+      headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
       body: JSON.stringify(input),
     }));
   }
 
-  streamRunEvents(
-    runId: string,
-    afterDurableSeq: number,
-    signal: AbortSignal,
-    observer: RunEventStreamObserver,
-  ): Promise<void> {
-    return streamRunEvents(this.baseUrl, runId, afterDurableSeq, signal, observer);
-  }
-
   private async request(path: string, init: RequestInit): Promise<unknown> {
-    const response = await fetch(`${this.baseUrl}${path}`, init);
-    const payload: unknown = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw apiErrorFromPayload(response.status, payload);
-    }
-    return payload;
+    return requestJson(this.baseUrl, path, init);
   }
 }
 
-const idempotencyKey = (): string => {
+export const createIdempotencyKey = (): string => {
   if (typeof crypto.randomUUID !== "function") {
     throw new Error("This browser cannot generate secure idempotency keys.");
   }

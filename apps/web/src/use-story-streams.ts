@@ -25,7 +25,7 @@ export function useStoryStreams(
     setViews(Object.fromEntries(ids.map((runId) => [runId, initial(runId)])));
     ids.forEach((runId, index) => {
       const signal = controllers[index]!.signal;
-      void followRunEvents(client, runId, signal, {
+      void followRunEvents(client.runtime, runId, signal, {
         onConnection: (connection, error) => {
           updateView(setViews, runId, { connection, error: error ? messageFor(error) : null });
         },
@@ -33,6 +33,7 @@ export function useStoryStreams(
           updateView(setViews, runId, {
             text: selectLiveText(projection),
             truncated: projection.liveTruncated,
+            refreshVersion: projection.refreshVersion,
           });
           if (projection.terminalStatus && !settled.has(runId)) {
             settled.add(runId);
@@ -65,6 +66,7 @@ const initial = (runId: string): StoryLiveCandidate => ({
   text: "",
   truncated: false,
   error: null,
+  refreshVersion: 0,
 });
 
 const updateView = (
