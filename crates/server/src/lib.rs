@@ -93,6 +93,7 @@ pub fn app(services: AppServices) -> Router {
         .merge(api::memory::routes())
         .merge(api::runtime::routes())
         .merge(api::secret::routes())
+        .merge(api::sillytavern::routes())
         .merge(api::tool::routes())
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(TraceLayer::new_for_http())

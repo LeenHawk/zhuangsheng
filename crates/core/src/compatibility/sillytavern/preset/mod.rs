@@ -63,6 +63,7 @@ pub fn preview_import(
         parts.context_spec = Some(empty_context_spec(&name));
     }
     if let Some(spec) = &mut parts.context_spec {
+        support::populate_role_macros(spec);
         spec.text_transforms = parts.text_transforms.clone();
         *spec = normalize_context_spec(spec.clone(), &ContextNormalizationPolicy::default())
             .map_err(|error| compatibility_error(error.code, error.message))?;

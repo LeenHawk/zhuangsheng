@@ -15,7 +15,6 @@ use zhuangsheng_core::{
 use crate::{StorageError, StorageResult};
 
 pub(super) struct PreparedSubmission {
-    pub content_bytes: Vec<u8>,
     pub scope: String,
     pub digest: String,
 }
@@ -42,11 +41,7 @@ pub(super) fn prepare(
         "expectedHeadCommitId":command.expected_head_commit_id,
         "userContentHash":canonical::hash_bytes(&content_bytes),"run":command.run,
     }))?;
-    Ok(PreparedSubmission {
-        content_bytes,
-        scope,
-        digest,
-    })
+    Ok(PreparedSubmission { scope, digest })
 }
 
 pub(super) fn user_message_patch(

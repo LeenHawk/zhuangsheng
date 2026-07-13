@@ -39,6 +39,7 @@ pub(super) fn spec(items: Vec<ContextItem>) -> ContextAssemblySpec {
         }),
         post_process: Vec::new(),
         text_transforms: Vec::new(),
+        text_transform_macros: Default::default(),
         preview: None,
     }
 }

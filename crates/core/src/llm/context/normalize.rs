@@ -5,7 +5,9 @@ use crate::{
     selector,
 };
 
-use super::{template::compile_template, types::*};
+use super::{
+    normalize_text_transform::normalize_text_transform_macros, template::compile_template, types::*,
+};
 
 const MAX_CONTEXT_ITEMS: usize = 256;
 const MAX_ITEM_TEXT_BYTES: usize = 1024 * 1024;
@@ -76,6 +78,7 @@ pub fn normalize_context_spec(
     }
     validate_post_process(&spec.post_process)?;
     spec.text_transforms = normalize_text_transforms(spec.text_transforms)?;
+    normalize_text_transform_macros(&mut spec.text_transform_macros)?;
     spec.preview.get_or_insert(PreviewPolicy {
         content: PreviewContent::MetadataOnly,
         count: PreviewCount::Local,
@@ -418,6 +421,7 @@ mod tests {
             budget: None,
             post_process: vec![],
             text_transforms: vec![],
+            text_transform_macros: Default::default(),
             preview: None,
         };
         let normalized =

@@ -8,6 +8,7 @@ import {
   decodeContextPresets,
   decodeContextPresetVersion,
 } from "./decode-config";
+import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult } from "./decode-sillytavern";
 import { decodeGraphRevision } from "./decode-graphs";
 import { decodeRolePlaySettings } from "./decode-roleplay";
 import { DecodeError } from "./decode-error";
@@ -22,6 +23,10 @@ import type {
   DiscoveredChannelModel,
   PublishChannelInput,
   PublishPresetInput,
+  ApplySillyTavernImportInput,
+  SillyTavernImportInput,
+  SillyTavernImportPreviewView,
+  SillyTavernImportResultView,
 } from "./config-types";
 import type { GraphRevisionView } from "./graph-types";
 import type { RolePlaySettingsView } from "./roleplay-types";
@@ -141,6 +146,35 @@ export class TauriConfigClient {
         countSource: "estimate",
       },
     } }));
+  }
+
+  async previewSillyTavernImport(
+    input: SillyTavernImportInput,
+  ): Promise<SillyTavernImportPreviewView> {
+    return decodeSillyTavernImportPreview(await this.bridge.invoke(
+      "preview_sillytavern_import",
+      { command: {
+        document: input.document,
+        sourceName: input.sourceName ?? null,
+        targetPresetId: input.targetPresetId ?? null,
+      } },
+    ));
+  }
+
+  async applySillyTavernImport(
+    input: ApplySillyTavernImportInput,
+    idempotencyKey = createIdempotencyKey(),
+  ): Promise<SillyTavernImportResultView> {
+    return decodeSillyTavernImportResult(await this.bridge.invoke(
+      "apply_sillytavern_import",
+      { command: {
+        document: input.document,
+        sourceName: input.sourceName ?? null,
+        targetPresetId: input.targetPresetId ?? null,
+        expectedHeadVersionId: input.expectedHeadVersionId ?? null,
+        idempotencyKey,
+      } },
+    ));
   }
 
   async createRolePlayTemplate(

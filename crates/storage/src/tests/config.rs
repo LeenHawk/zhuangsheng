@@ -83,6 +83,7 @@ fn preset_spec() -> ContextAssemblySpec {
         }),
         post_process: vec![],
         text_transforms: vec![],
+        text_transform_macros: Default::default(),
         preview: None,
     }
 }

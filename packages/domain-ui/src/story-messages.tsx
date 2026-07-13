@@ -35,7 +35,7 @@ export function StoryMessages({
             </div>
             <div className={cn("max-w-[min(82%,42rem)]", message.role === "user" && "text-right")}>
               <div className={cn("rounded-2xl border border-default bg-surface px-4 py-3 text-left shadow-soft", message.role === "user" && "border-accent/20 bg-accent-soft/60")}>
-                {message.content.map((part, index) => <ContentPart key={index} part={part} />)}
+                {(message.displayContent ?? message.content).map((part, index) => <ContentPart key={index} part={part} />)}
               </div>
               <div className="mt-1.5 flex items-center gap-2 px-1 text-[11px] text-muted">
                 <span>{message.role === "assistant" ? "角色回复" : "你"}</span>

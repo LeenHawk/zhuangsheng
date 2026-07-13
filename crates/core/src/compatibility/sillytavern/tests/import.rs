@@ -78,26 +78,42 @@ fn marker_order_updates_existing_canonical_items_without_overwriting_sources() {
     let base: ContextAssemblySpec = serde_json::from_value(json!({
         "mode":"chat",
         "items":[{
-            "id":"character","name":"Character","enabled":true,"requestedRole":"system",
+            "id":"character","name":"Alice","enabled":true,"requestedRole":"system",
             "source":{"type":"literal","text":"Alice"},"position":{"type":"start"},
             "order":99,"priority":0,"insertionDepth":0,"budget":{"required":true},"overflow":null
         }],
-        "budget":null,"postProcess":[],"textTransforms":[],"preview":null
+        "budget":null,"postProcess":[],"textTransforms":[],"textTransformMacros":{},"preview":null
     }))
     .unwrap();
     let preview = preview_import(SillyTavernImportInput {
         document: json!({
-            "prompts":[{"identifier":"charDescription","marker":true}],
-            "prompt_order":[{"character_id":100001,"order":[{"identifier":"charDescription","enabled":false}]}]
+            "prompts":[
+                {"identifier":"main","name":"Main","role":"system","content":"Write as {{char}}."},
+                {"identifier":"charDescription","marker":true}
+            ],
+            "prompt_order":[{"character_id":100001,"order":[
+                {"identifier":"main","enabled":true},
+                {"identifier":"charDescription","enabled":false}
+            ]}]
         }),
         source_name: Some("Imported".into()),
         base_spec: Some(base),
-    }).unwrap();
-    let character = &preview.context_spec.unwrap().items[0];
+    })
+    .unwrap();
+    let spec = preview.context_spec.unwrap();
+    let character = &spec.items[0];
     assert!(!character.enabled);
-    assert_eq!(character.order, 0);
+    assert_eq!(character.order, 1);
     assert!(
         matches!(&character.source, crate::llm::context::ContextSource::Literal { text } if text == "Alice")
+    );
+    assert!(matches!(
+        &spec.items[1].source,
+        crate::llm::context::ContextSource::Literal { text } if text == "Write as Alice."
+    ));
+    assert_eq!(
+        spec.text_transform_macros.get("char").map(String::as_str),
+        Some("Alice")
     );
 }
 
@@ -142,6 +158,7 @@ fn empty_spec() -> ContextAssemblySpec {
         budget: None,
         post_process: Vec::new(),
         text_transforms: Vec::new(),
+        text_transform_macros: Default::default(),
         preview: None,
     }
 }

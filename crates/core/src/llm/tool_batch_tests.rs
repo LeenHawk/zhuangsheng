@@ -228,6 +228,7 @@ fn execution(max_tool_calls: u64) -> LlmNodeExecutionSnapshot {
         budget: None,
         post_process: Vec::new(),
         text_transforms: Vec::new(),
+        text_transform_macros: Default::default(),
         preview: None,
     };
     LlmNodeExecutionSnapshot {

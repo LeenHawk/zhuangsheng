@@ -177,6 +177,7 @@ fn history_spec() -> ContextAssemblySpec {
         budget: None,
         post_process: vec![],
         text_transforms: vec![],
+        text_transform_macros: Default::default(),
         preview: None,
     }
 }

@@ -23,6 +23,7 @@ use super::{
     receipt::{Receipt, finish, replay},
     submit_prepare::{prepare, user_message_patch},
     submit_rows::{advance_conversation, fork_candidate, insert_candidate, insert_message_turn},
+    text_transform::canonical_user_content,
 };
 
 impl SqliteStore {
@@ -48,7 +49,9 @@ impl SqliteStore {
         if conversation.active_head_commit_id != command.expected_head_commit_id {
             return Err(StorageError::Conflict("conversation_head"));
         }
-        validate_run_spec(&transaction, &command.run).await?;
+        let definition = validate_run_spec(&transaction, &command.run).await?;
+        let user_content =
+            canonical_user_content(&transaction, &definition, &command.user_content).await?;
         let active = load_context(
             &transaction,
             &conversation.context_id,
@@ -64,7 +67,12 @@ impl SqliteStore {
         let message_id = new_id("message");
         let run_id = new_id("run");
         let candidate_branch_id = new_id("branch");
-        let content_id = put_inline_object(&transaction, &prepared.content_bytes, now).await?;
+        let content_id = put_inline_object(
+            &transaction,
+            &zhuangsheng_core::canonical::to_vec(&user_content)?,
+            now,
+        )
+        .await?;
         let (message, patch) = user_message_patch(
             &conversation,
             &command,
@@ -110,7 +118,7 @@ impl SqliteStore {
             turn_id: turn_id.clone(),
             user_message_id: message_id,
             user_commit_id: commit.id.clone(),
-            content: command.user_content,
+            content: user_content,
         };
         insert_new_run(
             &transaction,

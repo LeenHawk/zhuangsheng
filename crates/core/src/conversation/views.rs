@@ -46,6 +46,7 @@ pub struct ConversationMessageView {
     pub role: ConversationMessageRole,
     pub source: ConversationMessageSource,
     pub content: Vec<LlmContentPartIr>,
+    pub display_content: Option<Vec<LlmContentPartIr>>,
     pub origin_run_id: Option<String>,
     pub created_at: i64,
 }

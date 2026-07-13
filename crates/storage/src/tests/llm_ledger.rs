@@ -412,6 +412,7 @@ pub(super) async fn prepare_running_llm_attempt(store: &SqliteStore) -> ClaimedA
                 budget: None,
                 post_process: vec![],
                 text_transforms: vec![],
+                text_transform_macros: Default::default(),
                 preview: None,
             },
             idempotency_key: "ledger-preset-version".into(),

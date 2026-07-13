@@ -9,7 +9,12 @@ use zhuangsheng_core::{
             ContextPresetPreviewView, ContextPresetView, PreviewContextPresetCommand,
             PublishContextPresetVersionCommand,
         },
+        sillytavern::{
+            ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand,
+            SillyTavernImportResult, apply_sillytavern_import, preview_sillytavern_import,
+        },
     },
+    compatibility::sillytavern::SillyTavernImportPreview,
     llm::{LlmChannelRevision, context::ContextPresetVersion},
 };
 
@@ -90,5 +95,19 @@ impl TauriAdapter {
         command: PreviewContextPresetCommand,
     ) -> CommandResult<ContextPresetPreviewView> {
         Ok(self.preset.preview_context_preset(command).await?)
+    }
+
+    pub async fn preview_sillytavern_import(
+        &self,
+        command: PreviewSillyTavernImportCommand,
+    ) -> CommandResult<SillyTavernImportPreview> {
+        Ok(preview_sillytavern_import(self.preset.as_ref(), command).await?)
+    }
+
+    pub async fn apply_sillytavern_import(
+        &self,
+        command: ApplySillyTavernImportCommand,
+    ) -> CommandResult<SillyTavernImportResult> {
+        Ok(apply_sillytavern_import(self.preset.as_ref(), command).await?)
     }
 }

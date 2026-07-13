@@ -12,6 +12,8 @@ use zhuangsheng_core::{
 
 use crate::{StorageError, StorageResult, graph::helpers::sql};
 
+use super::display_projection::{load_display_rules, project_display_content};
+
 pub(crate) async fn load_active_messages<C: ConnectionTrait>(
     connection: &C,
     conversation_id: &str,
@@ -22,6 +24,7 @@ pub(crate) async fn load_active_messages<C: ConnectionTrait>(
         "SELECT m.id, m.turn_id, m.branch_id, m.commit_id, m.parent_message_id, m.role, m.source_kind, m.content_object_id, m.origin_run_id, m.created_at, o.lifecycle, o.content_hash, o.byte_size, o.inline_bytes, vc.aggregate_id AS commit_context, vc.lineage_key AS commit_branch, EXISTS (SELECT 1 FROM content_object_refs r WHERE r.object_id = m.content_object_id AND r.owner_kind = 'conversation_message' AND r.owner_id = m.id AND r.role = 'content') AS content_ref FROM conversation_messages m JOIN content_objects o ON o.id = m.content_object_id JOIN version_commits vc ON vc.id = m.commit_id AND vc.aggregate_kind = 'working_context' WHERE m.conversation_id = ?",
         vec![conversation_id.into()],
     )).await?;
+    let display_rules = load_display_rules(connection, conversation_id).await?;
     let mut by_id = HashMap::with_capacity(rows.len());
     for row in rows {
         let id: String = row.try_get("", "id")?;
@@ -32,7 +35,7 @@ pub(crate) async fn load_active_messages<C: ConnectionTrait>(
         }
     }
     let mut messages = Vec::with_capacity(active.len());
-    for expected in active {
+    for (message_index, expected) in active.iter().enumerate() {
         let row = by_id.get(&expected.message_id).ok_or_else(|| {
             StorageError::Integrity("active conversation message row is missing".into())
         })?;
@@ -71,6 +74,18 @@ pub(crate) async fn load_active_messages<C: ConnectionTrait>(
             parent_message_id: parent,
             role,
             source,
+            display_content: display_rules
+                .get(&expected.turn_id)
+                .map(|plan| {
+                    project_display_content(
+                        &content,
+                        role,
+                        u32::try_from(active.len() - message_index - 1).unwrap_or(u32::MAX),
+                        plan,
+                    )
+                })
+                .transpose()?
+                .flatten(),
             content,
             origin_run_id: origin,
             created_at: row.try_get("", "created_at")?,

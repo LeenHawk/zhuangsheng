@@ -99,6 +99,7 @@ export interface ConversationMessageView {
   role: "user" | "assistant";
   source: "user_input" | "run_output" | "saved_partial";
   content: LlmContentPart[];
+  displayContent: LlmContentPart[] | null;
   originRunId: string | null;
   createdAt: number;
 }

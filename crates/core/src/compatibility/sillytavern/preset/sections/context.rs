@@ -4,7 +4,10 @@ use crate::llm::context::{
     ContextAssemblySpec, ContextItem, ContextPosition, ContextRole, ContextSource, TokenBudgetHint,
 };
 
-use super::super::support::{ImportParts, empty_context_spec, inactive, warning};
+use super::super::support::{
+    ImportParts, empty_context_spec, inactive, populate_role_macros, substitute_known_macros,
+    warning,
+};
 
 pub(super) fn import_system_prompt(document: &Value, name: &str, parts: &mut ImportParts) {
     let Some(content) = document.get("content").and_then(Value::as_str) else {
@@ -19,6 +22,8 @@ pub(super) fn import_system_prompt(document: &Value, name: &str, parts: &mut Imp
     let spec = parts
         .context_spec
         .get_or_insert_with(|| empty_context_spec(name));
+    populate_role_macros(spec);
+    let content = substitute_known_macros(content, &spec.text_transform_macros);
     upsert(
         spec,
         literal_item(
@@ -27,7 +32,7 @@ pub(super) fn import_system_prompt(document: &Value, name: &str, parts: &mut Imp
                 .get("name")
                 .and_then(Value::as_str)
                 .unwrap_or("System Prompt"),
-            content,
+            &content,
             ContextPosition::Start,
             -100,
         ),

@@ -3,6 +3,7 @@ export * from "./artifact-types";
 export * from "./decode-artifacts";
 export * from "./decode";
 export * from "./decode-roleplay";
+export * from "./decode-sillytavern";
 export * from "./decode-turn";
 export * from "./decode-context";
 export * from "./decode-effect";

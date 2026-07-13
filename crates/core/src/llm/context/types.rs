@@ -28,6 +28,8 @@ pub struct ContextAssemblySpec {
     pub post_process: Vec<PromptPostProcessRule>,
     #[serde(default)]
     pub text_transforms: Vec<TextTransformRule>,
+    #[serde(default)]
+    pub text_transform_macros: BTreeMap<String, String>,
     pub preview: Option<PreviewPolicy>,
 }
 

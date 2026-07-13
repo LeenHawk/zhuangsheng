@@ -413,6 +413,7 @@ fn context_spec(with_optional: bool) -> ContextAssemblySpec {
         }),
         post_process: Vec::new(),
         text_transforms: Vec::new(),
+        text_transform_macros: Default::default(),
         preview: None,
     }
 }

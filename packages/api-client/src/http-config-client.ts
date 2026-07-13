@@ -1,5 +1,6 @@
 import { decodeChannel, decodeChannelModelDiscovery, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
-import type { ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, PublishChannelInput, PublishPresetInput } from "./config-types";
+import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult } from "./decode-sillytavern";
+import type { ApplySillyTavernImportInput, ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, PublishChannelInput, PublishPresetInput, SillyTavernImportInput, SillyTavernImportPreviewView, SillyTavernImportResultView } from "./config-types";
 import { DecodeError } from "./decode-error";
 import { stringifyJsonExact } from "./exact-json";
 import { requestJson } from "./http-json";
@@ -136,6 +137,42 @@ export class HttpConfigClient {
         }),
         signal,
       },
+    ));
+  }
+
+  async previewSillyTavernImport(
+    input: SillyTavernImportInput,
+    signal?: AbortSignal,
+  ): Promise<SillyTavernImportPreviewView> {
+    return decodeSillyTavernImportPreview(await requestJson(
+      this.baseUrl,
+      "/v1/compatibility/sillytavern/preview",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: stringifyJsonExact({
+          document: input.document,
+          sourceName: input.sourceName ?? null,
+          targetPresetId: input.targetPresetId ?? null,
+        }),
+        signal,
+      },
+    ));
+  }
+
+  async applySillyTavernImport(
+    input: ApplySillyTavernImportInput,
+    idempotencyKey = createIdempotencyKey(),
+  ): Promise<SillyTavernImportResultView> {
+    return decodeSillyTavernImportResult(await this.command(
+      "/v1/compatibility/sillytavern/import",
+      {
+        document: input.document,
+        sourceName: input.sourceName ?? null,
+        targetPresetId: input.targetPresetId ?? null,
+        expectedHeadVersionId: input.expectedHeadVersionId ?? null,
+      },
+      idempotencyKey,
     ));
   }
 

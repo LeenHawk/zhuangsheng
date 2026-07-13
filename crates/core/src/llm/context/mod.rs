@@ -8,6 +8,7 @@ mod engine_test_support;
 mod engine_tests;
 mod engine_types;
 mod normalize;
+mod normalize_text_transform;
 mod post_process;
 mod resolve;
 mod resolve_support;

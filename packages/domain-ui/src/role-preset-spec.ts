@@ -42,6 +42,7 @@ export function buildRolePresetSpec(input: RolePresetInput): JsonObject {
     budget: null,
     postProcess: [],
     textTransforms: [],
+    textTransformMacros: {},
     preview: { content: "metadata_only", count: "local" },
   };
 }

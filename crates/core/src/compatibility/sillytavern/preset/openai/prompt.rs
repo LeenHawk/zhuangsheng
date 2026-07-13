@@ -4,7 +4,7 @@ use crate::llm::context::{
     ContextAssemblySpec, ContextItem, ContextPosition, ContextRole, ContextSource, TokenBudgetHint,
 };
 
-use super::super::support::{ImportParts, warning};
+use super::super::support::{ImportParts, substitute_known_macros, warning};
 
 pub(super) fn import_literal(
     spec: &mut ContextAssemblySpec,
@@ -15,10 +15,11 @@ pub(super) fn import_literal(
     position: ContextPosition,
     parts: &mut ImportParts,
 ) {
-    let content = prompt
+    let raw_content = prompt
         .get("content")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    let content = substitute_known_macros(raw_content, &spec.text_transform_macros);
     let role = prompt_role(prompt, identifier, parts);
     let id = prompt_item_id(identifier, index);
     let item = ContextItem {
@@ -30,7 +31,7 @@ pub(super) fn import_literal(
         enabled,
         requested_role: role,
         source: ContextSource::Literal {
-            text: content.to_owned(),
+            text: content.clone(),
         },
         position,
         order: index as i64,

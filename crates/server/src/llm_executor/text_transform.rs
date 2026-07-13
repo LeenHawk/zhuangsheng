@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use serde_json::Value;
 use zhuangsheng_core::{
     conversation::AssistantReplyPayloadV1,
@@ -36,7 +34,7 @@ pub(super) fn apply_canonical_output_transforms(
         surface: Some(TextTransformSurface::Canonical),
         depth: Some(0),
         is_edit: false,
-        macros: BTreeMap::new(),
+        macros: spec.text_transform_macros.clone(),
     };
     match &mut value {
         Value::String(text) => {

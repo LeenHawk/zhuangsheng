@@ -42,7 +42,7 @@ pub(super) fn apply_prompt_text_transforms(
                 surface: Some(TextTransformSurface::Prompt),
                 depth,
                 is_edit: false,
-                macros: BTreeMap::new(),
+                macros: spec.text_transform_macros.clone(),
             };
             let mut applied = Vec::new();
             for part in &mut candidate.content {

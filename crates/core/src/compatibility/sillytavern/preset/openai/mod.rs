@@ -32,6 +32,7 @@ pub(super) fn import_openai(
         .take()
         .unwrap_or_else(|| empty_context_spec(name));
     spec.name = Some(name.to_owned());
+    super::support::populate_role_macros(&mut spec);
     let mut used_items = HashSet::new();
     for (index, entry) in order.iter().enumerate() {
         import_order_entry(

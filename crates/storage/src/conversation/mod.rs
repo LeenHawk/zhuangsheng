@@ -1,5 +1,8 @@
 mod contract;
 mod create;
+mod display_projection;
+#[cfg(test)]
+mod display_projection_tests;
 mod events;
 mod profile;
 mod projection;
@@ -20,5 +23,8 @@ mod service;
 mod submit;
 mod submit_prepare;
 mod submit_rows;
+mod text_transform;
+#[cfg(test)]
+mod text_transform_tests;
 
 pub(crate) use read_messages::load_active_messages;

@@ -118,6 +118,46 @@ pub(super) fn empty_context_spec(name: &str) -> ContextAssemblySpec {
         budget: None,
         post_process: Vec::new(),
         text_transforms: Vec::new(),
+        text_transform_macros: Default::default(),
         preview: None,
     }
+}
+
+pub(super) fn populate_role_macros(spec: &mut ContextAssemblySpec) {
+    for item in &spec.items {
+        let profile = item.id.split([':', '/']).next().unwrap_or(&item.id);
+        let Some(name) = item.name.as_ref().filter(|value| !value.trim().is_empty()) else {
+            continue;
+        };
+        match profile {
+            "character" => {
+                spec.text_transform_macros
+                    .entry("char".into())
+                    .or_insert_with(|| name.clone());
+                spec.text_transform_macros
+                    .entry("name2".into())
+                    .or_insert_with(|| name.clone());
+            }
+            "persona" => {
+                spec.text_transform_macros
+                    .entry("user".into())
+                    .or_insert_with(|| name.clone());
+                spec.text_transform_macros
+                    .entry("name1".into())
+                    .or_insert_with(|| name.clone());
+            }
+            _ => {}
+        }
+    }
+}
+
+pub(super) fn substitute_known_macros(
+    text: &str,
+    macros: &std::collections::BTreeMap<String, String>,
+) -> String {
+    macros
+        .iter()
+        .fold(text.to_owned(), |output, (name, value)| {
+            output.replace(&format!("{{{{{name}}}}}"), value)
+        })
 }

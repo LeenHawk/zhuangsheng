@@ -110,9 +110,15 @@ const message = (value: unknown, index: number): ConversationMessageView => {
     parentMessageId: nullableString(item.parentMessageId, `${path}.parentMessageId`),
     role: item.role, source: item.source,
     content: item.content.map((part, partIndex) => contentPart(part, `${path}.content[${partIndex}]`)),
+    displayContent: item.displayContent == null ? null : decodeDisplayContent(item.displayContent, path),
     originRunId: nullableString(item.originRunId, `${path}.originRunId`),
     createdAt: number(item.createdAt, `${path}.createdAt`),
   };
+};
+
+const decodeDisplayContent = (value: unknown, path: string) => {
+  if (!Array.isArray(value)) throw new DecodeError(`${path}.displayContent`);
+  return value.map((part, index) => contentPart(part, `${path}.displayContent[${index}]`));
 };
 
 export const decodeTimeline = (value: unknown): ConversationTimelineView => {

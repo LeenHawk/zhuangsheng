@@ -206,6 +206,7 @@ fn context_spec(id: &str, enabled: bool) -> ContextAssemblySpec {
         budget: None,
         post_process: vec![],
         text_transforms: vec![],
+        text_transform_macros: Default::default(),
         preview: None,
     }
 }

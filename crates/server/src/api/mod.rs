@@ -13,6 +13,7 @@ pub mod memory;
 pub mod preset;
 pub mod runtime;
 pub mod secret;
+pub mod sillytavern;
 pub mod tool;
 
 use std::sync::Arc;

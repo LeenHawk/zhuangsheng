@@ -27,5 +27,5 @@ export function LibraryRoute() {
     finally { if (!signal?.aborted) setLoading(false); }
   }, []);
   useEffect(() => { const controller = new AbortController(); void reload(controller.signal); return () => controller.abort(); }, [reload]);
-  return <LibraryPage presets={presets} versions={versions} templates={templates} artifacts={artifacts} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={() => navigate("/settings")} onOpenArtifacts={() => navigate("/expert/artifacts")} contentUrl={(id) => client.artifacts.contentUrl(id)} />;
+  return <LibraryPage presets={presets} versions={versions} templates={templates} artifacts={artifacts} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={() => navigate("/settings")} onOpenArtifacts={() => navigate("/expert/artifacts")} contentUrl={(id) => client.artifacts.contentUrl(id)} sillyTavern={{ preview: (input) => client.config.previewSillyTavernImport(input), apply: (input) => client.config.applySillyTavernImport(input) }} />;
 }

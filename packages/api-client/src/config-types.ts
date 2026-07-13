@@ -1,4 +1,4 @@
-import type { JsonObject } from "./graph-types";
+import type { JsonObject, JsonValue } from "./graph-types";
 
 export interface ChannelView {
   id: string;
@@ -125,4 +125,76 @@ export interface ContextPresetPreviewView {
     resolvedBindingsDigest: string;
     assemblyDigest: string;
   };
+}
+
+export type SillyTavernPresetKind =
+  | "open_ai"
+  | "master"
+  | "context"
+  | "instruct"
+  | "system_prompt"
+  | "text_completion"
+  | "reasoning"
+  | "regex_scripts"
+  | "unknown";
+
+export type TextTransformPlacement =
+  | "user_input"
+  | "ai_output"
+  | "slash_command"
+  | "world_info"
+  | "reasoning";
+
+export type TextTransformSurface = "canonical" | "prompt" | "display";
+
+export interface TextTransformRuleView {
+  id: string;
+  name: string;
+  scope: "global" | "character" | "preset";
+  order: number;
+  findRegex: string;
+  replaceString: string;
+  trimStrings: string[];
+  placements: TextTransformPlacement[];
+  surfaces: TextTransformSurface[];
+  disabled: boolean;
+  runOnEdit: boolean;
+  macroMode: "none" | "raw" | "escaped";
+  minDepth: number | null;
+  maxDepth: number | null;
+}
+
+export interface SillyTavernImportWarningView {
+  code: string;
+  message: string;
+  field: string | null;
+}
+
+export interface SillyTavernImportPreviewView {
+  compatibilityVersion: 1;
+  kind: SillyTavernPresetKind;
+  name: string;
+  sourceHash: string;
+  contextSpec: JsonObject | null;
+  generation: JsonObject | null;
+  providerExtensions: JsonObject | null;
+  textTransforms: TextTransformRuleView[];
+  inactiveFields: string[];
+  warnings: SillyTavernImportWarningView[];
+}
+
+export interface SillyTavernImportInput {
+  document: JsonValue;
+  sourceName?: string | null;
+  targetPresetId?: string | null;
+}
+
+export interface ApplySillyTavernImportInput extends SillyTavernImportInput {
+  expectedHeadVersionId?: string | null;
+}
+
+export interface SillyTavernImportResultView {
+  preview: SillyTavernImportPreviewView;
+  preset: ContextPresetView;
+  version: ContextPresetVersionView;
 }
