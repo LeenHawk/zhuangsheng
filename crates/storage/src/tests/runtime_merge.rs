@@ -184,7 +184,7 @@ async fn selection_payloads(store: &crate::SqliteStore, run_id: &str) -> Vec<Val
 async fn merge_graph(
     store: &crate::SqliteStore,
     key: &str,
-    invalid_left: bool,
+    invalid_inputs: bool,
 ) -> GraphRevisionView {
     let graph = super::graph(store, &format!("create-{key}")).await;
     let current = store.get_graph_draft(&graph.id).await.unwrap();
@@ -203,15 +203,17 @@ async fn merge_graph(
         ],
         "outputContract":[{"key":"items","collection":"append","required":true}]
     })).unwrap();
-    if invalid_left {
+    if invalid_inputs {
         let merge = document
             .nodes
             .iter_mut()
             .find(|node| node.id == "merge")
             .unwrap();
-        merge.inputs[0].binding.selector = InputSelector::JsonPointer {
-            pointer: "/missing".into(),
-        };
+        for input in &mut merge.inputs {
+            input.binding.selector = InputSelector::JsonPointer {
+                pointer: "/missing".into(),
+            };
+        }
     }
     let draft = store
         .update_graph_draft(UpdateGraphDraftCommand {
