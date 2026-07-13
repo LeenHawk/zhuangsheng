@@ -4,6 +4,7 @@ import {
   parse,
   stringify,
 } from "lossless-json";
+import { rejectDuplicateKeys } from "./json-duplicate-keys";
 
 export { LosslessNumber };
 
@@ -20,6 +21,7 @@ export function parseJsonExact(text: string): unknown {
   if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) {
     throw new SyntaxError("JSON exceeds the 16 MiB limit");
   }
+  rejectDuplicateKeys(text);
   const value = parse(text, undefined, {
     parseNumber: parseBoundedNumber,
     onDuplicateKey: ({ key }) => {
@@ -87,8 +89,9 @@ function validateNumberLexeme(value: string): void {
   if (significant === "") {
     normalizedExponent = 0;
   } else {
-    const trailingZeros = significant.length - significant.replace(/0+$/, "").length;
-    normalizedExponent += trailingZeros;
+    const normalizedDigits = significant.replace(/0+$/, "");
+    const trailingZeros = significant.length - normalizedDigits.length;
+    normalizedExponent += trailingZeros + normalizedDigits.length - 1;
   }
   if (Math.abs(normalizedExponent) > MAX_EXPONENT_MAGNITUDE) {
     throw new SyntaxError("JSON number exceeds the normalized exponent limit");
@@ -115,6 +118,7 @@ function validateJsonTree(
   if (depth > MAX_JSON_DEPTH) throw new TypeError("JSON exceeds the depth limit");
   if (value === null || typeof value === "boolean") return;
   if (typeof value === "string") {
+    validateUnicodeScalars(value);
     if (new TextEncoder().encode(value).byteLength > MAX_STRING_BYTES) {
       throw new TypeError("JSON string exceeds the byte limit");
     }
@@ -135,9 +139,28 @@ function validateJsonTree(
     }
   }
   seen.add(value);
-  for (const [, nested] of entries) {
+  for (const [key, nested] of entries) {
+    if (typeof key === "string") {
+      validateUnicodeScalars(key);
+      if (new TextEncoder().encode(key).byteLength > MAX_STRING_BYTES) {
+        throw new TypeError("JSON string exceeds the byte limit");
+      }
+    }
     if (nested === undefined && allowObjectUndefined && !Array.isArray(value)) continue;
     validateJsonTree(nested, depth + 1, seen, allowObjectUndefined);
   }
   seen.delete(value);
+}
+
+function validateUnicodeScalars(value: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) throw new TypeError("unpaired JSON surrogate");
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      throw new TypeError("unpaired JSON surrogate");
+    }
+  }
 }

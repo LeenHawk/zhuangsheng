@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -10,11 +8,23 @@ pub const MAX_JSON_DEPTH: usize = 128;
 pub const MAX_JSON_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_NUMBER_DIGITS: usize = 128;
 pub const MAX_EXPONENT_MAGNITUDE: i32 = 1024;
+pub const MAX_COLLECTION_ITEMS: usize = 100_000;
+pub const MAX_STRING_BYTES: usize = 8 * 1024 * 1024;
+
+mod number;
+mod parse;
+
+use number::normalize_number;
+
+pub(crate) fn validate_number(raw: &str, max_digits: usize, max_exponent: i64) -> DomainResult<()> {
+    number::validate_number(raw, max_digits, max_exponent)
+}
 
 pub fn parse(input: &str) -> DomainResult<Value> {
     if input.len() > MAX_JSON_BYTES {
         return Err(DomainError::JsonLimit("max bytes exceeded".into()));
     }
+    parse::reject_duplicate_keys(input)?;
     let value: Value =
         serde_json::from_str(input).map_err(|error| DomainError::InvalidJson(error.to_string()))?;
     validate_limits(&value, 0)?;
@@ -27,6 +37,9 @@ pub fn to_vec<T: Serialize>(value: &T) -> DomainResult<Vec<u8>> {
     validate_limits(&value, 0)?;
     let mut output = String::new();
     write_value(&value, &mut output)?;
+    if output.len() > MAX_JSON_BYTES {
+        return Err(DomainError::JsonLimit("max bytes exceeded".into()));
+    }
     Ok(output.into_bytes())
 }
 
@@ -47,16 +60,28 @@ fn validate_limits(value: &Value, depth: usize) -> DomainResult<()> {
         return Err(DomainError::JsonLimit("max depth exceeded".into()));
     }
     match value {
+        Value::String(value) if value.len() > MAX_STRING_BYTES => {
+            return Err(DomainError::JsonLimit("string bytes exceeded".into()));
+        }
         Value::Number(number) => {
             normalize_number(&number.to_string())?;
         }
         Value::Array(values) => {
+            if values.len() > MAX_COLLECTION_ITEMS {
+                return Err(DomainError::JsonLimit("collection items exceeded".into()));
+            }
             for value in values {
                 validate_limits(value, depth + 1)?;
             }
         }
         Value::Object(values) => {
-            for value in values.values() {
+            if values.len() > MAX_COLLECTION_ITEMS {
+                return Err(DomainError::JsonLimit("collection items exceeded".into()));
+            }
+            for (key, value) in values {
+                if key.len() > MAX_STRING_BYTES {
+                    return Err(DomainError::JsonLimit("string bytes exceeded".into()));
+                }
                 validate_limits(value, depth + 1)?;
             }
         }
@@ -105,76 +130,5 @@ fn write_value(value: &Value, output: &mut String) -> DomainResult<()> {
     Ok(())
 }
 
-fn normalize_number(raw: &str) -> DomainResult<String> {
-    let (negative, unsigned) = raw
-        .strip_prefix('-')
-        .map_or((false, raw), |value| (true, value));
-    let exponent_index = unsigned.find(['e', 'E']);
-    let (coefficient, exponent) = exponent_index.map_or((unsigned, 0_i32), |index| {
-        let exponent = unsigned[index + 1..].parse::<i32>().unwrap_or(i32::MAX);
-        (&unsigned[..index], exponent)
-    });
-    if exponent.abs() > MAX_EXPONENT_MAGNITUDE {
-        return Err(DomainError::JsonLimit("number exponent exceeded".into()));
-    }
-    let (integer, fraction) = coefficient.split_once('.').unwrap_or((coefficient, ""));
-    let integer = integer.trim_start_matches('0');
-    let fraction = fraction.trim_end_matches('0');
-    let digits = format!("{integer}{fraction}");
-    let significant = digits.trim_start_matches('0');
-    if significant.len() > MAX_NUMBER_DIGITS {
-        return Err(DomainError::JsonLimit("number digits exceeded".into()));
-    }
-    if significant.is_empty() {
-        return Ok("0".into());
-    }
-    let decimal_position = integer.len() as i32 + exponent;
-    let mut result = String::new();
-    if negative {
-        result.push('-');
-    }
-    if decimal_position <= 0 {
-        result.push_str("0.");
-        for _ in 0..-decimal_position {
-            result.push('0');
-        }
-        result.push_str(&digits);
-    } else if decimal_position as usize >= digits.len() {
-        result.push_str(&digits);
-        for _ in 0..decimal_position as usize - digits.len() {
-            result.push('0');
-        }
-    } else {
-        let split = decimal_position as usize;
-        write!(result, "{}.{}", &digits[..split], &digits[split..]).unwrap();
-    }
-    if result.contains('.') {
-        while result.ends_with('0') {
-            result.pop();
-        }
-        if result.ends_with('.') {
-            result.pop();
-        }
-    }
-    Ok(result)
-}
-
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::*;
-
-    #[test]
-    fn sorts_object_keys_and_normalizes_numbers() {
-        let value = parse(r#"{"z":1.00e2,"a":{"b":-0.000,"a":2}}"#).unwrap();
-        assert_eq!(to_string(&value).unwrap(), r#"{"a":{"a":2,"b":0},"z":100}"#);
-    }
-
-    #[test]
-    fn equal_values_have_equal_hashes() {
-        let left = parse(r#"{"b":1e1,"a":true}"#).unwrap();
-        let right = json!({"a": true, "b": 10});
-        assert_eq!(hash(&left).unwrap(), hash(&right).unwrap());
-    }
-}
+mod tests;

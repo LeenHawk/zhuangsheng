@@ -82,19 +82,12 @@ fn validate_instance_limits(spec: &JsonSchemaSpec, value: &Value, depth: u64) ->
 }
 
 fn validate_number_limits(spec: &JsonSchemaSpec, raw: &str) -> DomainResult<()> {
-    let (coefficient, exponent) = raw
-        .split_once(['e', 'E'])
-        .map_or((raw, "0"), |(coefficient, exponent)| {
-            (coefficient, exponent)
-        });
-    let digits = coefficient.bytes().filter(u8::is_ascii_digit).count() as u64;
-    let exponent = exponent.parse::<i64>().unwrap_or(i64::MAX).unsigned_abs();
-    if digits > spec.limits.max_number_digits
-        || exponent > spec.limits.max_number_exponent_magnitude
-    {
-        return Err(limit("number limits exceeded"));
-    }
-    Ok(())
+    canonical::validate_number(
+        raw,
+        spec.limits.max_number_digits as usize,
+        spec.limits.max_number_exponent_magnitude as i64,
+    )
+    .map_err(|_| limit("number limits exceeded"))
 }
 
 fn limit(message: &str) -> DomainError {
@@ -124,5 +117,26 @@ mod tests {
         };
         assert!(validate(&spec, &json!({"count": 2})).is_ok());
         assert!(validate(&spec, &json!({"count": "2"})).is_err());
+    }
+
+    #[test]
+    fn validates_exact_decimal_semantics_and_tighter_normalized_limits() {
+        let mut spec = JsonSchemaSpec {
+            schema_version: 1,
+            dialect: DIALECT_2020_12.into(),
+            validation_profile_version: 1,
+            format_policy_version: 1,
+            document: json!({"type":"number","minimum":9007199254740993_u64,"multipleOf":0.1}),
+            limits: JsonSchemaLimits::default(),
+        };
+        let exact = canonical::parse("9007199254740993.1").unwrap();
+        assert!(validate(&spec, &exact).is_ok());
+
+        spec.limits.max_number_exponent_magnitude = 2;
+        let normalized_overflow = canonical::parse("10e2").unwrap();
+        assert!(matches!(
+            validate(&spec, &normalized_overflow),
+            Err(DomainError::SchemaValidation(_))
+        ));
     }
 }

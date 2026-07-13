@@ -30,7 +30,7 @@ type ContentObject = {
 }
 ```
 
-Hash 针对实际保存的 bytes。结构化 JSON 使用项目固定的 `canonical_json_v1`，不是 RFC 8785/JCS：对象 key 按 Unicode scalar sequence 排序，字符串以 UTF-8 和最小必要 JSON escape 编码并拒绝 unpaired surrogate，数组保序；number 解析为有界 exact base-10 `(sign, coefficient, exponent)`，零写成 `0`，非零写成 `[-]d[.digits]eN`，coefficient 去前导零、去尾随零时等量增加 exponent，且 exponent 无 `+`/前导零。它拒绝 NaN/Infinity，并与 `16-domain-consistency.md` 的 digit/exponent limits 共用 conformance vectors，因此 `1`、`1.0`、`10e-1` 产生相同 bytes且不会降精度到 binary64。结构化 owner/ref 把 `formatVersion` 与 object ID/hash 一起持久化；未知 format fail closed。读取时重新校验 size/hash；hash 不匹配视为存储损坏。
+Hash 针对实际保存的 bytes。结构化 JSON 使用项目固定的 `canonical_json_v1`，不是 RFC 8785/JCS：对象 key 按 Unicode scalar sequence 排序，字符串以 UTF-8 和最小必要 JSON escape 编码并拒绝 unpaired surrogate，数组保序；number 解析为有界 exact base-10 `(sign, coefficient, exponent)`，去除 coefficient 的无意义前导/尾随零并调整 exponent，零写成 `0`，非零将指数展开为最短普通十进制（不用 exponent notation）。它拒绝 NaN/Infinity，并与 `16-domain-consistency.md` 的 digit/exponent limits 共用 conformance vectors，因此 `1`、`1.0`、`10e-1` 产生相同 bytes且不会降精度到 binary64。选择普通十进制是为了让 canonical bytes 中数学上为整数的值仍可由 Serde 等严格 JSON decoder 回读到 `u64/i64` 版本字段；有界 exponent 保证展开后的长度仍有硬上限。结构化 owner/ref 把 `formatVersion` 与 object ID/hash 一起持久化；未知 format fail closed。读取时重新校验 size/hash；hash 不匹配视为存储损坏。
 
 ContentObject 只声明 bytes/hash/size；media type、展示名与 classification 属于引用它的 Artifact/owner metadata。同一 bytes 可被不同 artifact 以各自经 policy 验证的 media type 引用，object dedup 不让首次写入者决定后续解释。
 

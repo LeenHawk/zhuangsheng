@@ -23,16 +23,22 @@ describe("bounded exact JSON", () => {
   });
 
   it("rejects duplicate keys and bounded-number violations", () => {
-    expect(() => parseJsonExact("{\"a\":1,\"a\":2}"))
+    expect(() => parseJsonExact("{\"a\":1,\"a\":1}"))
+      .toThrow(/duplicate JSON key/);
+    expect(() => parseJsonExact("{\"a\":1,\"\\u0061\":2}"))
       .toThrow(/duplicate JSON key/);
     expect(() => parseJsonExact(`{\"n\":${"1".repeat(129)}}`))
       .toThrow(/digit limit/);
     expect(() => parseJsonExact("{\"n\":1e1025}"))
       .toThrow(/exponent limit/);
+    expect(() => parseJsonExact("{\"n\":10e1024}"))
+      .toThrow(/normalized exponent limit/);
     expect(() => parseJsonExact("{\"n\":0e1025}"))
       .toThrow(/exponent limit/);
     expect(() => parseJsonExact("{\"n\":0.0e-1024}"))
       .not.toThrow();
+    expect(() => parseJsonExact("{\"text\":\"\\ud800\"}"))
+      .toThrow(/unpaired JSON surrogate/);
     expect(() => stringifyJsonExact({ n: 9_007_199_254_740_992 }))
       .toThrow(/unsafe or non-finite/);
     expect(() => stringifyJsonExact({ n: Number.NaN }))
