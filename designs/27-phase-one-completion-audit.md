@@ -81,4 +81,6 @@ model response ���混合 memory capability 与 custom tool batch。
 - api-client 82、graph-view 1、Web 32 tests：全通过。
 - Web/Desktop production build：通过，无 chunk size warning。
 - Desktop Rust `--no-default-features` check 与完整 WRY `cargo build`：通过。
-- 官方 Tauri CLI debug `.deb` bundle：通过，产出 `庄生_0.1.0_amd64.deb`。
+- 官方 Tauri CLI debug `.deb` bundle：通过，产出 `庄生_0.0.1_amd64.deb`。
+- GitHub Release `v0.0.1`：Linux、Windows、macOS 的 x64/arm64 与 Android
+  split APK 全矩阵构建、校验和生成和附件发布均通过。
