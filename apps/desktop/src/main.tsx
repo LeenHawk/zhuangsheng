@@ -6,6 +6,7 @@ import {
   applyApplicationPreferences,
   AppShell,
   loadApplicationPreferences,
+  PlatformCapabilitiesProvider,
   SurfacePlaceholder,
 } from "@zhuangsheng/domain-ui";
 
@@ -15,9 +16,11 @@ import { LocalMemory } from "./local-memory";
 import { LocalLibrary } from "./local-library";
 import { LocalArtifacts } from "./local-artifacts";
 import { LocalContexts } from "./local-contexts";
+import { desktopPlatformCapabilities } from "./bridge";
 import "../../web/src/styles.css";
 
 const LocalRuns = lazy(async () => ({ default: (await import("./local-runs")).LocalRuns }));
+const LocalGraphStudio = lazy(async () => ({ default: (await import("./local-graph-studio")).LocalGraphStudio }));
 
 function DesktopApp() {
   const [mode, setMode] = useState<UiExperienceMode>(() =>
@@ -50,11 +53,11 @@ function DesktopApp() {
               ? <LocalArtifacts />
               : section === "contexts"
                 ? <LocalContexts initial={inspectContext} onOpened={clearInspectContext} />
-      : <SurfacePlaceholder label="本地 surface" title="此区域正在接入本地 transport" description="数据仍保存在本机 SQLite；当前可使用完整故事对话与运行列表。" />;
+                : <Suspense fallback={<SurfacePlaceholder label="本地 Studio" title="正在加载 Agent Studio" description="正在读取本地 GraphDraft 与结构投影。" />}><LocalGraphStudio /></Suspense>;
   const changeMode = (next: UiExperienceMode) => {
     localStorage.setItem("zhuangsheng.uiMode", next); setMode(next);
   };
-  return <AppShell mode={mode} section={section} onModeChange={changeMode} onSectionChange={setSection}>{content}</AppShell>;
+  return <PlatformCapabilitiesProvider value={desktopPlatformCapabilities}><AppShell mode={mode} section={section} onModeChange={changeMode} onSectionChange={setSection}>{content}</AppShell></PlatformCapabilitiesProvider>;
 }
 
 const root = document.getElementById("root");

@@ -8,6 +8,7 @@ export * from "./context-index";
 export * from "./context-explorer";
 export * from "./graph-studio";
 export * from "./memory-page";
+export * from "./platform-capabilities";
 export * from "./new-story-wizard";
 export * from "./library-page";
 export * from "./run-detail";

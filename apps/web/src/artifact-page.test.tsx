@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ArtifactPage } from "@zhuangsheng/domain-ui";
-import type { ArtifactStagingView, ArtifactView } from "@zhuangsheng/api-client";
+import { ArtifactPage, PlatformCapabilitiesProvider } from "@zhuangsheng/domain-ui";
+import { webPlatformCapabilities, type ArtifactStagingView, type ArtifactView } from "@zhuangsheng/api-client";
 
 describe("ArtifactPage", () => {
+  afterEach(cleanup);
   it("uploads through staging metadata and never embeds active content", async () => {
     const onUpload = vi.fn(async () => undefined);
     renderPage({ items: [artifact], onUpload });
@@ -32,6 +33,19 @@ describe("ArtifactPage", () => {
     expect(screen.getByText(/staging generation/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试 commit" }));
     expect(onRetryCommit).toHaveBeenCalledOnce();
+  });
+
+  it("disables file input when the injected platform denies picker capability", () => {
+    render(<PlatformCapabilitiesProvider value={{
+      ...webPlatformCapabilities,
+      filePicker: false,
+    }}><ArtifactPage
+      items={[]} loading={false} pending={false} pendingCommit={null} error={null}
+      onReload={() => undefined} onUpload={async () => undefined}
+      onRetryCommit={() => undefined} contentUrl={() => "#"}
+    /></PlatformCapabilitiesProvider>);
+    expect(screen.getByLabelText("Artifact 文件")).toBeDisabled();
+    expect(screen.getByText("当前平台未授予文件选择能力。")).toBeInTheDocument();
   });
 });
 
@@ -61,7 +75,7 @@ const staging: ArtifactStagingView = {
 };
 
 function renderPage(overrides: Partial<React.ComponentProps<typeof ArtifactPage>> = {}) {
-  render(<ArtifactPage
+  render(<PlatformCapabilitiesProvider value={webPlatformCapabilities}><ArtifactPage
     items={[]}
     loading={false}
     pending={false}
@@ -72,5 +86,5 @@ function renderPage(overrides: Partial<React.ComponentProps<typeof ArtifactPage>
     onRetryCommit={() => undefined}
     contentUrl={(id) => `/download/${id}`}
     {...overrides}
-  />);
+  /></PlatformCapabilitiesProvider>);
 }

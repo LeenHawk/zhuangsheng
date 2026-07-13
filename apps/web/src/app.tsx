@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import type { UiExperienceMode } from "@zhuangsheng/api-client";
-import { AppShell, SurfacePlaceholder } from "@zhuangsheng/domain-ui";
+import { webPlatformCapabilities, type UiExperienceMode } from "@zhuangsheng/api-client";
+import { AppShell, PlatformCapabilitiesProvider, SurfacePlaceholder } from "@zhuangsheng/domain-ui";
 
 import { StoriesRoute } from "./stories-route";
 import { StoryRoute } from "./story-route";
@@ -51,7 +51,7 @@ export function App() {
   const changeSection = (next: typeof section) =>
     navigate(next === "stories" ? "/stories" : next === "studio" ? "/expert/studio" : next === "runs" ? "/expert/runs" : next === "contexts" ? "/expert/contexts" : next === "artifacts" ? "/expert/artifacts" : `/${next}`);
   return (
-    <AppShell mode={mode} section={section} onModeChange={setMode} onSectionChange={changeSection}>
+    <PlatformCapabilitiesProvider value={webPlatformCapabilities}><AppShell mode={mode} section={section} onModeChange={setMode} onSectionChange={changeSection}>
       <Routes>
         <Route path="/" element={<Navigate to={`/${startPage}`} replace />} />
         <Route path="/stories" element={<StoriesRoute />} />
@@ -67,7 +67,7 @@ export function App() {
         <Route path="/expert/artifacts" element={<ArtifactsRoute />} />
         <Route path="*" element={<Navigate to="/stories" replace />} />
       </Routes>
-    </AppShell>
+    </AppShell></PlatformCapabilitiesProvider>
   );
 }
 

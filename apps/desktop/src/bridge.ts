@@ -15,6 +15,7 @@ import {
   parseJsonExact,
   stringifyJsonExact,
   type TauriBridge,
+  type PlatformCapabilities,
 } from "@zhuangsheng/api-client";
 
 const exactJsonOperations = new Set([
@@ -49,6 +50,14 @@ export const bridge: TauriBridge = {
     const unlisten = await listen(event, handler);
     return unlisten;
   },
+};
+
+export const desktopPlatformCapabilities: PlatformCapabilities = {
+  platform: "desktop",
+  localFirst: true,
+  filePicker: true,
+  nativeNotifications: false,
+  openExternal: async (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
 };
 
 export const transport = new TauriTransport(bridge);

@@ -12,6 +12,7 @@ export * from "./decode-config";
 export * from "./config-types";
 export * from "./conversation-opening";
 export * from "./graph-types";
+export * from "./graph-draft-editor";
 export * from "./http-client";
 export * from "./http-conversation-client";
 export * from "./http-artifact-client";

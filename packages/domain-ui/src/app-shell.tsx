@@ -4,6 +4,7 @@ import { BookOpen, Brain, FileArchive, GitBranch, Orbit, Settings, Sparkles, Wor
 import type { UiExperienceMode } from "@zhuangsheng/api-client";
 import { Badge, cn } from "@zhuangsheng/ui";
 import { CommandPalette } from "./command-palette";
+import { usePlatformCapabilities } from "./platform-capabilities";
 
 type Section = "stories" | "library" | "memory" | "artifacts" | "studio" | "runs" | "contexts" | "settings";
 
@@ -32,6 +33,7 @@ const expertNavigation = [
 
 export function AppShell({ mode, section, onModeChange, onSectionChange, children }: AppShellProps) {
   const navigation = mode === "expert" ? expertNavigation : userNavigation;
+  const platform = usePlatformCapabilities();
   return (
     <div className="min-h-screen bg-canvas text-primary">
       <header className="sticky top-0 z-30 border-b border-default/80 bg-canvas/90 backdrop-blur-xl">
@@ -53,6 +55,9 @@ export function AppShell({ mode, section, onModeChange, onSectionChange, childre
             ))}
           </nav>
           <CommandPalette items={navigation.map(({ id, label }) => ({ id, label }))} onSelect={onSectionChange} />
+          <Badge className="hidden sm:inline-flex" tone={platform.localFirst ? "success" : "info"}>
+            {platform.localFirst ? "本地 SQLite" : "Web 服务"}
+          </Badge>
           <div className="ml-auto flex items-center gap-2 rounded-xl border border-default bg-surface p-1" aria-label="界面模式">
             {(["user", "expert"] as const).map((value) => (
               <button key={value} onClick={() => onModeChange(value)} className={cn("min-h-8 rounded-lg px-3 text-xs font-semibold text-muted transition-colors", mode === value && "bg-elevated text-primary shadow-sm")} aria-pressed={mode === value}>

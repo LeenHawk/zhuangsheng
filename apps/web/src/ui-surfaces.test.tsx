@@ -1,13 +1,24 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApplicationSettings, CommandPalette, LibraryPage } from "@zhuangsheng/domain-ui";
+import { AppShell, ApplicationSettings, CommandPalette, LibraryPage, PlatformCapabilitiesProvider } from "@zhuangsheng/domain-ui";
+import { webPlatformCapabilities } from "@zhuangsheng/api-client";
 import { defaultUiPreferences } from "./ui-preferences";
 
 describe("global UI surfaces", () => {
+  afterEach(cleanup);
+  it("receives platform capabilities from the shell composition root", () => {
+    render(<PlatformCapabilitiesProvider value={webPlatformCapabilities}>
+      <AppShell mode="user" section="stories" onModeChange={() => undefined} onSectionChange={() => undefined}>
+        <div>content</div>
+      </AppShell>
+    </PlatformCapabilitiesProvider>);
+    expect(screen.getByText("Web 服务")).toBeInTheDocument();
+  });
+
   it("saves application preferences separately from runtime configuration", () => {
     const onSave = vi.fn();
     render(<ApplicationSettings value={defaultUiPreferences} onSave={onSave} />);
