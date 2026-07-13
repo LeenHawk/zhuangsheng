@@ -1,7 +1,8 @@
 use serde::{Deserialize, Deserializer};
 use zeroize::Zeroizing;
 use zhuangsheng_core::application::secret::{
-    InitializeSecretStoreCommand, PutSecretCommand, SecretKind, SecretMetadataView,
+    ChangeMasterPasswordCommand, InitializeSecretStoreCommand, LockSecretStoreCommand,
+    LockSecretStoreResult, PutSecretCommand, SecretKind, SecretMetadataView,
     SecretStoreSessionView, SecretStoreStatusView, SecretValue, UnlockSecretStoreCommand,
 };
 
@@ -23,6 +24,13 @@ pub struct SensitivePutSecretInput {
     idempotency_key: String,
 }
 
+pub struct SensitiveChangePasswordInput {
+    current_password: Zeroizing<String>,
+    new_password: Zeroizing<String>,
+    session_id: String,
+    idempotency_key: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SensitiveSecretWire {
@@ -37,6 +45,15 @@ struct SensitivePutSecretWire {
     name: Option<String>,
     kind: SecretKind,
     value: String,
+    session_id: String,
+    idempotency_key: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SensitiveChangePasswordWire {
+    current_password: String,
+    new_password: String,
     session_id: String,
     idempotency_key: String,
 }
@@ -65,6 +82,18 @@ impl<'de> Deserialize<'de> for SensitivePutSecretInput {
     }
 }
 
+impl<'de> Deserialize<'de> for SensitiveChangePasswordInput {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = SensitiveChangePasswordWire::deserialize(deserializer)?;
+        Ok(Self {
+            current_password: Zeroizing::new(wire.current_password),
+            new_password: Zeroizing::new(wire.new_password),
+            session_id: wire.session_id,
+            idempotency_key: wire.idempotency_key,
+        })
+    }
+}
+
 impl TauriAdapter {
     pub async fn get_secret_store_status(&self) -> CommandResult<SecretStoreStatusView> {
         Ok(self.secret.status().await?)
@@ -72,6 +101,13 @@ impl TauriAdapter {
 
     pub async fn list_secrets(&self) -> CommandResult<Vec<SecretMetadataView>> {
         Ok(self.secret.list_secrets().await?)
+    }
+
+    pub async fn lock_secret_store(
+        &self,
+        command: LockSecretStoreCommand,
+    ) -> CommandResult<LockSecretStoreResult> {
+        Ok(self.secret.lock(command).await?)
     }
 
     pub async fn put_secret(
@@ -112,6 +148,21 @@ impl TauriAdapter {
             .secret
             .unlock(UnlockSecretStoreCommand {
                 master_password: SecretValue::from_utf8(input.master_password.to_string()),
+                idempotency_key: input.idempotency_key,
+            })
+            .await?)
+    }
+
+    pub async fn change_master_password(
+        &self,
+        input: SensitiveChangePasswordInput,
+    ) -> CommandResult<SecretStoreSessionView> {
+        Ok(self
+            .secret
+            .change_master_password(ChangeMasterPasswordCommand {
+                current_password: SecretValue::from_utf8(input.current_password.to_string()),
+                new_password: SecretValue::from_utf8(input.new_password.to_string()),
+                session_id: input.session_id,
                 idempotency_key: input.idempotency_key,
             })
             .await?)

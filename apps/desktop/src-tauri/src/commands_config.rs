@@ -21,6 +21,14 @@ pub async fn list_channels(state: State<'_, TauriAdapter>) -> CommandResult<Vec<
 }
 
 #[tauri::command]
+pub async fn get_channel(
+    state: State<'_, TauriAdapter>,
+    channel_id: String,
+) -> CommandResult<ChannelView> {
+    state.get_channel(&channel_id).await
+}
+
+#[tauri::command]
 pub async fn publish_channel_revision(
     state: State<'_, TauriAdapter>,
     command: PublishChannelRevisionCommand,
@@ -34,6 +42,14 @@ pub async fn get_channel_revision(
     revision_id: String,
 ) -> CommandResult<LlmChannelRevision> {
     state.get_channel_revision(&revision_id).await
+}
+
+#[tauri::command]
+pub async fn get_channel_head_revision(
+    state: State<'_, TauriAdapter>,
+    channel_id: String,
+) -> CommandResult<LlmChannelRevision> {
+    state.get_channel_head_revision(&channel_id).await
 }
 
 #[tauri::command]
@@ -52,6 +68,14 @@ pub async fn list_context_presets(
 }
 
 #[tauri::command]
+pub async fn get_context_preset(
+    state: State<'_, TauriAdapter>,
+    preset_id: String,
+) -> CommandResult<ContextPresetView> {
+    state.get_context_preset(&preset_id).await
+}
+
+#[tauri::command]
 pub async fn publish_context_preset_version(
     state: State<'_, TauriAdapter>,
     command: PublishContextPresetVersionCommand,
@@ -65,6 +89,14 @@ pub async fn get_context_preset_version(
     version_id: String,
 ) -> CommandResult<ContextPresetVersion> {
     state.get_context_preset_version(&version_id).await
+}
+
+#[tauri::command]
+pub async fn get_context_preset_head(
+    state: State<'_, TauriAdapter>,
+    preset_id: String,
+) -> CommandResult<ContextPresetVersion> {
+    state.get_context_preset_head(&preset_id).await
 }
 
 #[tauri::command]

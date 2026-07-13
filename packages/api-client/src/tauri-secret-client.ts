@@ -1,11 +1,14 @@
 import {
   decodeSecretList,
+  decodeLockSecretStore,
   decodeSecretMetadata,
   decodeSecretStoreSession,
   decodeSecretStoreStatus,
 } from "./decode-secret";
 import type {
   PutSecretInput,
+  LockSecretStoreInput,
+  LockSecretStoreResult,
   SecretMetadataView,
   SecretPasswordCommandInput,
   SecretStoreSessionView,
@@ -34,6 +37,22 @@ export class TauriSecretClient {
 
   async put(input: PutSecretInput): Promise<SecretMetadataView> {
     return decodeSecretMetadata(await this.bridge.invoke("put_secret", { input }));
+  }
+
+  async lock(input: LockSecretStoreInput): Promise<LockSecretStoreResult> {
+    return decodeLockSecretStore(await this.bridge.invoke("lock_secret_store", { command: {
+      expectedSessionId: input.expectedSessionId,
+      idempotencyKey: input.idempotencyKey,
+    } }));
+  }
+
+  async changePassword(input: {
+    currentPassword: string;
+    newPassword: string;
+    sessionId: string;
+    idempotencyKey: string;
+  }): Promise<SecretStoreSessionView> {
+    return decodeSecretStoreSession(await this.bridge.invoke("change_master_password", { input }));
   }
 
   private async passwordCommand(

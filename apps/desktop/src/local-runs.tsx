@@ -18,7 +18,7 @@ import { config, localErrorMessage, runtime } from "./bridge";
 export function LocalRuns({ initialRunId, onRunOpened, onOpenContext, onReturnToStory }: {
   initialRunId: string | null;
   onRunOpened: () => void;
-  onOpenContext: () => void;
+  onOpenContext: (contextId: string, branchId: string) => void;
   onReturnToStory: () => void;
 }) {
   const [selected, setSelected] = useState<string | null>(initialRunId);
@@ -48,7 +48,7 @@ function LocalRunList({ onOpen }: { onOpen: (id: string) => void }) {
   return <RunList runs={runs} loading={loading} error={error} onReload={() => void reload()} onOpen={onOpen} />;
 }
 
-function LocalRunDetail({ runId, onBack, onOpenContext }: { runId: string; onBack: () => void; onOpenContext: () => void }) {
+function LocalRunDetail({ runId, onBack, onOpenContext }: { runId: string; onBack: () => void; onOpenContext: (contextId: string, branchId: string) => void }) {
   const [run, setRun] = useState<RunView | null>(null);
   const [revision, setRevision] = useState<GraphRevisionView | null>(null);
   const [waits, setWaits] = useState<WaitView[]>([]);

@@ -1,5 +1,6 @@
 export * from "./app-shell";
 export * from "./application-settings";
+export * from "./application-preferences-storage";
 export * from "./artifact-page";
 export * from "./context-preview-panel";
 export * from "./command-palette";

@@ -3,7 +3,9 @@ use zhuangsheng_core::{
         channel::{ChannelView, CreateChannelCommand},
         conversation::{CreateConversationCommand, UpdateConversationRunProfileCommand},
         graph::{
-            CreateGraphCommand, CreateGraphResult, CreateRolePlayTemplateCommand, GraphRevisionView,
+            ApplyGraphCommand, CreateGraphCommand, CreateGraphResult,
+            CreateRolePlayTemplateCommand, GraphDraftView, GraphRevisionView, GraphView,
+            UpdateGraphDraftCommand,
         },
         preset::{ContextPresetView, CreateContextPresetCommand},
     },
@@ -21,6 +23,28 @@ impl TauriAdapter {
         command: CreateGraphCommand,
     ) -> CommandResult<CreateGraphResult> {
         Ok(self.graph.create_graph(command).await?)
+    }
+
+    pub async fn list_graphs(&self) -> CommandResult<Vec<GraphView>> {
+        Ok(self.graph.list_graphs().await?)
+    }
+
+    pub async fn get_graph_draft(&self, graph_id: &str) -> CommandResult<GraphDraftView> {
+        Ok(self.graph.get_graph_draft(graph_id).await?)
+    }
+
+    pub async fn update_graph_draft(
+        &self,
+        command: UpdateGraphDraftCommand,
+    ) -> CommandResult<GraphDraftView> {
+        Ok(self.graph.update_graph_draft(command).await?)
+    }
+
+    pub async fn apply_graph(
+        &self,
+        command: ApplyGraphCommand,
+    ) -> CommandResult<GraphRevisionView> {
+        Ok(self.graph.apply_graph(command).await?)
     }
 
     pub async fn create_roleplay_template(
@@ -60,6 +84,17 @@ impl TauriAdapter {
 
     pub async fn get_graph_revision(&self, revision_id: &str) -> CommandResult<GraphRevisionView> {
         Ok(self.graph.get_graph_revision(revision_id).await?)
+    }
+
+    pub async fn get_graph_revision_for_graph(
+        &self,
+        graph_id: &str,
+        revision_id: &str,
+    ) -> CommandResult<GraphRevisionView> {
+        Ok(self
+            .graph
+            .get_graph_revision_for_graph(graph_id, revision_id)
+            .await?)
     }
 
     pub async fn list_roleplay_graph_options(&self) -> CommandResult<Vec<RolePlayGraphOptionView>> {

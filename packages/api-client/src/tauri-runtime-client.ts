@@ -1,10 +1,10 @@
 import { decodeEffectResolution } from "./decode-effect";
 import { DecodeError } from "./decode-error";
-import { decodeRun, decodeRunList } from "./decode-runs";
+import { assertJson, decodeRun, decodeRunList, decodeRunOutputs } from "./decode-runs";
 import type { RunEventStreamObserver } from "./http-sse";
 import { decodeOpenWaits, decodeWaitDelivery } from "./decode-waits";
 import type { ResolveEffectUnknownInput, EffectResolutionView } from "./effect-types";
-import type { RunControlInput, RunListView, RunView } from "./run-types";
+import type { RunControlInput, RunListView, RunOutputsView, RunView } from "./run-types";
 import { TauriTransport, type TauriBridge } from "./transport";
 import type {
   SubmitHumanResponseInput,
@@ -23,6 +23,22 @@ export class TauriRuntimeClient {
 
   async listRecentRuns(limit = 50): Promise<RunListView> {
     return decodeRunList(await this.bridge.invoke("list_recent_runs", { limit }));
+  }
+
+  async getRunOutputs(runId: string): Promise<RunOutputsView> {
+    return decodeRunOutputs(await this.bridge.invoke("get_run_outputs", { runId }));
+  }
+
+  async loadJsonValue(valueRef: string): Promise<unknown> {
+    const bytes = await this.bridge.invoke<unknown>("load_json_value_bytes", { valueRef });
+    if (!Array.isArray(bytes) || bytes.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 255)) {
+      throw new DecodeError("jsonValue.bytes");
+    }
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder().decode(Uint8Array.from(bytes as number[]))); }
+    catch { throw new DecodeError("jsonValue"); }
+    assertJson(value, "jsonValue");
+    return value;
   }
 
   async getRun(runId: string): Promise<RunView> {

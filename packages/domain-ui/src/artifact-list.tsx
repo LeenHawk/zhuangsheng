@@ -6,9 +6,10 @@ import { Badge, Button } from "@zhuangsheng/ui";
 interface Props {
   items: ArtifactView[];
   contentUrl: (artifactId: string) => string;
+  onDownload?: (artifactId: string) => Promise<void>;
 }
 
-export function ArtifactList({ items, contentUrl }: Props) {
+export function ArtifactList({ items, contentUrl, onDownload }: Props) {
   if (items.length === 0) {
     return <div className="rounded-2xl border border-dashed border-default p-8 text-center text-sm text-muted">还没有 committed artifact。</div>;
   }
@@ -26,12 +27,16 @@ export function ArtifactList({ items, contentUrl }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={metadata.classification === "sensitive" ? "danger" : metadata.classification === "public" ? "success" : "info"}>{classification(metadata.classification)}</Badge>
           <Badge>{retention(metadata.retention)}</Badge>
-          <Button asChild variant="secondary">
+          {onDownload ? <Button variant="secondary" onClick={() => {
+            const confirmSensitive = document.documentElement.dataset.confirmSensitiveDownloads !== "false";
+            if (confirmSensitive && metadata.classification === "sensitive" && !window.confirm("这是敏感 Artifact。确认下载到本地设备？")) return;
+            void onDownload(metadata.artifactId);
+          }}><Download className="size-4" />下载</Button> : <Button asChild variant="secondary">
             <a href={contentUrl(metadata.artifactId)} download={metadata.name ?? "artifact"} onClick={(event) => {
               const confirmSensitive = document.documentElement.dataset.confirmSensitiveDownloads !== "false";
               if (confirmSensitive && metadata.classification === "sensitive" && !window.confirm("这是敏感 Artifact。确认下载到本地设备？")) event.preventDefault();
             }}><Download className="size-4" />下载</a>
-          </Button>
+          </Button>}
         </div>
       </div>
       <p className="mt-3 truncate font-mono text-[11px] text-muted">metadata head {metadataHeadCommitId}</p>

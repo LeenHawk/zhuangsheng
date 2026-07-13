@@ -3,10 +3,14 @@ import { listen } from "@tauri-apps/api/event";
 
 import {
   TauriConversationClient,
+  TauriArtifactClient,
   TauriConfigClient,
+  TauriContextClient,
+  TauriGraphClient,
   TauriRuntimeClient,
   TauriMemoryClient,
   TauriSecretClient,
+  TauriToolClient,
   TauriTransport,
   type TauriBridge,
 } from "@zhuangsheng/api-client";
@@ -21,10 +25,14 @@ export const bridge: TauriBridge = {
 
 export const transport = new TauriTransport(bridge);
 export const conversations = new TauriConversationClient(bridge);
+export const artifacts = new TauriArtifactClient(bridge);
 export const config = new TauriConfigClient(bridge);
+export const contexts = new TauriContextClient(bridge);
+export const graphs = new TauriGraphClient(bridge);
 export const runtime = new TauriRuntimeClient(bridge);
 export const memory = new TauriMemoryClient(bridge);
 export const secrets = new TauriSecretClient(bridge);
+export const tools = new TauriToolClient(bridge);
 
 export const localErrorMessage = (cause: unknown) => {
   if (cause && typeof cause === "object") {

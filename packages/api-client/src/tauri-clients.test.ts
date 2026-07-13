@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { TauriConversationClient } from "./tauri-conversation-client";
+import { TauriArtifactClient } from "./tauri-artifact-client";
+import { TauriContextClient } from "./tauri-context-client";
 import { TauriMemoryClient } from "./tauri-memory-client";
 import { TauriRuntimeClient } from "./tauri-runtime-client";
 import type { TauriBridge } from "./transport";
@@ -69,6 +71,52 @@ describe("Tauri application clients", () => {
     });
     expect(JSON.stringify(calls[0]?.payload)).not.toContain("requestedBy");
     expect(JSON.stringify(calls[0]?.payload)).not.toContain("actor");
+  });
+
+  it("normalizes context patch authors at the transport boundary", async () => {
+    const calls: Array<{ operation: string; payload: unknown }> = [];
+    const contexts = new TauriContextClient(bridge(calls, {
+      id: "commit_2", contextId: "context_1", branchId: "branch_1", sequenceNo: 2,
+      operationId: "operation_1", parentCommitIds: ["commit_1"], patchRef: "object_1",
+      schemaVersion: 1, policyVersion: 1, author: { kind: "user", id: "local-user" },
+      originRunId: null, originNodeInstanceId: null, createdAt: 2,
+    }));
+    await contexts.commitPatch("context_1", "branch_1", {
+      baseCommitId: "commit_1", operationId: "operation_1",
+      ops: [{ op: "add", path: "/fact", value: true }],
+      schemaVersion: 1, policyVersion: 1,
+    });
+    expect(calls[0]?.payload).toMatchObject({ command: { patch: {
+      aggregateId: "context_1", lineageKey: "branch_1",
+      author: { kind: "user", id: "local-user" },
+    } } });
+  });
+
+  it("keeps native artifact staging and completion as two explicit phases", async () => {
+    const calls: Array<{ operation: string; payload: unknown }> = [];
+    const artifacts = new TauriArtifactClient({
+      invoke: async <T>(operation: string, payload: unknown) => {
+        calls.push({ operation, payload });
+        return {
+          stagingId: "staging_1",
+          status: operation === "create_artifact_staging" ? "uploading" : "validated",
+          lifecycleGeneration: operation === "create_artifact_staging" ? 1 : 2,
+          byteSize: operation === "create_artifact_staging" ? null : 2,
+          contentHash: operation === "create_artifact_staging" ? null : `sha256:${"a".repeat(64)}`,
+          validatedMediaType: operation === "create_artifact_staging" ? null : "text/plain",
+        } as T;
+      },
+      listen: async () => () => undefined,
+    });
+    const result = await artifacts.upload({
+      object: new Blob(["\u0001\u0002"], { type: "text/plain" }),
+      name: "note.txt", classification: "private", retention: { type: "pinned" },
+    });
+    expect(result.status).toBe("validated");
+    expect(calls.map((call) => call.operation)).toEqual([
+      "create_artifact_staging", "complete_artifact_staging",
+    ]);
+    expect(calls[1]?.payload).toMatchObject({ input: { bytes: [1, 2] } });
   });
 });
 

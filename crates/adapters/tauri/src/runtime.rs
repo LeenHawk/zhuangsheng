@@ -8,8 +8,8 @@ use zhuangsheng_core::{
     },
     runtime::{
         ContextBranchView, DurableRunEventView, ForkContextCommand, RunControlCommand, RunListView,
-        RunView, StartRunCommand, SubmitWaitResponseCommand, WaitDeliveryView, WaitResponsePayload,
-        WaitView,
+        RunOutputsView, RunView, StartRunCommand, SubmitWaitResponseCommand, WaitDeliveryView,
+        WaitResponsePayload, WaitView,
     },
 };
 
@@ -47,6 +47,14 @@ impl TauriAdapter {
 
     pub async fn list_recent_runs(&self, limit: u32) -> CommandResult<RunListView> {
         Ok(self.runtime.list_recent_runs(limit.min(100)).await?)
+    }
+
+    pub async fn get_run_outputs(&self, run_id: &str) -> CommandResult<RunOutputsView> {
+        Ok(self.runtime.get_run_outputs(run_id).await?)
+    }
+
+    pub async fn load_json_value_bytes(&self, value_ref: &str) -> CommandResult<Vec<u8>> {
+        Ok(self.runtime.load_json_value_bytes(value_ref).await?)
     }
 
     pub async fn list_open_waits(&self, run_id: &str) -> CommandResult<Vec<WaitView>> {

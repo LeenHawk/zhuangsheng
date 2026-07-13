@@ -19,6 +19,7 @@ export function LibraryPage(props: {
   onOpenSettings: () => void;
   onOpenArtifacts: () => void;
   contentUrl: (artifactId: string) => string;
+  onDownloadArtifact?: (artifactId: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<Tab>("presets");
   const [query, setQuery] = useState("");
@@ -33,7 +34,7 @@ export function LibraryPage(props: {
     {props.loading ? <div className="mt-6 grid gap-3 sm:grid-cols-2">{[0, 1, 2, 3].map((item) => <div key={item} className="h-32 animate-pulse rounded-2xl bg-elevated" />)}</div> : <div className="mt-6">
       {tab === "presets" && <ResourceGrid empty="还没有角色或 Context preset。">{presets.map((preset) => { const version = preset.headVersionId ? props.versions[preset.headVersionId] : undefined; return <ResourceCard key={preset.id} icon={<BookUser className="size-5" />} title={preset.name} id={preset.id} status={version ? `published v${version.versionNo}` : "draft only"} detail={version ? `semantic policy ${version.semanticPolicyVersion} · ${version.contentHash}` : "尚未发布，不能被新 Run 固定"} />; })}</ResourceGrid>}
       {tab === "templates" && <ResourceGrid empty="还没有 Agent 模板。">{templates.map((template) => <ResourceCard key={template.revisionId} icon={<Workflow className="size-5" />} title={template.graphName} id={template.revisionId} status={`revision ${template.revisionNo}`} detail={template.compatibility.mode === "editable" ? "用户模式可完整编辑" : template.compatibility.mode === "partial" ? `部分兼容 · ${template.compatibility.lockedReasons.join("、")}` : `专家专用 · ${template.compatibility.reasons.join("、")}`} />)}</ResourceGrid>}
-      {tab === "assets" && <ArtifactList items={artifacts} contentUrl={props.contentUrl} />}
+      {tab === "assets" && <ArtifactList items={artifacts} contentUrl={props.contentUrl} onDownload={props.onDownloadArtifact} />}
     </div>}
     <div className="mt-6 flex flex-wrap gap-2"><Button variant="secondary" onClick={props.onOpenSettings}>{tab === "templates" ? "创建 Agent 模板" : "创建角色 / Context"}</Button><Button variant="ghost" onClick={props.onOpenArtifacts}><FileArchive className="size-4" />导入或管理 Artifact</Button></div>
   </div>;

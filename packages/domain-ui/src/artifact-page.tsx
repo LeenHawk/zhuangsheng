@@ -16,6 +16,7 @@ interface Props {
   onUpload: (input: UploadArtifactInput) => Promise<void>;
   onRetryCommit: () => void;
   contentUrl: (artifactId: string) => string;
+  onDownload?: (artifactId: string) => Promise<void>;
 }
 
 export function ArtifactPage(props: Props) {
@@ -49,6 +50,6 @@ export function ArtifactPage(props: Props) {
       <label className="grid gap-2 text-sm font-medium">Retention<select aria-label="Artifact retention" className="min-h-10 rounded-xl border border-default bg-elevated px-3" value={retention} onChange={(event) => setRetention(event.target.value as typeof retention)}><option value="pinned">固定保留</option><option value="ephemeral">临时 24 小时</option></select></label>
       <Button type="submit" disabled={!file || props.pending || props.pendingCommit !== null}><Upload className="size-4" />上传并 commit</Button>
     </form>
-    <section><div className="mb-3 flex items-center justify-between"><h2 className="font-display text-xl font-bold">Committed artifacts</h2><span className="text-xs text-muted">{props.items.length} 项</span></div>{props.loading ? <p className="text-sm text-muted">正在读取 metadata projection…</p> : <ArtifactList items={props.items} contentUrl={props.contentUrl} />}</section>
+    <section><div className="mb-3 flex items-center justify-between"><h2 className="font-display text-xl font-bold">Committed artifacts</h2><span className="text-xs text-muted">{props.items.length} 项</span></div>{props.loading ? <p className="text-sm text-muted">正在读取 metadata projection…</p> : <ArtifactList items={props.items} contentUrl={props.contentUrl} onDownload={props.onDownload} />}</section>
   </div>;
 }

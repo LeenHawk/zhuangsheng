@@ -14,7 +14,14 @@ import {
   type SecretMetadataView,
   type SecretStoreStatusView,
 } from "@zhuangsheng/api-client";
-import { buildRolePresetSpec, SettingsSetup, type RolePresetInput } from "@zhuangsheng/domain-ui";
+import {
+  ApplicationSettings,
+  buildRolePresetSpec,
+  loadApplicationPreferences,
+  saveApplicationPreferences,
+  SettingsSetup,
+  type RolePresetInput,
+} from "@zhuangsheng/domain-ui";
 
 import { config, conversations, localErrorMessage, secrets } from "./bridge";
 
@@ -23,6 +30,7 @@ interface ChannelInput { name: string; baseUrl: string; providerKind: Generation
 interface SecretInput { secretId: string; name: string; value: string; masterPassword: string; passwordCommandKey: string; putCommandKey: string }
 
 export function LocalSettings() {
+  const [preferences, setPreferences] = useState(loadApplicationPreferences);
   const [status, setStatus] = useState<SecretStoreStatusView | null>(null);
   const [secretRefs, setSecretRefs] = useState<SecretMetadataView[]>([]);
   const [channels, setChannels] = useState<ChannelView[]>([]);
@@ -113,5 +121,8 @@ export function LocalSettings() {
   const inspect = (template: RolePlayGraphOptionView) => void action("settings", async () => {
     setSettings(await config.getRolePlaySettings(template.revisionId));
   });
-  return <SettingsSetup status={status} secrets={secretRefs} channels={channels} presets={presets} templates={templates} preview={preview} discovery={discovery} rolePlaySettings={settings} loading={loading} pending={pending} error={error} onReload={() => void load()} onStoreSecret={storeSecret} onPublishChannel={publishChannel} onPublishPreset={publishPreset} onPreviewPreset={previewPreset} onCreateTemplate={createTemplate} onDiscoverModels={discoverModels} onPublishDiscoveredModel={publishModel} onInspectTemplate={inspect} />;
+  const savePreferences = (value: typeof preferences) => {
+    saveApplicationPreferences(value); setPreferences(value);
+  };
+  return <div className="mx-auto max-w-5xl space-y-6 pb-24"><ApplicationSettings value={preferences} onSave={savePreferences} /><SettingsSetup status={status} secrets={secretRefs} channels={channels} presets={presets} templates={templates} preview={preview} discovery={discovery} rolePlaySettings={settings} loading={loading} pending={pending} error={error} onReload={() => void load()} onStoreSecret={storeSecret} onPublishChannel={publishChannel} onPublishPreset={publishPreset} onPreviewPreset={previewPreset} onCreateTemplate={createTemplate} onDiscoverModels={discoverModels} onPublishDiscoveredModel={publishModel} onInspectTemplate={inspect} /></div>;
 }
