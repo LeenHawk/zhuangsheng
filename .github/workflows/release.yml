@@ -1,0 +1,287 @@
+name: Release
+
+# Publishing a GitHub Release builds and attaches all deliverables. A manual
+# run builds the same matrix for validation and leaves the files as artifacts.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  desktop:
+    name: ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: x64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            bundles: deb
+          - os: windows
+            arch: x64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+          - os: windows
+            arch: arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundles: nsis,msi
+          - os: macos
+            arch: x64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: dmg
+          - os: macos
+            arch: arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+            bundles: dmg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install Linux desktop dependencies
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl file libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev wget
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build application and installers
+        run: >-
+          pnpm --filter @zhuangsheng/desktop tauri build
+          --target ${{ matrix.target }}
+          --bundles "${{ matrix.bundles }}"
+          --ci
+          --no-sign
+
+      - name: Stage Linux and macOS deliverables
+        if: matrix.os != 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="apps/desktop/src-tauri/target/${{ matrix.target }}/release"
+          mkdir -p dist
+          test -x "$root/zhuangsheng-desktop"
+          cp "$root/zhuangsheng-desktop" "dist/zhuangsheng-${{ matrix.os }}-${{ matrix.arch }}"
+
+          if [ "${{ matrix.os }}" = linux ]; then
+            packages=("$root/bundle/deb/"*.deb)
+            test -e "${packages[0]}"
+            test "${#packages[@]}" -eq 1
+            cp "${packages[0]}" "dist/zhuangsheng-linux-${{ matrix.arch }}.deb"
+          else
+            packages=("$root/bundle/dmg/"*.dmg)
+            test -e "${packages[0]}"
+            test "${#packages[@]}" -eq 1
+            cp "${packages[0]}" "dist/zhuangsheng-macos-${{ matrix.arch }}.dmg"
+            codesign --force --sign - "dist/zhuangsheng-macos-${{ matrix.arch }}"
+          fi
+
+          (cd dist && shasum -a 256 zhuangsheng-* > "SHA256SUMS-${{ matrix.os }}-${{ matrix.arch }}.txt")
+
+      - name: Stage Windows deliverables
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = "apps/desktop/src-tauri/target/${{ matrix.target }}/release"
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          Copy-Item "$root/zhuangsheng-desktop.exe" "dist/zhuangsheng-windows-${{ matrix.arch }}.exe"
+          $nsis = @(Get-ChildItem "$root/bundle/nsis" -Filter *.exe -File)
+          $msi = @(Get-ChildItem "$root/bundle/msi" -Filter *.msi -File)
+          if ($nsis.Count -ne 1 -or $msi.Count -ne 1) {
+            throw "Expected exactly one NSIS installer and one MSI package"
+          }
+          Copy-Item $nsis[0].FullName "dist/zhuangsheng-windows-${{ matrix.arch }}-setup.exe"
+          Copy-Item $msi[0].FullName "dist/zhuangsheng-windows-${{ matrix.arch }}.msi"
+
+          $lines = Get-ChildItem dist -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)"
+          }
+          $lines | Out-File "dist/SHA256SUMS-windows-${{ matrix.arch }}.txt" -Encoding ascii
+
+      - name: Upload desktop deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  android:
+    name: Android APK (arm64 + x64)
+    runs-on: ubuntu-24.04
+    env:
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      NDK_VERSION: 27.0.12077973
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-aarch64-x86_64
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Prepare Android signing key
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD; do
+            test -n "${!name:-}" || {
+              echo "Missing required repository secret: $name" >&2
+              exit 1
+            }
+          done
+          keystore="$RUNNER_TEMP/zhuangsheng-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+
+      - name: Initialize Android project and configure release signing
+        run: |
+          pnpm --filter @zhuangsheng/desktop tauri android init --ci
+          node scripts/configure-android-signing.mjs
+
+      - name: Build split APKs
+        run: >-
+          pnpm --filter @zhuangsheng/desktop tauri android build
+          --apk
+          --split-per-abi
+          --ci
+          --target aarch64 x86_64
+
+      - name: Verify and stage APKs
+        run: |
+          set -euo pipefail
+          output="apps/desktop/src-tauri/gen/android/app/build/outputs/apk"
+          mapfile -t apks < <(find "$output" -type f -name '*-release.apk')
+          test "${#apks[@]}" -eq 2 || {
+            echo "Expected two split release APKs, found ${#apks[@]}" >&2
+            exit 1
+          }
+
+          mkdir -p dist
+          for apk in "${apks[@]}"; do
+            "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose "$apk"
+            arm64=false
+            x64=false
+            unzip -l "$apk" | grep -q 'lib/arm64-v8a/' && arm64=true || true
+            unzip -l "$apk" | grep -q 'lib/x86_64/' && x64=true || true
+            if $arm64 && ! $x64; then
+              cp "$apk" dist/zhuangsheng-android-arm64.apk
+            elif $x64 && ! $arm64; then
+              cp "$apk" dist/zhuangsheng-android-x64.apk
+            else
+              echo "APK does not contain exactly one requested ABI: $apk" >&2
+              exit 1
+            fi
+          done
+
+          test -f dist/zhuangsheng-android-arm64.apk
+          test -f dist/zhuangsheng-android-x64.apk
+          (cd dist && sha256sum zhuangsheng-android-*.apk > SHA256SUMS-android.txt)
+
+      - name: Upload Android APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attach deliverables to GitHub Release
+    if: github.event_name == 'release'
+    needs: [desktop, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all deliverables
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Show release contents
+        run: find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          fail_on_unmatched_files: true
