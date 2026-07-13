@@ -45,6 +45,32 @@ pub struct SillyTavernImportPreview {
     pub warnings: Vec<SillyTavernImportWarning>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SillyTavernExportScope {
+    Preset,
+    Global,
+    Character,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SillyTavernExportDocument {
+    pub file_name: String,
+    pub kind: SillyTavernPresetKind,
+    pub scope: SillyTavernExportScope,
+    pub source_hash: String,
+    pub document: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SillyTavernExportBundle {
+    pub compatibility_version: u32,
+    pub documents: Vec<SillyTavernExportDocument>,
+    pub warnings: Vec<SillyTavernImportWarning>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SillyTavernImportInput {
     pub document: Value,

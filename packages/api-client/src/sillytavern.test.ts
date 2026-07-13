@@ -12,7 +12,7 @@ describe("SillyTavern compatibility clients", () => {
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ input, init });
       const url = String(input);
-      return Response.json(url.endsWith("/regex/test") ? regexResult() : url.endsWith("/import") ? result() : preview(), {
+      return Response.json(url.endsWith("/regex/test") ? regexResult() : url.endsWith("/import") ? result() : url.endsWith("/export") ? exportResult() : preview(), {
         status: url.endsWith("/import") ? 201 : 200,
       });
     });
@@ -33,6 +33,7 @@ describe("SillyTavern compatibility clients", () => {
       expectedHeadVersionId: null,
       channelId: null,
     }, "st-import-key");
+    const exported = await client.exportSillyTavern({ presetVersionId: "presetver_1" });
     expect(calls[0]?.input).toBe(
       "https://settings.example/v1/compatibility/sillytavern/preview",
     );
@@ -42,12 +43,16 @@ describe("SillyTavern compatibility clients", () => {
     expect(calls[2]?.input).toBe(
       "https://settings.example/v1/compatibility/sillytavern/import",
     );
+    expect(calls[3]?.input).toBe(
+      "https://settings.example/v1/compatibility/sillytavern/export",
+    );
     expect(calls[2]?.init?.headers).toMatchObject({ "idempotency-key": "st-import-key" });
     expect(parsed.textTransforms[0]).toMatchObject({
       id: "clean", surfaces: ["canonical"], placements: ["ai_output"],
     });
     expect(imported.version.spec.textTransforms).toBeDefined();
     expect(tested).toEqual(regexResult());
+    expect(exported.bundle.documents[0]?.scope).toBe("preset");
   });
 
   it("maps Tauri preview and apply to the same command DTOs", async () => {
@@ -55,7 +60,7 @@ describe("SillyTavern compatibility clients", () => {
     const bridge: TauriBridge = {
       invoke: async <T>(operation: string, payload: unknown) => {
         calls.push({ operation, payload });
-        return (operation === "preview_sillytavern_import" ? preview() : operation === "test_sillytavern_regex" ? regexResult() : result()) as T;
+        return (operation === "preview_sillytavern_import" ? preview() : operation === "test_sillytavern_regex" ? regexResult() : operation === "export_sillytavern" ? exportResult() : result()) as T;
       },
       listen: async () => () => undefined,
     };
@@ -63,10 +68,12 @@ describe("SillyTavern compatibility clients", () => {
     await client.previewSillyTavernImport({ document: [], sourceName: "regex.json" });
     await client.testSillyTavernRegex({ document: [], input: "foo", placement: "ai_output", surface: "canonical" });
     await client.applySillyTavernImport({ document: [], sourceName: "regex.json" }, "native-key");
+    await client.exportSillyTavern({ presetVersionId: "presetver_1" });
     expect(calls.map((call) => call.operation)).toEqual([
       "preview_sillytavern_import",
       "test_sillytavern_regex",
       "apply_sillytavern_import",
+      "export_sillytavern",
     ]);
     expect(calls[2]?.payload).toMatchObject({ command: {
       sourceName: "regex.json", targetPresetId: null,
@@ -76,6 +83,19 @@ describe("SillyTavern compatibility clients", () => {
 });
 
 const regexResult = () => ({ text: "bar", appliedRuleIds: ["clean"] });
+
+const exportResult = () => ({
+  sourcePresetVersionId: "presetver_1",
+  sourceGraphRevisionId: null,
+  bundle: {
+    compatibilityVersion: 1,
+    documents: [{
+      fileName: "sillytavern-preset.json", kind: "open_ai", scope: "preset",
+      sourceHash: `sha256:${"c".repeat(64)}`, document: { prompts: [], prompt_order: [] },
+    }],
+    warnings: [],
+  },
+});
 
 const preview = () => ({
   compatibilityVersion: 1,

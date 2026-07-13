@@ -12,6 +12,8 @@ import {
   type SillyTavernImportResultView,
   type SillyTavernRegexTestResultView,
   type TestSillyTavernRegexInput,
+  type ExportSillyTavernInput,
+  type SillyTavernVersionExportView,
 } from "@zhuangsheng/api-client";
 import { Badge, Button, Card } from "@zhuangsheng/ui";
 
@@ -22,6 +24,7 @@ export interface SillyTavernImportActions {
   preview(input: SillyTavernImportInput): Promise<SillyTavernImportPreviewView>;
   apply(input: ApplySillyTavernImportInput): Promise<SillyTavernImportResultView>;
   test(input: TestSillyTavernRegexInput): Promise<SillyTavernRegexTestResultView>;
+  export(input: ExportSillyTavernInput): Promise<SillyTavernVersionExportView>;
 }
 
 export function SillyTavernImportCard({

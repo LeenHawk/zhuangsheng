@@ -126,6 +126,31 @@ async fn sillytavern_preview_and_import_share_the_canonical_workflow() {
         first["version"]["spec"]["textTransforms"][0]["id"],
         "clean-output"
     );
+    let exported = call(
+        &app,
+        request(
+            "POST",
+            "/v1/compatibility/sillytavern/export",
+            json!({
+                "presetVersionId":first["version"]["id"],
+                "graphRevisionId":first["graphRevision"]["id"]
+            }),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        exported["bundle"]["documents"][0]["document"]["openai_max_tokens"],
+        512
+    );
+    assert_eq!(
+        exported["bundle"]["documents"][0]["document"]["extensions"]["regex_scripts"][0]["id"],
+        "clean-output"
+    );
+    let exported_json = serde_json::to_string(&exported).unwrap();
+    assert!(!exported_json.contains("do-not-leak"));
+    assert!(!exported_json.contains("secret.invalid"));
 }
 
 fn preset_document() -> Value {

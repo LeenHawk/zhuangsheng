@@ -26,7 +26,7 @@ const exactJsonOperations = new Set([
   "publish_channel_revision", "get_channel_revision", "get_channel_head_revision",
   "discover_channel_models", "publish_context_preset_version", "get_context_preset_version",
   "get_context_preset_head", "preview_context_preset", "commit_context_patch",
-  "preview_sillytavern_import", "test_sillytavern_regex", "apply_sillytavern_import",
+  "preview_sillytavern_import", "test_sillytavern_regex", "apply_sillytavern_import", "export_sillytavern",
   "get_working_context", "get_context_at_commit", "diff_context_commits",
   "list_memory_proposals", "propose_memory_change", "decide_memory_proposal",
   "apply_memory_proposal", "get_memory_record", "search_memory", "list_tool_descriptors",

@@ -214,3 +214,28 @@ export interface SillyTavernImportResultView {
   version: ContextPresetVersionView;
   graphRevision: GraphRevisionView | null;
 }
+
+export type SillyTavernExportScope = "preset" | "global" | "character";
+
+export interface ExportSillyTavernInput {
+  presetVersionId: string;
+  graphRevisionId?: string | null;
+}
+
+export interface SillyTavernExportDocumentView {
+  fileName: string;
+  kind: SillyTavernPresetKind;
+  scope: SillyTavernExportScope;
+  sourceHash: string;
+  document: JsonValue;
+}
+
+export interface SillyTavernVersionExportView {
+  sourcePresetVersionId: string;
+  sourceGraphRevisionId: string | null;
+  bundle: {
+    compatibilityVersion: 1;
+    documents: SillyTavernExportDocumentView[];
+    warnings: SillyTavernImportWarningView[];
+  };
+}

@@ -15,7 +15,9 @@ use super::{
 };
 use crate::llm::context::{ContextAssemblySpec, ContextPresetVersion};
 
+mod export;
 mod regex_test;
+pub use export::*;
 pub use regex_test::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

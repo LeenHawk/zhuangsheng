@@ -14,6 +14,15 @@ pub fn detect_preset_kind(document: &Value) -> SillyTavernPresetKind {
     {
         return SillyTavernPresetKind::OpenAi;
     }
+    if document
+        .pointer("/data/extensions/regex_scripts")
+        .is_some_and(is_regex_array)
+        || document
+            .pointer("/extensions/regex_scripts")
+            .is_some_and(is_regex_array)
+    {
+        return SillyTavernPresetKind::RegexScripts;
+    }
     if ["context", "instruct", "sysprompt", "reasoning", "preset"]
         .iter()
         .any(|key| object.contains_key(*key))

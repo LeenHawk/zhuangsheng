@@ -8,8 +8,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use zhuangsheng_core::{
     application::sillytavern::{
-        ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand, SillyTavernImportResult,
-        SillyTavernRegexTestResult, TestSillyTavernRegexCommand, apply_sillytavern_import,
+        ApplySillyTavernImportCommand, ExportSillyTavernCommand, PreviewSillyTavernImportCommand,
+        SillyTavernImportResult, SillyTavernRegexTestResult, SillyTavernVersionExport,
+        TestSillyTavernRegexCommand, apply_sillytavern_import, export_sillytavern,
         preview_sillytavern_import, test_sillytavern_regex,
     },
     compatibility::sillytavern::SillyTavernImportPreview,
@@ -44,7 +45,22 @@ pub fn routes() -> Router<AppState> {
         .route("/v1/compatibility/sillytavern/preview", post(preview))
         .route("/v1/compatibility/sillytavern/regex/test", post(test_regex))
         .route("/v1/compatibility/sillytavern/import", post(apply))
+        .route("/v1/compatibility/sillytavern/export", post(export))
         .layer(DefaultBodyLimit::max(16 * 1024 * 1024))
+}
+
+async fn export(
+    State(state): State<AppState>,
+    body: Result<Json<ExportSillyTavernCommand>, JsonRejection>,
+) -> ApiResult<Json<SillyTavernVersionExport>> {
+    Ok(Json(
+        export_sillytavern(
+            state.preset_service.as_ref(),
+            state.graph_service.as_ref(),
+            json_body(body)?,
+        )
+        .await?,
+    ))
 }
 
 async fn test_regex(

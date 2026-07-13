@@ -23,7 +23,7 @@ SillyTavern JSON
   -> publish ContextPresetVersion + GraphRevision
 ```
 
-原始文档的 canonical bytes、format kind 和 content hash作为来源 metadata 保留，便于审计和重新导出。执行时不得回读原始 JSON推导 prompt。
+preview 返回原始文档的 format kind 和 canonical content hash用于当次审计；发布只持久化规范化后的 `ContextPresetVersion` / `GraphRevision`，不保存可能夹带连接字段或 secret 的原始 JSON。export 从已发布 revision重建规范化酒馆文档，因此保证已支持语义往返，不承诺字节级复刻。执行时不得回读原始 JSON推导 prompt。
 
 正则转换是 `ContextAssemblySpec` 的版本化组成部分。它随 preset content hash、execution snapshot 和 assembly digest 固定；规则顺序不可由数据库返回顺序或 UI 排序隐式决定。
 
@@ -88,6 +88,8 @@ find pattern接受酒馆 `/pattern/flags` 格式，replacement支持 `{{match}}`
 Web 和 Tauri提供同构命令：detect/preview、test regex、apply import、export。导入先显示：识别类型、prompt顺序、生成参数、正则数量、inactive/locked字段和目标 preset diff；用户确认后才发布 canonical revision。
 
 `apply import` 可选目标 Channel。选择后，同一个幂等工作流会发布或选定 `ContextPresetVersion`，再创建固定导入 generation/provider extensions 的 Role Play `GraphRevision`；generation-only 文件必须与一个已发布的 ContextPreset组合，不能生成空角色。`test regex` 始终复用 preview 后的规范化规则、显式 surface/placement/depth 和宏上下文，不维护第二套浏览器正则语义。
+
+export 以 `ContextPresetVersion` 为必选来源、以 `GraphRevision` 为可选生成参数来源。preset/global/character scope 的规则分别输出为多个 JSON 文档，避免把规则错误降级成同一 scope；headers、连接字段和非白名单 provider option永不导出。
 
 用户模式提供“导入酒馆预设”向导和规则启停/测试；专家模式显示原始字段映射、pattern flags、placement、depth、provenance和失败原因。任何 invalid/inactive规则都不能被绿色“已兼容”状态掩盖。
 

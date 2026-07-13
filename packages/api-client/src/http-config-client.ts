@@ -1,6 +1,6 @@
 import { decodeChannel, decodeChannelModelDiscovery, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
-import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult, decodeSillyTavernRegexTestResult } from "./decode-sillytavern";
-import type { ApplySillyTavernImportInput, ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, PublishChannelInput, PublishPresetInput, SillyTavernImportInput, SillyTavernImportPreviewView, SillyTavernImportResultView, SillyTavernRegexTestResultView, TestSillyTavernRegexInput } from "./config-types";
+import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult, decodeSillyTavernRegexTestResult, decodeSillyTavernVersionExport } from "./decode-sillytavern";
+import type { ApplySillyTavernImportInput, ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, ExportSillyTavernInput, PublishChannelInput, PublishPresetInput, SillyTavernImportInput, SillyTavernImportPreviewView, SillyTavernImportResultView, SillyTavernRegexTestResultView, SillyTavernVersionExportView, TestSillyTavernRegexInput } from "./config-types";
 import { DecodeError } from "./decode-error";
 import { stringifyJsonExact } from "./exact-json";
 import { requestJson } from "./http-json";
@@ -188,6 +188,25 @@ export class HttpConfigClient {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: stringifyJsonExact(regexTestBody(input)),
+        signal,
+      },
+    ));
+  }
+
+  async exportSillyTavern(
+    input: ExportSillyTavernInput,
+    signal?: AbortSignal,
+  ): Promise<SillyTavernVersionExportView> {
+    return decodeSillyTavernVersionExport(await requestJson(
+      this.baseUrl,
+      "/v1/compatibility/sillytavern/export",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: stringifyJsonExact({
+          presetVersionId: input.presetVersionId,
+          graphRevisionId: input.graphRevisionId ?? null,
+        }),
         signal,
       },
     ));

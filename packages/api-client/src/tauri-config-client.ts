@@ -8,7 +8,7 @@ import {
   decodeContextPresets,
   decodeContextPresetVersion,
 } from "./decode-config";
-import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult, decodeSillyTavernRegexTestResult } from "./decode-sillytavern";
+import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult, decodeSillyTavernRegexTestResult, decodeSillyTavernVersionExport } from "./decode-sillytavern";
 import { decodeGraphRevision } from "./decode-graphs";
 import { decodeRolePlaySettings } from "./decode-roleplay";
 import { DecodeError } from "./decode-error";
@@ -21,6 +21,7 @@ import type {
   ContextPresetVersionView,
   ContextPresetView,
   DiscoveredChannelModel,
+  ExportSillyTavernInput,
   PublishChannelInput,
   PublishPresetInput,
   ApplySillyTavernImportInput,
@@ -28,6 +29,7 @@ import type {
   SillyTavernImportPreviewView,
   SillyTavernImportResultView,
   SillyTavernRegexTestResultView,
+  SillyTavernVersionExportView,
   TestSillyTavernRegexInput,
 } from "./config-types";
 import type { GraphRevisionView } from "./graph-types";
@@ -195,6 +197,18 @@ export class TauriConfigClient {
         depth: input.depth ?? null,
         isEdit: input.isEdit ?? false,
         macros: input.macros ?? {},
+      } },
+    ));
+  }
+
+  async exportSillyTavern(
+    input: ExportSillyTavernInput,
+  ): Promise<SillyTavernVersionExportView> {
+    return decodeSillyTavernVersionExport(await this.bridge.invoke(
+      "export_sillytavern",
+      { command: {
+        presetVersionId: input.presetVersionId,
+        graphRevisionId: input.graphRevisionId ?? null,
       } },
     ));
   }

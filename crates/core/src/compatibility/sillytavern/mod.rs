@@ -1,4 +1,5 @@
 mod detect;
+mod export;
 mod preset;
 mod types;
 
@@ -8,6 +9,7 @@ pub use crate::llm::text_transform::{
     normalize_text_transforms,
 };
 pub use detect::detect_preset_kind;
+pub use export::export_sillytavern_bundle;
 pub use preset::preview_import;
 pub use types::*;
 

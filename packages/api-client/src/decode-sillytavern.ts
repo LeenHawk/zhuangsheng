@@ -2,6 +2,7 @@ import type {
   SillyTavernImportPreviewView,
   SillyTavernImportResultView,
   SillyTavernRegexTestResultView,
+  SillyTavernVersionExportView,
   SillyTavernPresetKind,
   TextTransformPlacement,
   TextTransformRuleView,
@@ -13,6 +14,7 @@ import { decodeGraphRevision } from "./decode-graphs";
 import {
   boolean,
   jsonObject,
+  jsonValue,
   nullableString,
   number,
   record,
@@ -97,6 +99,43 @@ export function decodeSillyTavernRegexTestResult(
       item.appliedRuleIds,
       "sillyTavernRegexTestResult.appliedRuleIds",
     ),
+  };
+}
+
+export function decodeSillyTavernVersionExport(
+  value: unknown,
+): SillyTavernVersionExportView {
+  const item = record(value, "sillyTavernVersionExport");
+  const bundle = record(item.bundle, "sillyTavernVersionExport.bundle");
+  if (bundle.compatibilityVersion !== 1 || !Array.isArray(bundle.documents) || !Array.isArray(bundle.warnings)) {
+    throw new DecodeError("sillyTavernVersionExport.bundle");
+  }
+  return {
+    sourcePresetVersionId: string(item.sourcePresetVersionId, "sillyTavernVersionExport.sourcePresetVersionId"),
+    sourceGraphRevisionId: nullableString(item.sourceGraphRevisionId, "sillyTavernVersionExport.sourceGraphRevisionId"),
+    bundle: {
+      compatibilityVersion: 1,
+      documents: bundle.documents.map((raw, index) => {
+        const path = `sillyTavernVersionExport.bundle.documents[${index}]`;
+        const document = record(raw, path);
+        return {
+          fileName: string(document.fileName, `${path}.fileName`),
+          kind: member(document.kind, kinds, `${path}.kind`),
+          scope: member(document.scope, scopes, `${path}.scope`),
+          sourceHash: string(document.sourceHash, `${path}.sourceHash`),
+          document: jsonValue(document.document, `${path}.document`),
+        };
+      }),
+      warnings: bundle.warnings.map((raw, index) => {
+        const path = `sillyTavernVersionExport.bundle.warnings[${index}]`;
+        const warning = record(raw, path);
+        return {
+          code: string(warning.code, `${path}.code`),
+          message: string(warning.message, `${path}.message`),
+          field: nullableString(warning.field, `${path}.field`),
+        };
+      }),
+    },
   };
 }
 

@@ -45,7 +45,11 @@ pub fn preview_import(
     match kind {
         SillyTavernPresetKind::OpenAi => openai::import_openai(&input.document, &name, &mut parts)?,
         SillyTavernPresetKind::RegexScripts => {
-            let rules = regex::parse_top_level(&input.document, &mut parts.warnings)?;
+            let rules = if input.document.is_array() {
+                regex::parse_top_level(&input.document, &mut parts.warnings)?
+            } else {
+                regex::parse_embedded(&input.document, &mut parts.warnings)?
+            };
             merge_text_transforms(&mut parts.text_transforms, rules);
         }
         SillyTavernPresetKind::Master => {

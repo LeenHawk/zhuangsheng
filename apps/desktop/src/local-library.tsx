@@ -37,5 +37,5 @@ export function LocalLibrary({ onOpenSettings, onOpenArtifacts }: {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void reload(); }, [reload]);
-  return <LibraryPage presets={presets} channels={channels} versions={versions} templates={templates} artifacts={artifactItems} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={onOpenSettings} onOpenArtifacts={onOpenArtifacts} contentUrl={() => "#"} onDownloadArtifact={(id) => artifacts.downloadToBrowser(id)} sillyTavern={{ preview: (input) => config.previewSillyTavernImport(input), test: (input) => config.testSillyTavernRegex(input), apply: (input) => config.applySillyTavernImport(input) }} />;
+  return <LibraryPage presets={presets} channels={channels} versions={versions} templates={templates} artifacts={artifactItems} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={onOpenSettings} onOpenArtifacts={onOpenArtifacts} contentUrl={() => "#"} onDownloadArtifact={(id) => artifacts.downloadToBrowser(id)} sillyTavern={{ preview: (input) => config.previewSillyTavernImport(input), test: (input) => config.testSillyTavernRegex(input), apply: (input) => config.applySillyTavernImport(input), export: (input) => config.exportSillyTavern(input) }} />;
 }

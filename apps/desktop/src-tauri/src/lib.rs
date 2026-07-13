@@ -137,6 +137,7 @@ pub fn run() {
             commands::config::preview_sillytavern_import,
             commands::config::test_sillytavern_regex,
             commands::config::apply_sillytavern_import,
+            commands::config::export_sillytavern,
             commands::config::create_roleplay_template,
             commands::config::get_graph_revision,
             commands::memory::list_memory_proposals,

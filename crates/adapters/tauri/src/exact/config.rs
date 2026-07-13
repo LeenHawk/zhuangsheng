@@ -3,7 +3,8 @@ use zhuangsheng_core::application::{
     channel::{DiscoverChannelModelsCommand, PublishChannelRevisionCommand},
     preset::{PreviewContextPresetCommand, PublishContextPresetVersionCommand},
     sillytavern::{
-        ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand, TestSillyTavernRegexCommand,
+        ApplySillyTavernImportCommand, ExportSillyTavernCommand, PreviewSillyTavernImportCommand,
+        TestSillyTavernRegexCommand,
     },
 };
 
@@ -29,6 +30,7 @@ pub async fn dispatch(
             | "preview_sillytavern_import"
             | "test_sillytavern_regex"
             | "apply_sillytavern_import"
+            | "export_sillytavern"
     ) {
         return None;
     }
@@ -101,6 +103,11 @@ pub async fn dispatch(
                     .apply_sillytavern_import(argument::<ApplySillyTavernImportCommand>(
                         payload, "command",
                     )?)
+                    .await,
+            ),
+            "export_sillytavern" => encode(
+                state
+                    .export_sillytavern(argument::<ExportSillyTavernCommand>(payload, "command")?)
                     .await,
             ),
             _ => unreachable!(),
