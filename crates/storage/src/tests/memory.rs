@@ -4,8 +4,8 @@ use sea_orm::ConnectionTrait;
 use serde_json::json;
 use zhuangsheng_core::{
     application::memory::{
-        ApplyMemoryProposalCommand, DecideMemoryProposalCommand, MemoryProposalDecision,
-        MemorySearchCommand, ProposeMemoryChangeCommand,
+        ApplyMemoryProposalCommand, DecideMemoryProposalCommand, ListMemoryProposalsCommand,
+        MemoryProposalDecision, MemorySearchCommand, ProposeMemoryChangeCommand,
     },
     memory::{
         LongTermMemoryContentV1, LongTermMemoryStatus, MemoryProposalChangeInput,
@@ -76,6 +76,16 @@ async fn create_proposal_review_apply_and_search_are_durable() {
         after_gc.content.unwrap().text,
         "Dragons guard the northern gate"
     );
+    let proposals = store
+        .list_memory_proposals(ListMemoryProposalsCommand {
+            scope_id: "roleplay".into(),
+            status: Some(MemoryProposalStatus::Applied),
+            limit: 10,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(proposals.proposals[0].evidence_refs, ["message:1"]);
 }
 
 #[tokio::test]
