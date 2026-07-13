@@ -1,6 +1,6 @@
 import { decodeChannel, decodeChannelModelDiscovery, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
-import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult } from "./decode-sillytavern";
-import type { ApplySillyTavernImportInput, ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, PublishChannelInput, PublishPresetInput, SillyTavernImportInput, SillyTavernImportPreviewView, SillyTavernImportResultView } from "./config-types";
+import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult, decodeSillyTavernRegexTestResult } from "./decode-sillytavern";
+import type { ApplySillyTavernImportInput, ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, PublishChannelInput, PublishPresetInput, SillyTavernImportInput, SillyTavernImportPreviewView, SillyTavernImportResultView, SillyTavernRegexTestResultView, TestSillyTavernRegexInput } from "./config-types";
 import { DecodeError } from "./decode-error";
 import { stringifyJsonExact } from "./exact-json";
 import { requestJson } from "./http-json";
@@ -171,12 +171,43 @@ export class HttpConfigClient {
         sourceName: input.sourceName ?? null,
         targetPresetId: input.targetPresetId ?? null,
         expectedHeadVersionId: input.expectedHeadVersionId ?? null,
+        channelId: input.channelId ?? null,
       },
       idempotencyKey,
+    ));
+  }
+
+  async testSillyTavernRegex(
+    input: TestSillyTavernRegexInput,
+    signal?: AbortSignal,
+  ): Promise<SillyTavernRegexTestResultView> {
+    return decodeSillyTavernRegexTestResult(await requestJson(
+      this.baseUrl,
+      "/v1/compatibility/sillytavern/regex/test",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: stringifyJsonExact(regexTestBody(input)),
+        signal,
+      },
     ));
   }
 
   private command(path: string, body: unknown, idempotencyKey: string): Promise<unknown> {
     return requestJson(this.baseUrl, path, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": idempotencyKey }, body: stringifyJsonExact(body) });
   }
+}
+
+function regexTestBody(input: TestSillyTavernRegexInput) {
+  return {
+    document: input.document,
+    sourceName: input.sourceName ?? null,
+    targetPresetId: input.targetPresetId ?? null,
+    input: input.input,
+    placement: input.placement,
+    surface: input.surface,
+    depth: input.depth ?? null,
+    isEdit: input.isEdit ?? false,
+    macros: input.macros ?? {},
+  };
 }

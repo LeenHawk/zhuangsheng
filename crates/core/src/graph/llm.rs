@@ -43,12 +43,27 @@ pub struct LlmRequestOptions {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationOptionsIr {
+    #[serde(default, deserialize_with = "deserialize_optional_f64")]
     pub temperature: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_optional_f64")]
     pub top_p: Option<f64>,
     pub max_output_tokens: Option<u64>,
     #[serde(default)]
     pub stop: Vec<String>,
     pub seed: Option<i64>,
+}
+
+fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<serde_json::Number>::deserialize(deserializer)?
+        .map(|number| {
+            number
+                .as_f64()
+                .ok_or_else(|| serde::de::Error::custom("number cannot be represented as f64"))
+        })
+        .transpose()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

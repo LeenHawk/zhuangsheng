@@ -135,6 +135,7 @@ pub fn run() {
             commands::config::get_context_preset_head,
             commands::config::preview_context_preset,
             commands::config::preview_sillytavern_import,
+            commands::config::test_sillytavern_regex,
             commands::config::apply_sillytavern_import,
             commands::config::create_roleplay_template,
             commands::config::get_graph_revision,

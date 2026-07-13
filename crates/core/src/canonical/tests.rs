@@ -63,6 +63,55 @@ fn exact_decimal_vectors_survive_canonical_and_typed_roundtrips() {
 }
 
 #[test]
+fn typed_floats_survive_canonical_roundtrips() {
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct Envelope {
+        temperature: f64,
+        optional: Option<f64>,
+    }
+
+    let source = to_string(&Envelope {
+        temperature: 0.8,
+        optional: Some(0.2),
+    })
+    .unwrap();
+    assert_eq!(source, r#"{"optional":0.2,"temperature":0.8}"#);
+    assert_eq!(
+        serde_json::from_str::<Envelope>(&source).unwrap(),
+        Envelope {
+            temperature: 0.8,
+            optional: Some(0.2)
+        }
+    );
+}
+
+#[test]
+fn generation_floats_survive_flattened_graph_roundtrips() {
+    use crate::graph::{GenerationOptionsIr, LlmRequestOptions};
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    enum Node {
+        Llm { request: LlmRequestOptions },
+    }
+
+    let node = Node::Llm {
+        request: LlmRequestOptions {
+            generation: Some(GenerationOptionsIr {
+                temperature: Some(0.8),
+                top_p: Some(0.9),
+                max_output_tokens: Some(512),
+                stop: Vec::new(),
+                seed: None,
+            }),
+            ..Default::default()
+        },
+    };
+    let source = to_string(&node).unwrap();
+    assert_eq!(serde_json::from_str::<Node>(&source).unwrap(), node);
+}
+
+#[test]
 fn enforces_structural_and_expanded_output_limits() {
     assert!(matches!(
         to_vec(&"x".repeat(MAX_STRING_BYTES + 1)),

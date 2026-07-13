@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   ContextPresetVersionView,
   ContextPresetView,
+  ChannelView,
   ArtifactView,
   RolePlayGraphOptionView,
 } from "@zhuangsheng/api-client";
@@ -15,6 +16,7 @@ export function LocalLibrary({ onOpenSettings, onOpenArtifacts }: {
   onOpenArtifacts: () => void;
 }) {
   const [presets, setPresets] = useState<ContextPresetView[]>([]);
+  const [channels, setChannels] = useState<ChannelView[]>([]);
   const [versions, setVersions] = useState<Record<string, ContextPresetVersionView>>({});
   const [templates, setTemplates] = useState<RolePlayGraphOptionView[]>([]);
   const [artifactItems, setArtifactItems] = useState<ArtifactView[]>([]);
@@ -23,17 +25,17 @@ export function LocalLibrary({ onOpenSettings, onOpenArtifacts }: {
   const reload = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [nextPresets, nextTemplates, nextArtifacts] = await Promise.all([
-        config.listPresets(), conversations.listRolePlayGraphOptions(), artifacts.list(),
+      const [nextPresets, nextChannels, nextTemplates, nextArtifacts] = await Promise.all([
+        config.listPresets(), config.listChannels(), conversations.listRolePlayGraphOptions(), artifacts.list(),
       ]);
       const heads = await Promise.all(nextPresets.flatMap((preset) =>
         preset.headVersionId ? [config.getPresetVersion(preset.headVersionId)] : []));
-      setPresets(nextPresets); setTemplates(nextTemplates);
+      setPresets(nextPresets); setChannels(nextChannels); setTemplates(nextTemplates);
       setArtifactItems(nextArtifacts.items);
       setVersions(Object.fromEntries(heads.map((version) => [version.id, version])));
     } catch (cause) { setError(localErrorMessage(cause)); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void reload(); }, [reload]);
-  return <LibraryPage presets={presets} versions={versions} templates={templates} artifacts={artifactItems} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={onOpenSettings} onOpenArtifacts={onOpenArtifacts} contentUrl={() => "#"} onDownloadArtifact={(id) => artifacts.downloadToBrowser(id)} sillyTavern={{ preview: (input) => config.previewSillyTavernImport(input), apply: (input) => config.applySillyTavernImport(input) }} />;
+  return <LibraryPage presets={presets} channels={channels} versions={versions} templates={templates} artifacts={artifactItems} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={onOpenSettings} onOpenArtifacts={onOpenArtifacts} contentUrl={() => "#"} onDownloadArtifact={(id) => artifacts.downloadToBrowser(id)} sillyTavern={{ preview: (input) => config.previewSillyTavernImport(input), test: (input) => config.testSillyTavernRegex(input), apply: (input) => config.applySillyTavernImport(input) }} />;
 }

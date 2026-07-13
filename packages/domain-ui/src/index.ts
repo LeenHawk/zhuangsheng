@@ -18,6 +18,7 @@ export * from "./settings-setup";
 export * from "./secret-store-controls";
 export * from "./sillytavern-import-card";
 export * from "./sillytavern-import-preview";
+export * from "./sillytavern-regex-tester";
 export * from "./story-detail";
 export * from "./story-list";
 export * from "./story-wait-actions";

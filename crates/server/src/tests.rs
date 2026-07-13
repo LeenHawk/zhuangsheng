@@ -472,8 +472,15 @@ fn request(method: &str, uri: &str, body: Value, headers: &[(&str, String)]) -> 
 
 async fn call(app: &axum::Router, request: Request<Body>, expected: StatusCode) -> Value {
     let response = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(response.status(), expected);
-    serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap()
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        expected,
+        "response body: {}",
+        String::from_utf8_lossy(&bytes)
+    );
+    serde_json::from_slice(&bytes).unwrap()
 }
 
 fn now_ms() -> i64 {

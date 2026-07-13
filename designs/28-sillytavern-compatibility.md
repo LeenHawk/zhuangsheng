@@ -87,6 +87,8 @@ find pattern接受酒馆 `/pattern/flags` 格式，replacement支持 `{{match}}`
 
 Web 和 Tauri提供同构命令：detect/preview、test regex、apply import、export。导入先显示：识别类型、prompt顺序、生成参数、正则数量、inactive/locked字段和目标 preset diff；用户确认后才发布 canonical revision。
 
+`apply import` 可选目标 Channel。选择后，同一个幂等工作流会发布或选定 `ContextPresetVersion`，再创建固定导入 generation/provider extensions 的 Role Play `GraphRevision`；generation-only 文件必须与一个已发布的 ContextPreset组合，不能生成空角色。`test regex` 始终复用 preview 后的规范化规则、显式 surface/placement/depth 和宏上下文，不维护第二套浏览器正则语义。
+
 用户模式提供“导入酒馆预设”向导和规则启停/测试；专家模式显示原始字段映射、pattern flags、placement、depth、provenance和失败原因。任何 invalid/inactive规则都不能被绿色“已兼容”状态掩盖。
 
 ## 验收

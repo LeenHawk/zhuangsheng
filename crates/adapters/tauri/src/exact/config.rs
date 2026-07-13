@@ -2,7 +2,9 @@ use serde_json::Value;
 use zhuangsheng_core::application::{
     channel::{DiscoverChannelModelsCommand, PublishChannelRevisionCommand},
     preset::{PreviewContextPresetCommand, PublishContextPresetVersionCommand},
-    sillytavern::{ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand},
+    sillytavern::{
+        ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand, TestSillyTavernRegexCommand,
+    },
 };
 
 use crate::{CommandResult, TauriAdapter};
@@ -25,6 +27,7 @@ pub async fn dispatch(
             | "get_context_preset_head"
             | "preview_context_preset"
             | "preview_sillytavern_import"
+            | "test_sillytavern_regex"
             | "apply_sillytavern_import"
     ) {
         return None;
@@ -82,6 +85,13 @@ pub async fn dispatch(
             "preview_sillytavern_import" => encode(
                 state
                     .preview_sillytavern_import(argument::<PreviewSillyTavernImportCommand>(
+                        payload, "command",
+                    )?)
+                    .await,
+            ),
+            "test_sillytavern_regex" => encode(
+                state
+                    .test_sillytavern_regex(argument::<TestSillyTavernRegexCommand>(
                         payload, "command",
                     )?)
                     .await,

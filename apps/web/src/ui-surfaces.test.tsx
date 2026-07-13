@@ -42,6 +42,7 @@ describe("global UI surfaces", () => {
 
   it("projects versioned presets and templates in the Library without copying content", () => {
     render(<LibraryPage
+      channels={[]}
       presets={[{ id: "preset_1", name: "守夜人", headVersionId: "version_1", createdAt: 1, updatedAt: 2 }]}
       versions={{ version_1: { id: "version_1", presetId: "preset_1", versionNo: 2, semanticPolicyVersion: 1, spec: {}, contentHash: "sha256:preset", createdAt: 2 } }}
       templates={[{ graphId: "graph_1", graphName: "档案馆模板", revisionId: "revision_1", revisionNo: 3, replyOutputKeys: ["reply"], primaryLlmNodeId: "reply", compatibility: { mode: "editable", profileVersion: 1, editableFields: [] } }]}

@@ -12,7 +12,7 @@ use zhuangsheng_core::{
         },
         sillytavern::{
             ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand,
-            SillyTavernImportResult,
+            SillyTavernImportResult, SillyTavernRegexTestResult, TestSillyTavernRegexCommand,
         },
     },
     compatibility::sillytavern::SillyTavernImportPreview,
@@ -126,6 +126,14 @@ pub async fn apply_sillytavern_import(
     command: ApplySillyTavernImportCommand,
 ) -> CommandResult<SillyTavernImportResult> {
     state.apply_sillytavern_import(command).await
+}
+
+#[tauri::command]
+pub async fn test_sillytavern_regex(
+    state: State<'_, TauriAdapter>,
+    command: TestSillyTavernRegexCommand,
+) -> CommandResult<SillyTavernRegexTestResult> {
+    state.test_sillytavern_regex(command).await
 }
 
 #[tauri::command]

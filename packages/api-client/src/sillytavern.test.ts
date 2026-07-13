@@ -11,8 +11,9 @@ describe("SillyTavern compatibility clients", () => {
     const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ input, init });
-      return Response.json(calls.length === 1 ? preview() : result(), {
-        status: calls.length === 1 ? 200 : 201,
+      const url = String(input);
+      return Response.json(url.endsWith("/regex/test") ? regexResult() : url.endsWith("/import") ? result() : preview(), {
+        status: url.endsWith("/import") ? 201 : 200,
       });
     });
     const client = new HttpConfigClient("https://settings.example");
@@ -22,23 +23,31 @@ describe("SillyTavern compatibility clients", () => {
       sourceName: "roleplay.json",
       targetPresetId: null,
     });
+    const tested = await client.testSillyTavernRegex({
+      document, input: "foo", placement: "ai_output", surface: "canonical",
+    });
     const imported = await client.applySillyTavernImport({
       document,
       sourceName: "roleplay.json",
       targetPresetId: null,
       expectedHeadVersionId: null,
+      channelId: null,
     }, "st-import-key");
     expect(calls[0]?.input).toBe(
       "https://settings.example/v1/compatibility/sillytavern/preview",
     );
     expect(calls[1]?.input).toBe(
+      "https://settings.example/v1/compatibility/sillytavern/regex/test",
+    );
+    expect(calls[2]?.input).toBe(
       "https://settings.example/v1/compatibility/sillytavern/import",
     );
-    expect(calls[1]?.init?.headers).toMatchObject({ "idempotency-key": "st-import-key" });
+    expect(calls[2]?.init?.headers).toMatchObject({ "idempotency-key": "st-import-key" });
     expect(parsed.textTransforms[0]).toMatchObject({
       id: "clean", surfaces: ["canonical"], placements: ["ai_output"],
     });
     expect(imported.version.spec.textTransforms).toBeDefined();
+    expect(tested).toEqual(regexResult());
   });
 
   it("maps Tauri preview and apply to the same command DTOs", async () => {
@@ -46,23 +55,27 @@ describe("SillyTavern compatibility clients", () => {
     const bridge: TauriBridge = {
       invoke: async <T>(operation: string, payload: unknown) => {
         calls.push({ operation, payload });
-        return (operation === "preview_sillytavern_import" ? preview() : result()) as T;
+        return (operation === "preview_sillytavern_import" ? preview() : operation === "test_sillytavern_regex" ? regexResult() : result()) as T;
       },
       listen: async () => () => undefined,
     };
     const client = new TauriConfigClient(bridge);
     await client.previewSillyTavernImport({ document: [], sourceName: "regex.json" });
+    await client.testSillyTavernRegex({ document: [], input: "foo", placement: "ai_output", surface: "canonical" });
     await client.applySillyTavernImport({ document: [], sourceName: "regex.json" }, "native-key");
     expect(calls.map((call) => call.operation)).toEqual([
       "preview_sillytavern_import",
+      "test_sillytavern_regex",
       "apply_sillytavern_import",
     ]);
-    expect(calls[1]?.payload).toMatchObject({ command: {
+    expect(calls[2]?.payload).toMatchObject({ command: {
       sourceName: "regex.json", targetPresetId: null,
-      expectedHeadVersionId: null, idempotencyKey: "native-key",
+      expectedHeadVersionId: null, channelId: null, idempotencyKey: "native-key",
     } });
   });
 });
+
+const regexResult = () => ({ text: "bar", appliedRuleIds: ["clean"] });
 
 const preview = () => ({
   compatibilityVersion: 1,
@@ -94,4 +107,5 @@ const result = () => ({
     spec: { mode: "chat", items: [], textTransforms: preview().textTransforms },
     contentHash: `sha256:${"b".repeat(64)}`, createdAt: 2,
   },
+  graphRevision: null,
 });

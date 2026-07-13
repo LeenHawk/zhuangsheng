@@ -8,7 +8,7 @@ import {
   decodeContextPresets,
   decodeContextPresetVersion,
 } from "./decode-config";
-import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult } from "./decode-sillytavern";
+import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult, decodeSillyTavernRegexTestResult } from "./decode-sillytavern";
 import { decodeGraphRevision } from "./decode-graphs";
 import { decodeRolePlaySettings } from "./decode-roleplay";
 import { DecodeError } from "./decode-error";
@@ -27,6 +27,8 @@ import type {
   SillyTavernImportInput,
   SillyTavernImportPreviewView,
   SillyTavernImportResultView,
+  SillyTavernRegexTestResultView,
+  TestSillyTavernRegexInput,
 } from "./config-types";
 import type { GraphRevisionView } from "./graph-types";
 import type { RolePlaySettingsView } from "./roleplay-types";
@@ -172,7 +174,27 @@ export class TauriConfigClient {
         sourceName: input.sourceName ?? null,
         targetPresetId: input.targetPresetId ?? null,
         expectedHeadVersionId: input.expectedHeadVersionId ?? null,
+        channelId: input.channelId ?? null,
         idempotencyKey,
+      } },
+    ));
+  }
+
+  async testSillyTavernRegex(
+    input: TestSillyTavernRegexInput,
+  ): Promise<SillyTavernRegexTestResultView> {
+    return decodeSillyTavernRegexTestResult(await this.bridge.invoke(
+      "test_sillytavern_regex",
+      { command: {
+        document: input.document,
+        sourceName: input.sourceName ?? null,
+        targetPresetId: input.targetPresetId ?? null,
+        input: input.input,
+        placement: input.placement,
+        surface: input.surface,
+        depth: input.depth ?? null,
+        isEdit: input.isEdit ?? false,
+        macros: input.macros ?? {},
       } },
     ));
   }

@@ -1,6 +1,7 @@
 import type {
   SillyTavernImportPreviewView,
   SillyTavernImportResultView,
+  SillyTavernRegexTestResultView,
   SillyTavernPresetKind,
   TextTransformPlacement,
   TextTransformRuleView,
@@ -8,6 +9,7 @@ import type {
 } from "./config-types";
 import { decodeContextPreset, decodeContextPresetVersion } from "./decode-config";
 import { DecodeError } from "./decode-error";
+import { decodeGraphRevision } from "./decode-graphs";
 import {
   boolean,
   jsonObject,
@@ -81,6 +83,20 @@ export function decodeSillyTavernImportResult(
     preview: decodeSillyTavernImportPreview(item.preview),
     preset: decodeContextPreset(item.preset),
     version: decodeContextPresetVersion(item.version),
+    graphRevision: item.graphRevision === null ? null : decodeGraphRevision(item.graphRevision),
+  };
+}
+
+export function decodeSillyTavernRegexTestResult(
+  value: unknown,
+): SillyTavernRegexTestResultView {
+  const item = record(value, "sillyTavernRegexTestResult");
+  return {
+    text: string(item.text, "sillyTavernRegexTestResult.text"),
+    appliedRuleIds: stringArray(
+      item.appliedRuleIds,
+      "sillyTavernRegexTestResult.appliedRuleIds",
+    ),
   };
 }
 

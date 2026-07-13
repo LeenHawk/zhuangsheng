@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "./graph-types";
+import type { GraphRevisionView, JsonObject, JsonValue } from "./graph-types";
 
 export interface ChannelView {
   id: string;
@@ -191,10 +191,26 @@ export interface SillyTavernImportInput {
 
 export interface ApplySillyTavernImportInput extends SillyTavernImportInput {
   expectedHeadVersionId?: string | null;
+  channelId?: string | null;
+}
+
+export interface TestSillyTavernRegexInput extends SillyTavernImportInput {
+  input: string;
+  placement: TextTransformPlacement;
+  surface: TextTransformSurface;
+  depth?: number | null;
+  isEdit?: boolean;
+  macros?: Record<string, string>;
+}
+
+export interface SillyTavernRegexTestResultView {
+  text: string;
+  appliedRuleIds: string[];
 }
 
 export interface SillyTavernImportResultView {
   preview: SillyTavernImportPreviewView;
   preset: ContextPresetView;
   version: ContextPresetVersionView;
+  graphRevision: GraphRevisionView | null;
 }

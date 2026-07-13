@@ -11,7 +11,8 @@ use zhuangsheng_core::{
         },
         sillytavern::{
             ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand,
-            SillyTavernImportResult, apply_sillytavern_import, preview_sillytavern_import,
+            SillyTavernImportResult, SillyTavernRegexTestResult, TestSillyTavernRegexCommand,
+            apply_sillytavern_import, preview_sillytavern_import, test_sillytavern_regex,
         },
     },
     compatibility::sillytavern::SillyTavernImportPreview,
@@ -108,6 +109,13 @@ impl TauriAdapter {
         &self,
         command: ApplySillyTavernImportCommand,
     ) -> CommandResult<SillyTavernImportResult> {
-        Ok(apply_sillytavern_import(self.preset.as_ref(), command).await?)
+        Ok(apply_sillytavern_import(self.preset.as_ref(), self.graph.as_ref(), command).await?)
+    }
+
+    pub async fn test_sillytavern_regex(
+        &self,
+        command: TestSillyTavernRegexCommand,
+    ) -> CommandResult<SillyTavernRegexTestResult> {
+        Ok(test_sillytavern_regex(self.preset.as_ref(), command).await?)
     }
 }

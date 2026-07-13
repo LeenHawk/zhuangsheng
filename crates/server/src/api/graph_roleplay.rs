@@ -8,6 +8,7 @@ use serde::Deserialize;
 use zhuangsheng_core::{
     application::graph::{CreateRolePlayTemplateCommand, GraphRevisionView},
     conversation::{RolePlayCompatibilityView, RolePlayGraphOptionView, RolePlaySettingsView},
+    graph::{GenerationOptionsIr, ProviderExtensionsIr},
 };
 
 use super::{
@@ -22,6 +23,8 @@ struct CreateRolePlayTemplateBody {
     name: String,
     channel_id: String,
     preset_id: String,
+    generation: Option<GenerationOptionsIr>,
+    extensions: Option<ProviderExtensionsIr>,
 }
 
 pub fn routes() -> Router<AppState> {
@@ -53,6 +56,8 @@ async fn create_roleplay_template(
                     name: body.name,
                     channel_id: body.channel_id,
                     preset_id: body.preset_id,
+                    generation: body.generation,
+                    extensions: body.extensions,
                     idempotency_key: required_header(&headers, "idempotency-key")?,
                 })
                 .await?,

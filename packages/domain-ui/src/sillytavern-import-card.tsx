@@ -4,38 +4,47 @@ import { FileJson, Import, Settings2 } from "lucide-react";
 import {
   parseJsonExact,
   type ApplySillyTavernImportInput,
+  type ChannelView,
   type ContextPresetView,
   type JsonValue,
   type SillyTavernImportInput,
   type SillyTavernImportPreviewView,
   type SillyTavernImportResultView,
+  type SillyTavernRegexTestResultView,
+  type TestSillyTavernRegexInput,
 } from "@zhuangsheng/api-client";
 import { Badge, Button, Card } from "@zhuangsheng/ui";
 
 import { SillyTavernImportPreview } from "./sillytavern-import-preview";
+import { SillyTavernRegexTester } from "./sillytavern-regex-tester";
 
 export interface SillyTavernImportActions {
   preview(input: SillyTavernImportInput): Promise<SillyTavernImportPreviewView>;
   apply(input: ApplySillyTavernImportInput): Promise<SillyTavernImportResultView>;
+  test(input: TestSillyTavernRegexInput): Promise<SillyTavernRegexTestResultView>;
 }
 
 export function SillyTavernImportCard({
   presets,
+  channels,
   actions,
   onImported,
 }: {
   presets: ContextPresetView[];
+  channels: ChannelView[];
   actions: SillyTavernImportActions;
   onImported?: (result: SillyTavernImportResultView) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<{ document: JsonValue; name: string } | null>(null);
   const [targetId, setTargetId] = useState("");
+  const [channelId, setChannelId] = useState("");
   const [preview, setPreview] = useState<SillyTavernImportPreviewView | null>(null);
   const [expert, setExpert] = useState(false);
   const [pending, setPending] = useState<"preview" | "apply" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const target = presets.find((preset) => preset.id === targetId);
+  const usableChannels = channels.filter((channel) => channel.headRevisionId);
 
   const chooseFile = async (file: File | undefined) => {
     if (!file) return;
@@ -51,14 +60,18 @@ export function SillyTavernImportCard({
     if (!source || pending) return;
     setPending("preview"); setError(null);
     try {
-      setPreview(await actions.preview({
+      const next = await actions.preview({
         document: source.document, sourceName: source.name, targetPresetId: targetId || null,
-      }));
+      });
+      setPreview(next);
+      if ((next.generation || next.providerExtensions) && !channelId) {
+        setChannelId(usableChannels[0]?.id ?? "");
+      }
     } catch (cause) { setError(message(cause, "无法解析这个酒馆预设。")); }
     finally { setPending(null); }
   };
   const apply = async () => {
-    if (!source || !preview?.contextSpec || pending) return;
+    if (!source || !preview || (!preview.contextSpec && (!target || !channelId)) || pending) return;
     setPending("apply"); setError(null);
     try {
       const result = await actions.apply({
@@ -66,6 +79,7 @@ export function SillyTavernImportCard({
         sourceName: source.name,
         targetPresetId: targetId || null,
         expectedHeadVersionId: target?.headVersionId ?? null,
+        channelId: channelId || null,
       });
       onImported?.(result);
       setPreview(result.preview);
@@ -83,7 +97,17 @@ export function SillyTavernImportCard({
     </div>
     <label className="mt-3 flex items-center gap-2 text-xs text-secondary"><input type="checkbox" checked={expert} onChange={(event) => setExpert(event.target.checked)} /><Settings2 className="size-3.5" />专家模式：显示 source hash、surface、placement 和 depth</label>
     {error && <div role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{error}</div>}
-    {preview && <><SillyTavernImportPreview preview={preview} expert={expert} /><div className="mt-4 flex items-center gap-3"><Button disabled={!preview.contextSpec || pending !== null} onClick={() => void apply()}>{pending === "apply" ? "正在发布…" : target ? `发布到 ${target.name}` : "确认并创建 preset"}</Button>{!preview.contextSpec && <p className="text-xs text-warning">这个文件只有生成参数，需在创建 Agent 模板时应用。</p>}</div></>}
+    {preview && <><SillyTavernImportPreview preview={preview} expert={expert} />
+      {preview.textTransforms.length > 0 && <SillyTavernRegexTester base={{ document: source!.document, sourceName: source!.name, targetPresetId: targetId || null }} onTest={actions.test} />}
+      <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+        <select aria-label="同时创建 Agent" className="min-h-11 rounded-xl border border-default bg-canvas px-3 text-sm" value={channelId} onChange={(event) => setChannelId(event.target.value)}>
+          <option value="">只发布 ContextPreset，不创建 Agent</option>
+          {usableChannels.map((channel) => <option key={channel.id} value={channel.id}>使用 {channel.name} 创建可运行 Agent</option>)}
+        </select>
+        <Button disabled={(!preview.contextSpec && (!target || !channelId)) || pending !== null} onClick={() => void apply()}>{pending === "apply" ? "正在发布…" : channelId ? "导入并创建 Agent" : target ? `发布到 ${target.name}` : "确认并创建 preset"}</Button>
+      </div>
+      {!preview.contextSpec && <p className="mt-2 text-xs text-warning">这个文件只有生成参数：请选择已有 ContextPreset 和 Channel，生成参数会固定进新的 Agent revision。</p>}
+    </>}
   </Card>;
 }
 

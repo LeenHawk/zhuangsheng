@@ -69,6 +69,8 @@ async fn roleplay_attempt_pins_ordered_conversation_history_with_content() {
             name: "History agent".into(),
             channel_id: channel.id,
             preset_id: preset.id,
+            generation: None,
+            extensions: None,
             idempotency_key: "history-template".into(),
         })
         .await

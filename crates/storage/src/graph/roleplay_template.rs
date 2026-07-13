@@ -6,7 +6,7 @@ use zhuangsheng_core::{
         UpdateGraphDraftCommand,
     },
     conversation::{assistant_reply_payload_v1_schema, conversation_run_input_v1_schema},
-    graph::{DraftNodeKind, GraphDraft},
+    graph::{DraftNodeKind, GraphDraft, LlmRequestOptions},
     llm::{OperationKey, context::ContextAssemblyConfig, is_supported_generation_key},
 };
 
@@ -72,6 +72,8 @@ impl SqliteStore {
             &catalog.models[0].id,
             operation_key,
             &command.preset_id,
+            command.generation.clone(),
+            command.extensions.clone(),
         )?;
         let updated = self
             .update_graph_draft(UpdateGraphDraftCommand {
@@ -134,6 +136,16 @@ fn roleplay_revision_matches(
                     ContextAssemblyConfig::Preset { preset_id }
                         if preset_id == &command.preset_id
                 )
+                && config
+                    .request
+                    .as_ref()
+                    .and_then(|request| request.generation.as_ref())
+                    == command.generation.as_ref()
+                && config
+                    .request
+                    .as_ref()
+                    .and_then(|request| request.extensions.as_ref())
+                    == command.extensions.as_ref()
         })
 }
 
@@ -144,9 +156,11 @@ fn roleplay_draft(
     model_id: &str,
     operation_key: OperationKey,
     preset_id: &str,
+    generation: Option<zhuangsheng_core::graph::GenerationOptionsIr>,
+    extensions: Option<zhuangsheng_core::graph::ProviderExtensionsIr>,
 ) -> StorageResult<GraphDraft> {
     let reply_schema = assistant_reply_payload_v1_schema();
-    serde_json::from_value(json!({
+    let mut draft: GraphDraft = serde_json::from_value(json!({
         "graphId": graph_id,
         "name": name,
         "nodes": [
@@ -161,5 +175,23 @@ fn roleplay_draft(
         "runInputSchema": conversation_run_input_v1_schema(),
         "outputContract": [{"key":"reply","schema":reply_schema,"collection":"single","required":true}]
     }))
-    .map_err(|error| StorageError::Integrity(error.to_string()))
+    .map_err(|error| StorageError::Integrity(error.to_string()))?;
+    if generation.is_some() || extensions.is_some() {
+        let config = draft
+            .nodes
+            .iter_mut()
+            .find_map(|node| match &mut node.kind {
+                DraftNodeKind::Llm { config } if node.id == "reply" => Some(config),
+                _ => None,
+            });
+        let config = config.ok_or_else(|| {
+            StorageError::Integrity("role play template lost its LLM node".into())
+        })?;
+        config.request = Some(LlmRequestOptions {
+            generation,
+            extensions,
+            tool_choice: None,
+        });
+    }
+    Ok(draft)
 }

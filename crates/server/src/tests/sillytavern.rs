@@ -33,11 +33,60 @@ async fn sillytavern_preview_and_import_share_the_canonical_workflow() {
     assert!(!encoded.contains("do-not-leak"));
     assert!(!encoded.contains("secret.invalid"));
 
+    let tested = call(
+        &app,
+        request(
+            "POST",
+            "/v1/compatibility/sillytavern/regex/test",
+            json!({
+                "document":preset_document(), "sourceName":"Roleplay.json",
+                "targetPresetId":null, "input":"foo foo", "placement":"ai_output",
+                "surface":"canonical", "depth":0, "isEdit":false, "macros":{}
+            }),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(tested["text"], "bar bar");
+    assert_eq!(tested["appliedRuleIds"], json!(["clean-output"]));
+
+    let channel = call(
+        &app,
+        request(
+            "POST",
+            "/v1/channels",
+            json!({"name":"ST model"}),
+            &[("idempotency-key", "st-channel".into())],
+        ),
+        StatusCode::CREATED,
+    )
+    .await;
+    let channel_id = channel["id"].as_str().unwrap();
+    call(
+        &app,
+        request(
+            "POST", &format!("/v1/channels/{channel_id}/revisions"),
+            json!({"expectedHeadRevisionId":null,"spec":{
+                "operationTaxonomyVersion":1,"adapterDecoderVersion":1,
+                "baseUrl":"https://llm.example.test/v1",
+                "transportPolicy":{"allowLoopbackHttp":false,"allowUnauthenticated":true},
+                "credential":{"type":"none"},
+                "operationKeys":[{"operation":"generate_content","kind":"open_ai_responses"}],
+                "modelCatalogs":[{"operationKey":{"operation":"generate_content","kind":"open_ai_responses"},"policy":"allowlist","models":[{"id":"st-model","capabilities":{"structuredOutput":true}}]}]
+            }}),
+            &[("idempotency-key", "st-channel-publish".into())],
+        ),
+        StatusCode::CREATED,
+    )
+    .await;
+
     let body = json!({
         "document":preset_document(),
         "sourceName":"Roleplay.json",
         "targetPresetId":null,
-        "expectedHeadVersionId":null
+        "expectedHeadVersionId":null,
+        "channelId":channel_id
     });
     let first = call(
         &app,
@@ -63,6 +112,16 @@ async fn sillytavern_preview_and_import_share_the_canonical_workflow() {
     .await;
     assert_eq!(first["preset"]["id"], replay["preset"]["id"]);
     assert_eq!(first["version"]["id"], replay["version"]["id"]);
+    assert_eq!(first["graphRevision"]["id"], replay["graphRevision"]["id"]);
+    assert_eq!(
+        first["graphRevision"]["definition"]["nodes"][1]["request"]["generation"]["maxOutputTokens"],
+        512
+    );
+    assert_eq!(
+        first["graphRevision"]["definition"]["nodes"][1]["request"]["extensions"]["openai"]["extraBody"]
+            ["frequency_penalty"],
+        0.2
+    );
     assert_eq!(
         first["version"]["spec"]["textTransforms"][0]["id"],
         "clean-output"
@@ -73,6 +132,7 @@ fn preset_document() -> Value {
     json!({
         "name":"Imported Roleplay",
         "temperature":0.8,
+        "frequency_penalty":0.2,
         "openai_max_tokens":512,
         "reverse_proxy":"https://secret.invalid",
         "proxy_password":"do-not-leak",

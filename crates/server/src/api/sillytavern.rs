@@ -9,7 +9,8 @@ use serde_json::Value;
 use zhuangsheng_core::{
     application::sillytavern::{
         ApplySillyTavernImportCommand, PreviewSillyTavernImportCommand, SillyTavernImportResult,
-        apply_sillytavern_import, preview_sillytavern_import,
+        SillyTavernRegexTestResult, TestSillyTavernRegexCommand, apply_sillytavern_import,
+        preview_sillytavern_import, test_sillytavern_regex,
     },
     compatibility::sillytavern::SillyTavernImportPreview,
 };
@@ -35,13 +36,24 @@ struct ApplyBody {
     source_name: Option<String>,
     target_preset_id: Option<String>,
     expected_head_version_id: Option<String>,
+    channel_id: Option<String>,
 }
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/compatibility/sillytavern/preview", post(preview))
+        .route("/v1/compatibility/sillytavern/regex/test", post(test_regex))
         .route("/v1/compatibility/sillytavern/import", post(apply))
         .layer(DefaultBodyLimit::max(16 * 1024 * 1024))
+}
+
+async fn test_regex(
+    State(state): State<AppState>,
+    body: Result<Json<TestSillyTavernRegexCommand>, JsonRejection>,
+) -> ApiResult<Json<SillyTavernRegexTestResult>> {
+    Ok(Json(
+        test_sillytavern_regex(state.preset_service.as_ref(), json_body(body)?).await?,
+    ))
 }
 
 async fn preview(
@@ -73,11 +85,13 @@ async fn apply(
         Json(
             apply_sillytavern_import(
                 state.preset_service.as_ref(),
+                state.graph_service.as_ref(),
                 ApplySillyTavernImportCommand {
                     document: body.document,
                     source_name: body.source_name,
                     target_preset_id: body.target_preset_id,
                     expected_head_version_id: body.expected_head_version_id,
+                    channel_id: body.channel_id,
                     idempotency_key: required_header(&headers, "idempotency-key")?,
                 },
             )

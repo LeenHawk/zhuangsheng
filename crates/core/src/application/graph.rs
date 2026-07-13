@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ValidationIssue,
     conversation::{RolePlayCompatibilityView, RolePlayGraphOptionView, RolePlaySettingsView},
-    graph::{AppliedGraphDefinition, GraphDraft},
+    graph::{AppliedGraphDefinition, GenerationOptionsIr, GraphDraft, ProviderExtensionsIr},
 };
 
 use super::ApplicationError;
@@ -66,10 +66,12 @@ pub struct CreateRolePlayTemplateCommand {
     pub name: String,
     pub channel_id: String,
     pub preset_id: String,
+    pub generation: Option<GenerationOptionsIr>,
+    pub extensions: Option<ProviderExtensionsIr>,
     pub idempotency_key: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphRevisionView {
     pub id: String,
