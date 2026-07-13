@@ -75,7 +75,7 @@ model response ���混合 memory capability 与 custom tool batch。
 
 ## 最终门禁
 
-- `cargo test --workspace --all-targets`：Core 102、Server 59、Storage 141、Tauri adapter 2，全通过。
+- `cargo test --workspace --all-targets`：Core 103、Server 59、Storage 141、Tauri adapter 2，全通过。
 - `cargo clippy --workspace --all-targets -- -D warnings`：通过。
 - `corepack pnpm -r typecheck`：6 个前端 workspace project通过。
 - api-client 82、graph-view 1、Web 32 tests：全通过。
