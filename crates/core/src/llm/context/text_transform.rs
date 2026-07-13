@@ -5,8 +5,7 @@ use crate::{
     llm::{
         ir::LlmContentPartIr,
         text_transform::{
-            TextTransformContext, TextTransformPlacement, TextTransformSurface,
-            apply_text_transforms,
+            TextTransformContext, TextTransformSurface, TextTransformTarget, apply_text_transforms,
         },
     },
 };
@@ -27,7 +26,7 @@ pub(super) fn apply_prompt_text_transforms(
     for group in groups {
         let source = &spec.items[group.item_index].source;
         for candidate in &mut group.candidates {
-            let Some(placement) = placement(source, candidate.role) else {
+            let Some(target) = target(source, candidate.role) else {
                 continue;
             };
             let depth = candidate
@@ -38,7 +37,7 @@ pub(super) fn apply_prompt_text_transforms(
                         .then_some(0)
                 });
             let context = TextTransformContext {
-                placement: Some(placement),
+                target: Some(target),
                 surface: Some(TextTransformSurface::Prompt),
                 depth,
                 is_edit: false,
@@ -86,13 +85,13 @@ fn history_depths(groups: &[CandidateGroup]) -> BTreeMap<u64, u32> {
         .collect()
 }
 
-fn placement(source: &ContextSource, role: ContextRole) -> Option<TextTransformPlacement> {
+fn target(source: &ContextSource, role: ContextRole) -> Option<TextTransformTarget> {
     if matches!(source, ContextSource::WorldInfo { .. }) {
-        return Some(TextTransformPlacement::WorldInfo);
+        return Some(TextTransformTarget::WorldInfo);
     }
     match role {
-        ContextRole::User => Some(TextTransformPlacement::UserInput),
-        ContextRole::Assistant => Some(TextTransformPlacement::AiOutput),
+        ContextRole::User => Some(TextTransformTarget::UserInput),
+        ContextRole::Assistant => Some(TextTransformTarget::AssistantOutput),
         _ => None,
     }
 }

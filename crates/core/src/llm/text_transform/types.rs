@@ -4,18 +4,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TextTransformScope {
-    Global,
-    Character,
-    Preset,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TextTransformPlacement {
+pub enum TextTransformTarget {
     UserInput,
-    AiOutput,
-    SlashCommand,
+    AssistantOutput,
     WorldInfo,
     Reasoning,
 }
@@ -30,7 +21,7 @@ pub enum TextTransformSurface {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum RegexMacroMode {
+pub enum PatternMacroMode {
     None,
     Raw,
     Escaped,
@@ -41,26 +32,27 @@ pub enum RegexMacroMode {
 pub struct TextTransformRule {
     pub id: String,
     pub name: String,
-    pub scope: TextTransformScope,
+    #[serde(default)]
+    pub priority: i32,
     pub order: u32,
     pub find_regex: String,
     pub replace_string: String,
     #[serde(default)]
     pub trim_strings: Vec<String>,
     #[serde(default)]
-    pub placements: Vec<TextTransformPlacement>,
+    pub targets: Vec<TextTransformTarget>,
     #[serde(default)]
     pub surfaces: Vec<TextTransformSurface>,
     pub disabled: bool,
     pub run_on_edit: bool,
-    pub macro_mode: RegexMacroMode,
+    pub pattern_macro_mode: PatternMacroMode,
     pub min_depth: Option<i32>,
     pub max_depth: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextTransformContext {
-    pub placement: Option<TextTransformPlacement>,
+    pub target: Option<TextTransformTarget>,
     pub surface: Option<TextTransformSurface>,
     pub depth: Option<u32>,
     pub is_edit: bool,

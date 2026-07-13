@@ -4,8 +4,7 @@ use zhuangsheng_core::llm::{
     context::{ContextAssemblyMode, ContextAssemblySpec},
     ir::LlmContentPartIr,
     text_transform::{
-        RegexMacroMode, TextTransformPlacement, TextTransformRule, TextTransformScope,
-        TextTransformSurface,
+        PatternMacroMode, TextTransformRule, TextTransformSurface, TextTransformTarget,
     },
 };
 
@@ -50,16 +49,16 @@ fn rule(id: &str, surface: TextTransformSurface, replacement: &str) -> TextTrans
     TextTransformRule {
         id: id.into(),
         name: id.into(),
-        scope: TextTransformScope::Preset,
+        priority: 0,
         order: 0,
         find_regex: "/foo/g".into(),
         replace_string: replacement.into(),
         trim_strings: Vec::new(),
-        placements: vec![TextTransformPlacement::UserInput],
+        targets: vec![TextTransformTarget::UserInput],
         surfaces: vec![surface],
         disabled: false,
         run_on_edit: false,
-        macro_mode: RegexMacroMode::None,
+        pattern_macro_mode: PatternMacroMode::None,
         min_depth: None,
         max_depth: None,
     }

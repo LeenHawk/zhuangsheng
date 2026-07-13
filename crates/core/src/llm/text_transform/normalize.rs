@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{TextTransformRule, TextTransformScope, pattern::compile_pattern};
+use super::{TextTransformRule, pattern::compile_pattern};
 use crate::llm::{LlmConfigError, LlmConfigResult};
 
 const MAX_RULES: usize = 256;
@@ -16,7 +16,7 @@ pub fn normalize_text_transforms(
             "preset has more than 256 text transform rules",
         ));
     }
-    rules.sort_by_key(|rule| (scope_rank(rule.scope), rule.order));
+    rules.sort_by_key(|rule| (rule.priority, rule.order));
     let mut ids = HashSet::new();
     for (index, rule) in rules.iter_mut().enumerate() {
         rule.id = rule.id.trim().to_owned();
@@ -28,8 +28,8 @@ pub fn normalize_text_transforms(
             ));
         }
         validate_rule_limits(rule)?;
-        rule.placements.sort_by_key(|value| *value as u8);
-        rule.placements.dedup();
+        rule.targets.sort_by_key(|value| *value as u8);
+        rule.targets.dedup();
         rule.surfaces.sort_by_key(|value| *value as u8);
         rule.surfaces.dedup();
         if rule.surfaces.is_empty() {
@@ -86,14 +86,6 @@ fn validate_depth(rule: &mut TextTransformRule) -> LlmConfigResult<()> {
         rule.min_depth = None;
     }
     Ok(())
-}
-
-fn scope_rank(scope: TextTransformScope) -> u8 {
-    match scope {
-        TextTransformScope::Global => 0,
-        TextTransformScope::Character => 1,
-        TextTransformScope::Preset => 2,
-    }
 }
 
 fn error(code: &'static str, message: impl Into<String>) -> LlmConfigError {

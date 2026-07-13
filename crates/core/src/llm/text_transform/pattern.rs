@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use fancy_regex::{Regex, RegexBuilder};
 
-use super::{RegexMacroMode, TextTransformRule};
+use super::{PatternMacroMode, TextTransformRule};
 use crate::llm::{LlmConfigError, LlmConfigResult};
 
 const BACKTRACK_LIMIT: usize = 250_000;
@@ -16,10 +16,10 @@ pub(super) fn compile_pattern(
     rule: &TextTransformRule,
     macros: &BTreeMap<String, String>,
 ) -> LlmConfigResult<CompiledPattern> {
-    let source = match rule.macro_mode {
-        RegexMacroMode::None => rule.find_regex.clone(),
-        RegexMacroMode::Raw => substitute_macros(&rule.find_regex, macros, false),
-        RegexMacroMode::Escaped => substitute_macros(&rule.find_regex, macros, true),
+    let source = match rule.pattern_macro_mode {
+        PatternMacroMode::None => rule.find_regex.clone(),
+        PatternMacroMode::Raw => substitute_macros(&rule.find_regex, macros, false),
+        PatternMacroMode::Escaped => substitute_macros(&rule.find_regex, macros, true),
     };
     let (mut pattern, flags) = split_pattern(&source)?;
     validate_flags(&flags)?;

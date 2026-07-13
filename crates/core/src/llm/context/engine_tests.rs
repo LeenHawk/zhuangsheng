@@ -7,8 +7,7 @@ use crate::{
     llm::{
         ir::{ContextSensitivity, ContextTrust, MessageRole},
         text_transform::{
-            RegexMacroMode, TextTransformPlacement, TextTransformRule, TextTransformScope,
-            TextTransformSurface,
+            PatternMacroMode, TextTransformRule, TextTransformSurface, TextTransformTarget,
         },
     },
 };
@@ -502,16 +501,16 @@ fn prompt_text_transforms_run_before_budget_with_history_depth() {
     context_spec.text_transforms = vec![TextTransformRule {
         id: "latest-only".into(),
         name: "Latest only".into(),
-        scope: TextTransformScope::Preset,
+        priority: 0,
         order: 0,
         find_regex: "/foo/g".into(),
         replace_string: "transformed".into(),
         trim_strings: Vec::new(),
-        placements: vec![TextTransformPlacement::UserInput],
+        targets: vec![TextTransformTarget::UserInput],
         surfaces: vec![TextTransformSurface::Prompt],
         disabled: false,
         run_on_edit: false,
-        macro_mode: RegexMacroMode::None,
+        pattern_macro_mode: PatternMacroMode::None,
         min_depth: Some(0),
         max_depth: Some(0),
     }];

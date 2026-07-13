@@ -10,13 +10,7 @@ use zhuangsheng_core::{
             ContextPresetPreviewView, ContextPresetView, PreviewContextPresetCommand,
             PublishContextPresetVersionCommand,
         },
-        sillytavern::{
-            ApplySillyTavernImportCommand, ExportSillyTavernCommand,
-            PreviewSillyTavernImportCommand, SillyTavernImportResult,
-            SillyTavernRegexTestResult, SillyTavernVersionExport, TestSillyTavernRegexCommand,
-        },
     },
-    compatibility::sillytavern::SillyTavernImportPreview,
     llm::{LlmChannelRevision, context::ContextPresetVersion},
 };
 use zhuangsheng_tauri_adapter::{CommandResult, TauriAdapter};
@@ -111,38 +105,6 @@ pub async fn preview_context_preset(
     command: PreviewContextPresetCommand,
 ) -> CommandResult<ContextPresetPreviewView> {
     state.preview_context_preset(command).await
-}
-
-#[tauri::command]
-pub async fn preview_sillytavern_import(
-    state: State<'_, TauriAdapter>,
-    command: PreviewSillyTavernImportCommand,
-) -> CommandResult<SillyTavernImportPreview> {
-    state.preview_sillytavern_import(command).await
-}
-
-#[tauri::command]
-pub async fn apply_sillytavern_import(
-    state: State<'_, TauriAdapter>,
-    command: ApplySillyTavernImportCommand,
-) -> CommandResult<SillyTavernImportResult> {
-    state.apply_sillytavern_import(command).await
-}
-
-#[tauri::command]
-pub async fn test_sillytavern_regex(
-    state: State<'_, TauriAdapter>,
-    command: TestSillyTavernRegexCommand,
-) -> CommandResult<SillyTavernRegexTestResult> {
-    state.test_sillytavern_regex(command).await
-}
-
-#[tauri::command]
-pub async fn export_sillytavern(
-    state: State<'_, TauriAdapter>,
-    command: ExportSillyTavernCommand,
-) -> CommandResult<SillyTavernVersionExport> {
-    state.export_sillytavern(command).await
 }
 
 #[tauri::command]

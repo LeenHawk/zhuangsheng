@@ -8,7 +8,7 @@ use zhuangsheng_core::{
         context::ContextConfigSnapshot,
         ir::LlmContentPartIr,
         text_transform::{
-            TextTransformContext, TextTransformPlacement, TextTransformRule, TextTransformSurface,
+            TextTransformContext, TextTransformRule, TextTransformSurface, TextTransformTarget,
             apply_text_transforms,
         },
     },
@@ -70,9 +70,9 @@ pub(super) fn project_display_content(
     plan: &DisplayTransformPlan,
 ) -> StorageResult<Option<Vec<LlmContentPartIr>>> {
     let context = TextTransformContext {
-        placement: Some(match role {
-            ConversationMessageRole::User => TextTransformPlacement::UserInput,
-            ConversationMessageRole::Assistant => TextTransformPlacement::AiOutput,
+        target: Some(match role {
+            ConversationMessageRole::User => TextTransformTarget::UserInput,
+            ConversationMessageRole::Assistant => TextTransformTarget::AssistantOutput,
         }),
         surface: Some(TextTransformSurface::Display),
         depth: Some(depth),

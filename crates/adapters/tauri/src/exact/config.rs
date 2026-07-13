@@ -2,10 +2,6 @@ use serde_json::Value;
 use zhuangsheng_core::application::{
     channel::{DiscoverChannelModelsCommand, PublishChannelRevisionCommand},
     preset::{PreviewContextPresetCommand, PublishContextPresetVersionCommand},
-    sillytavern::{
-        ApplySillyTavernImportCommand, ExportSillyTavernCommand, PreviewSillyTavernImportCommand,
-        TestSillyTavernRegexCommand,
-    },
 };
 
 use crate::{CommandResult, TauriAdapter};
@@ -27,10 +23,6 @@ pub async fn dispatch(
             | "get_context_preset_version"
             | "get_context_preset_head"
             | "preview_context_preset"
-            | "preview_sillytavern_import"
-            | "test_sillytavern_regex"
-            | "apply_sillytavern_import"
-            | "export_sillytavern"
     ) {
         return None;
     }
@@ -82,32 +74,6 @@ pub async fn dispatch(
                     .preview_context_preset(argument::<PreviewContextPresetCommand>(
                         payload, "command",
                     )?)
-                    .await,
-            ),
-            "preview_sillytavern_import" => encode(
-                state
-                    .preview_sillytavern_import(argument::<PreviewSillyTavernImportCommand>(
-                        payload, "command",
-                    )?)
-                    .await,
-            ),
-            "test_sillytavern_regex" => encode(
-                state
-                    .test_sillytavern_regex(argument::<TestSillyTavernRegexCommand>(
-                        payload, "command",
-                    )?)
-                    .await,
-            ),
-            "apply_sillytavern_import" => encode(
-                state
-                    .apply_sillytavern_import(argument::<ApplySillyTavernImportCommand>(
-                        payload, "command",
-                    )?)
-                    .await,
-            ),
-            "export_sillytavern" => encode(
-                state
-                    .export_sillytavern(argument::<ExportSillyTavernCommand>(payload, "command")?)
                     .await,
             ),
             _ => unreachable!(),

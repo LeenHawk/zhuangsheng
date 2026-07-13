@@ -5,8 +5,7 @@ use zhuangsheng_core::{
         context::{ContextAssemblyConfig, ContextAssemblySpec},
         ir::{LlmContentPartIr, validate_content_parts},
         text_transform::{
-            TextTransformContext, TextTransformPlacement, TextTransformSurface,
-            apply_text_transforms,
+            TextTransformContext, TextTransformSurface, TextTransformTarget, apply_text_transforms,
         },
     },
 };
@@ -29,7 +28,7 @@ pub(super) fn apply_user_content(
     content: &[LlmContentPartIr],
 ) -> StorageResult<Vec<LlmContentPartIr>> {
     let context = TextTransformContext {
-        placement: Some(TextTransformPlacement::UserInput),
+        target: Some(TextTransformTarget::UserInput),
         surface: Some(TextTransformSurface::Canonical),
         depth: Some(0),
         is_edit: false,

@@ -7,7 +7,6 @@ pub mod graph;
 pub mod memory;
 pub mod preset;
 pub mod secret;
-pub mod sillytavern;
 pub mod tool;
 
 pub use error::ApplicationError;

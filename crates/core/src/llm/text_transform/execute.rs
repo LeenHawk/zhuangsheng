@@ -44,8 +44,8 @@ fn applies(rule: &TextTransformRule, context: &TextTransformContext) -> bool {
         return false;
     }
     if context
-        .placement
-        .is_some_and(|value| !rule.placements.contains(&value))
+        .target
+        .is_some_and(|value| !rule.targets.contains(&value))
         || context
             .surface
             .is_some_and(|value| !rule.surfaces.contains(&value))
@@ -93,7 +93,7 @@ fn replacement(
     captures: &Captures<'_>,
     context: &TextTransformContext,
 ) -> String {
-    let source = replace_match_macro(&rule.replace_string);
+    let source = rule.replace_string.clone();
     let matched = captures.get(0).expect("capture zero");
     let mut output = String::with_capacity(source.len());
     let mut index = 0usize;
@@ -165,14 +165,6 @@ fn trim_capture(value: &str, rule: &TextTransformRule, context: &TextTransformCo
         .fold(value.to_owned(), |text, trim| {
             text.replace(&substitute_macros(trim, &context.macros, false), "")
         })
-}
-
-fn replace_match_macro(value: &str) -> String {
-    let mut output = value.to_owned();
-    for spelling in ["{{match}}", "{{MATCH}}", "{{Match}}"] {
-        output = output.replace(spelling, "$0");
-    }
-    output
 }
 
 fn error(code: &'static str, message: impl Into<String>) -> LlmConfigError {

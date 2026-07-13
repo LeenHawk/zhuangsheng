@@ -9,14 +9,7 @@ use zhuangsheng_core::{
             ContextPresetPreviewView, ContextPresetView, PreviewContextPresetCommand,
             PublishContextPresetVersionCommand,
         },
-        sillytavern::{
-            ApplySillyTavernImportCommand, ExportSillyTavernCommand,
-            PreviewSillyTavernImportCommand, SillyTavernImportResult, SillyTavernRegexTestResult,
-            SillyTavernVersionExport, TestSillyTavernRegexCommand, apply_sillytavern_import,
-            export_sillytavern, preview_sillytavern_import, test_sillytavern_regex,
-        },
     },
-    compatibility::sillytavern::SillyTavernImportPreview,
     llm::{LlmChannelRevision, context::ContextPresetVersion},
 };
 
@@ -97,33 +90,5 @@ impl TauriAdapter {
         command: PreviewContextPresetCommand,
     ) -> CommandResult<ContextPresetPreviewView> {
         Ok(self.preset.preview_context_preset(command).await?)
-    }
-
-    pub async fn preview_sillytavern_import(
-        &self,
-        command: PreviewSillyTavernImportCommand,
-    ) -> CommandResult<SillyTavernImportPreview> {
-        Ok(preview_sillytavern_import(self.preset.as_ref(), command).await?)
-    }
-
-    pub async fn apply_sillytavern_import(
-        &self,
-        command: ApplySillyTavernImportCommand,
-    ) -> CommandResult<SillyTavernImportResult> {
-        Ok(apply_sillytavern_import(self.preset.as_ref(), self.graph.as_ref(), command).await?)
-    }
-
-    pub async fn test_sillytavern_regex(
-        &self,
-        command: TestSillyTavernRegexCommand,
-    ) -> CommandResult<SillyTavernRegexTestResult> {
-        Ok(test_sillytavern_regex(self.preset.as_ref(), command).await?)
-    }
-
-    pub async fn export_sillytavern(
-        &self,
-        command: ExportSillyTavernCommand,
-    ) -> CommandResult<SillyTavernVersionExport> {
-        Ok(export_sillytavern(self.preset.as_ref(), self.graph.as_ref(), command).await?)
     }
 }

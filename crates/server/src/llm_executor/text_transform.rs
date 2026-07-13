@@ -6,8 +6,7 @@ use zhuangsheng_core::{
         context::ContextConfigSnapshot,
         ir::LlmContentPartIr,
         text_transform::{
-            TextTransformContext, TextTransformPlacement, TextTransformSurface,
-            apply_text_transforms,
+            TextTransformContext, TextTransformSurface, TextTransformTarget, apply_text_transforms,
         },
     },
     schema,
@@ -30,7 +29,7 @@ pub(super) fn apply_canonical_output_transforms(
         return Ok(value);
     }
     let context = TextTransformContext {
-        placement: Some(TextTransformPlacement::AiOutput),
+        target: Some(TextTransformTarget::AssistantOutput),
         surface: Some(TextTransformSurface::Canonical),
         depth: Some(0),
         is_edit: false,
