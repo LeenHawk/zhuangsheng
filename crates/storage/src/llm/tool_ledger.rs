@@ -162,7 +162,24 @@ impl SqliteStore {
             &transaction,
             &command.node_instance_id,
             &command.originating_attempt_id,
-            "llm.tool.prepared",
+            "effect.prepared",
+            json!({
+                "schemaVersion":1,
+                "toolCallId":command.tool_call_id,
+                "modelCallId":command.model_call_id,
+                "callIndex":command.call_index,
+                "callDigest":command.call_digest,
+                "effectId":command.effect_id,
+                "effectAttemptId":command.effect_attempt_id,
+            }),
+            now,
+        )
+        .await?;
+        append_tool_event(
+            &transaction,
+            &command.node_instance_id,
+            &command.originating_attempt_id,
+            "tool.call.requested",
             json!({
                 "schemaVersion":1,
                 "toolCallId":command.tool_call_id,
@@ -257,7 +274,21 @@ impl SqliteStore {
             &transaction,
             &call.node_instance_id,
             &command.fence.invoking_node_attempt_id,
-            "llm.tool.started",
+            "effect.started",
+            json!({
+                "schemaVersion":1,
+                "toolCallId":call.tool_call_id,
+                "effectId":call.effect_id,
+                "effectAttemptId":command.effect_attempt_id,
+            }),
+            now,
+        )
+        .await?;
+        append_tool_event(
+            &transaction,
+            &call.node_instance_id,
+            &command.fence.invoking_node_attempt_id,
+            "tool.call.started",
             json!({
                 "schemaVersion":1,
                 "toolCallId":call.tool_call_id,

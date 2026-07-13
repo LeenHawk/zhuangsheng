@@ -14,6 +14,7 @@ use super::{
     effect_wait::{
         EffectWait, EffectWaitOwner, allocate_wait_id, load_wait_ids, open_effect_resolution_wait,
     },
+    model_events::append_model_outcome_events,
     model_ledger_helpers::{add_ref, finish_rows, persist_checkpoint},
     model_ledger_outcome::store_outcome,
     model_ledger_replay::{ReplayDecision, classify_finish},
@@ -168,6 +169,18 @@ impl SqliteStore {
             )
             .await?;
         }
+        append_model_outcome_events(
+            &transaction,
+            &fenced.node_instance_id,
+            &command.fence.invoking_node_attempt_id,
+            &fenced.model_call_id,
+            &fenced.effect_id,
+            &command.effect_attempt_id,
+            &stored,
+            wait_id.as_deref(),
+            now,
+        )
+        .await?;
         transaction.commit().await?;
         Ok(checkpoint)
     }

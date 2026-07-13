@@ -14,6 +14,7 @@ use crate::{
 };
 
 use super::{
+    effect_resolution_events::append_resolution_events,
     effect_resolution_helpers::{
         ResolutionContext, ResolutionOwner, actor_kind_name, command_digest, ensure_live_object,
         load_resolution_context, replay_resolution, resolution_kind_name, validate_command,
@@ -71,6 +72,7 @@ impl SqliteStore {
             .await?;
         apply_projection(&transaction, &command, &context, now).await?;
         settle_blocker(&transaction, &command, &context, &decision_object_id, now).await?;
+        append_resolution_events(&transaction, &command, &context, now).await?;
         add_resolution_refs(&transaction, &command, &context, &decision_object_id, now).await?;
         let view = EffectResolutionView {
             resolution_id: command.resolution_id,

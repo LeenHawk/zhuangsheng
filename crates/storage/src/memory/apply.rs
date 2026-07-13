@@ -17,6 +17,7 @@ use crate::{
 use super::{
     query::{actor_kind, load_proposal, load_record},
     receipt,
+    run_events::append_proposal_run_event,
 };
 
 impl SqliteStore {
@@ -123,6 +124,14 @@ impl SqliteStore {
         .await?;
         append_event(&transaction, &proposal, &commit_id, sequence, now).await?;
         let view = load_proposal(&transaction, &command.proposal_id).await?;
+        append_proposal_run_event(
+            &transaction,
+            &view,
+            "memory.proposal.status_changed",
+            "applied",
+            now,
+        )
+        .await?;
         receipt::finish(
             &transaction,
             &receipt_scope,
@@ -392,6 +401,14 @@ async fn mark_conflicted<C: ConnectionTrait>(
     )
     .await?;
     let view = load_proposal(connection, &command.proposal_id).await?;
+    append_proposal_run_event(
+        connection,
+        &view,
+        "memory.proposal.status_changed",
+        "conflicted",
+        now,
+    )
+    .await?;
     receipt::finish(
         connection,
         receipt_scope,

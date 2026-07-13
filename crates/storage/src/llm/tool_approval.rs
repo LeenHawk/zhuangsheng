@@ -276,6 +276,30 @@ async fn open_approval_wait<C: ConnectionTrait>(
         },
     )
     .await?;
+    for call in &approval_calls {
+        for event_type in ["tool.call.requested", "tool.call.awaiting_approval"] {
+            append_event(
+                connection,
+                Event {
+                    run_id: &run_id,
+                    event_type,
+                    importance: "critical",
+                    node_instance_id: Some(&command.node_instance_id),
+                    attempt_id: Some(&command.originating_attempt_id),
+                    payload: json!({
+                        "schemaVersion":1,
+                        "waitId":command.wait_id,
+                        "modelCallId":command.model_call_id,
+                        "toolCallId":call.tool_call_id,
+                        "callIndex":call.call_index,
+                        "callDigest":call.call_digest,
+                    }),
+                    now,
+                },
+            )
+            .await?;
+        }
+    }
     Ok(())
 }
 

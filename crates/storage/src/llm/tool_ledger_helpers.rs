@@ -116,7 +116,7 @@ pub(super) async fn append_tool_event<C: ConnectionTrait>(
         Event {
             run_id: &run_id,
             event_type,
-            importance: "info",
+            importance: "critical",
             node_instance_id: Some(node_instance_id),
             attempt_id: Some(node_attempt_id),
             payload,

@@ -7,6 +7,7 @@ use zhuangsheng_core::{
 use crate::{
     SqliteStore, StorageError, StorageResult,
     graph::helpers::{load_object_json, new_id, put_inline_object, sql},
+    runtime::{Event, append_event},
 };
 
 use super::{
@@ -117,6 +118,27 @@ impl SqliteStore {
             now,
         )
         .await?;
+        if let Some(run_id) = &view.metadata.origin_run_id {
+            append_event(
+                &transaction,
+                Event {
+                    run_id,
+                    event_type: "artifact.committed",
+                    importance: "critical",
+                    node_instance_id: view.metadata.origin_node_instance_id.as_deref(),
+                    attempt_id: None,
+                    payload: json!({
+                        "schemaVersion":1,
+                        "artifactId":view.metadata.artifact_id,
+                        "artifactRef":view.metadata.content,
+                        "metadataCommitId":view.metadata_head_commit_id,
+                        "originToolCallId":view.metadata.origin_tool_call_id,
+                    }),
+                    now,
+                },
+            )
+            .await?;
+        }
         transaction.commit().await?;
         Ok(view)
     }

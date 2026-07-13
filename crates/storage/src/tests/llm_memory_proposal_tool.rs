@@ -124,6 +124,26 @@ async fn memory_proposal_batch_waits_decides_atomically_and_replays_delivery() {
         .collect();
     statuses.sort();
     assert_eq!(statuses, vec!["approved", "rejected"]);
+    let proposal_events: Vec<String> = store
+        .db
+        .query_all_raw(sql(
+            "SELECT event_type FROM run_events WHERE node_instance_id=? AND event_type LIKE 'memory.proposal.%' ORDER BY seq",
+            vec![claimed.node_instance_id.clone().into()],
+        ))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| row.try_get("", "event_type").unwrap())
+        .collect();
+    assert_eq!(
+        proposal_events,
+        [
+            "memory.proposal.created",
+            "memory.proposal.created",
+            "memory.proposal.status_changed",
+            "memory.proposal.status_changed",
+        ]
+    );
     let checkpoint: LlmLoopCheckpoint = load_checkpoint(&store, &claimed.node_instance_id).await;
     assert!(
         checkpoint

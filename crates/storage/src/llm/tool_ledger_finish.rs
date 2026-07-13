@@ -164,10 +164,32 @@ impl SqliteStore {
             &call.node_instance_id,
             &command.fence.invoking_node_attempt_id,
             match stored.tool_status {
-                "completed" => "llm.tool.completed",
-                "failed" => "llm.tool.failed",
-                "outcome_unknown" => "llm.tool.outcome_unknown",
-                _ => "llm.tool.retry_ready",
+                "completed" => "effect.succeeded",
+                "failed" => "effect.failed",
+                "outcome_unknown" => "effect.outcome_unknown.recorded",
+                _ => "effect.attempt.outcome_unknown",
+            },
+            json!({
+                "schemaVersion":1,
+                "toolCallId":call.tool_call_id,
+                "effectId":call.effect_id,
+                "effectAttemptId":command.effect_attempt_id,
+                "callIndex":call.call_index,
+                "outputRef":stored.output_object_id,
+                "waitId":wait_id,
+            }),
+            now,
+        )
+        .await?;
+        append_tool_event(
+            &transaction,
+            &call.node_instance_id,
+            &command.fence.invoking_node_attempt_id,
+            match stored.tool_status {
+                "completed" => "tool.call.completed",
+                "failed" => "tool.call.failed",
+                "outcome_unknown" => "tool.call.outcome_unknown",
+                _ => "tool.call.retry_ready",
             },
             json!({
                 "schemaVersion":1,

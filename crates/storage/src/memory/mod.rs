@@ -4,6 +4,7 @@ mod list;
 mod propose;
 mod query;
 mod receipt;
+mod run_events;
 mod search;
 mod service;
 

@@ -11,7 +11,9 @@ use zhuangsheng_core::{
 use crate::{
     StorageError, StorageResult,
     graph::helpers::{put_inline_object, sql},
-    runtime::{ResumeAttempt, create_resume_attempt as create_runtime_resume_attempt},
+    runtime::{
+        Event, ResumeAttempt, append_event, create_resume_attempt as create_runtime_resume_attempt,
+    },
 };
 
 use super::{
@@ -41,9 +43,11 @@ pub(super) async fn settle_executable_batch<C: ConnectionTrait>(
     for plan in &continuation.calls {
         if rejected.contains(plan.tool_call_id.as_str()) {
             deny_call(connection, plan, checkpoint, now).await?;
+            append_tool_event(connection, context, plan, "tool.call.failed", now).await?;
             denied.push(plan.tool_call_id.clone());
         } else {
             prepare_effect(connection, plan, &resume_attempt_id, checkpoint, now).await?;
+            append_tool_event(connection, context, plan, "effect.prepared", now).await?;
             watermark = plan.effect_attempt_id.clone();
             prepared.push(plan.tool_call_id.clone());
         }
@@ -73,15 +77,46 @@ pub(super) async fn settle_failed_batch<C: ConnectionTrait>(
     for plan in &continuation.calls {
         if rejected.contains(plan.tool_call_id.as_str()) {
             deny_call(connection, plan, checkpoint, now).await?;
+            append_tool_event(connection, context, plan, "tool.call.failed", now).await?;
             denied.push(plan.tool_call_id.clone());
         } else {
             cancel_unstarted_call(connection, plan, checkpoint).await?;
+            append_tool_event(connection, context, plan, "tool.call.failed", now).await?;
         }
     }
     checkpoint.effect_watermark = format!("approval-failed:{}", context.node_attempt_id);
     *checkpoint = checkpoint.clone().seal()?;
     persist_checkpoint(connection, checkpoint, now).await?;
     Ok((Vec::new(), denied, None))
+}
+
+async fn append_tool_event<C: ConnectionTrait>(
+    connection: &C,
+    context: &WaitContext,
+    plan: &ToolApprovalCallPlan,
+    event_type: &str,
+    now: i64,
+) -> StorageResult<()> {
+    append_event(
+        connection,
+        Event {
+            run_id: &context.run_id,
+            event_type,
+            importance: "critical",
+            node_instance_id: Some(&context.node_instance_id),
+            attempt_id: Some(&context.node_attempt_id),
+            payload: json!({
+                "schemaVersion":1,
+                "toolCallId":plan.tool_call_id,
+                "effectId":plan.effect_id,
+                "effectAttemptId":plan.effect_attempt_id,
+                "callIndex":plan.call_index,
+            }),
+            now,
+        },
+    )
+    .await?;
+    Ok(())
 }
 
 async fn prepare_effect<C: ConnectionTrait>(

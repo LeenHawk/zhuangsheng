@@ -1,4 +1,5 @@
 use sea_orm::{ConnectionTrait, TransactionTrait};
+use serde_json::json;
 use zhuangsheng_core::{
     canonical,
     llm::{
@@ -12,13 +13,16 @@ use crate::{
     graph::helpers::{put_inline_object, sql},
 };
 
-use super::model_ledger_helpers::{
-    add_ref, classification_name, load_existing, persist_checkpoint, validate_prepare_fields,
-};
 use super::model_ledger_replay::{ReplayDecision, classify_start, load_retry_replay};
 use super::validation::{
     CheckpointExpectation, load_ledger_context, validate_checkpoint, validate_fence,
     validate_node_attempt_fence, validate_operation,
+};
+use super::{
+    model_events::append_model_event,
+    model_ledger_helpers::{
+        add_ref, classification_name, load_existing, persist_checkpoint, validate_prepare_fields,
+    },
 };
 
 impl SqliteStore {
@@ -157,6 +161,22 @@ impl SqliteStore {
             now,
         )
         .await?;
+        append_model_event(
+            &transaction,
+            &command.node_instance_id,
+            &command.originating_attempt_id,
+            "effect.prepared",
+            json!({
+                "schemaVersion":1,
+                "effectId":command.effect_id,
+                "effectAttemptId":command.effect_attempt_id,
+                "ownerKind":"model_call",
+                "ownerId":command.model_call_id,
+                "callNo":command.call_no,
+            }),
+            now,
+        )
+        .await?;
         add_ref(
             &transaction,
             &request_object_id,
@@ -229,13 +249,43 @@ impl SqliteStore {
         let model = transaction
             .execute_raw(sql(
                 "UPDATE model_calls SET status = 'running', provider_request_id = ? WHERE id = ? AND status = 'prepared'",
-                vec![command.provider_request_id.into(), fenced.model_call_id.into()],
+                vec![command.provider_request_id.into(), fenced.model_call_id.clone().into()],
             ))
             .await?;
         if model.rows_affected() != 1 {
             return Err(StorageError::Conflict("model_call_status"));
         }
         persist_checkpoint(&transaction, &command.checkpoint, now).await?;
+        append_model_event(
+            &transaction,
+            &fenced.node_instance_id,
+            &command.fence.invoking_node_attempt_id,
+            "effect.started",
+            json!({
+                "schemaVersion":1,
+                "effectId":fenced.effect_id,
+                "effectAttemptId":command.effect_attempt_id,
+                "modelCallId":fenced.model_call_id,
+                "callNo":fenced.call_no,
+            }),
+            now,
+        )
+        .await?;
+        append_model_event(
+            &transaction,
+            &fenced.node_instance_id,
+            &command.fence.invoking_node_attempt_id,
+            "llm.call.started",
+            json!({
+                "schemaVersion":1,
+                "modelCallId":fenced.model_call_id,
+                "effectId":fenced.effect_id,
+                "effectAttemptId":command.effect_attempt_id,
+                "callNo":fenced.call_no,
+            }),
+            now,
+        )
+        .await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -364,6 +414,23 @@ impl SqliteStore {
             "effect_attempt",
             &command.effect_attempt_id,
             "request",
+            now,
+        )
+        .await?;
+        append_model_event(
+            &transaction,
+            &node_instance_id,
+            &command.fence.invoking_node_attempt_id,
+            "effect.prepared",
+            json!({
+                "schemaVersion":1,
+                "effectId":effect_id,
+                "effectAttemptId":command.effect_attempt_id,
+                "ownerKind":"model_call",
+                "ownerId":command.model_call_id,
+                "callNo":call_no,
+                "retry":true,
+            }),
             now,
         )
         .await?;

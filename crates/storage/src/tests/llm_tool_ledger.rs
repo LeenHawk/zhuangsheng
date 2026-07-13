@@ -343,7 +343,7 @@ async fn executable_tool_calls_are_fenced_replayed_and_not_digest_deduplicated()
     let events: i64 = store
         .db
         .query_one_raw(sql(
-            "SELECT COUNT(*) AS count FROM run_events WHERE event_type LIKE 'llm.tool.%'",
+            "SELECT COUNT(*) AS count FROM run_events WHERE event_type LIKE 'tool.call.%'",
             vec![],
         ))
         .await

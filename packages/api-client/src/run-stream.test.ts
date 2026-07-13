@@ -37,6 +37,26 @@ describe("run stream decoding and reduction", () => {
       .toThrow(RunStreamProtocolError);
   });
 
+  it("accepts the checkpointed model, tool, memory, and artifact journal facts", () => {
+    const types = [
+      "checkpoint.created",
+      "effect.prepared",
+      "llm.call.started",
+      "llm.call.completed",
+      "tool.call.awaiting_approval",
+      "tool.call.completed",
+      "memory.proposal.created",
+      "memory.proposal.status_changed",
+      "artifact.committed",
+    ];
+    const projection = types.reduce(
+      (state, type, index) => reduceRunStream(state, durable(index + 1, type)),
+      createRunStreamProjection("run_1"),
+    );
+    expect(projection.durableSeq).toBe(types.length);
+    expect(projection.recentEvents.map((event) => event.type)).toEqual(types);
+  });
+
   it("validates SSE id, event name, run identity, and live schema version", () => {
     const decoded = decodeRunStreamFrame({
       id: "3",

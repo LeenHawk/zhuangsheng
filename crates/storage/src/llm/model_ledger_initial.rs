@@ -16,6 +16,7 @@ use crate::{
 };
 
 use super::{
+    model_events::append_model_event,
     model_ledger_helpers::{
         add_ref, classification_name, load_existing, persist_checkpoint, validate_prepare_fields,
     },
@@ -198,6 +199,22 @@ async fn insert_initial<C: ConnectionTrait>(
         "model_call",
         &command.model_call_id,
         "request",
+        now,
+    )
+    .await?;
+    append_model_event(
+        connection,
+        &command.node_instance_id,
+        &command.originating_attempt_id,
+        "effect.prepared",
+        json!({
+            "schemaVersion":1,
+            "effectId":command.effect_id,
+            "effectAttemptId":command.effect_attempt_id,
+            "ownerKind":"model_call",
+            "ownerId":command.model_call_id,
+            "callNo":1,
+        }),
         now,
     )
     .await?;

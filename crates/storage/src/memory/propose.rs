@@ -16,6 +16,7 @@ use crate::{
 use super::{
     query::{actor_kind, load_proposal},
     receipt,
+    run_events::append_proposal_run_event,
 };
 
 impl SqliteStore {
@@ -108,6 +109,14 @@ pub(crate) async fn propose_in<C: ConnectionTrait>(
             )).await?;
     }
     let view = load_proposal(connection, &proposal_id).await?;
+    append_proposal_run_event(
+        connection,
+        &view,
+        "memory.proposal.created",
+        "awaiting_review",
+        now,
+    )
+    .await?;
     receipt::finish(
         connection,
         &receipt_scope,

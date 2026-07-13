@@ -13,6 +13,7 @@ use crate::{
 use super::{
     query::{actor_kind, load_proposal, proposal_status},
     receipt,
+    run_events::append_proposal_run_event,
 };
 
 impl SqliteStore {
@@ -111,7 +112,16 @@ pub(crate) async fn decide_in<C: ConnectionTrait>(
             return Err(StorageError::Conflict("memory_reservation"));
         }
     }
-    load_proposal(connection, &command.proposal_id).await
+    let view = load_proposal(connection, &command.proposal_id).await?;
+    append_proposal_run_event(
+        connection,
+        &view,
+        "memory.proposal.status_changed",
+        proposal_status(next),
+        now,
+    )
+    .await?;
+    Ok(view)
 }
 
 async fn insert_transition<C: ConnectionTrait>(

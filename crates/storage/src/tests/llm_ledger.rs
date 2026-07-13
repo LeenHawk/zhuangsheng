@@ -273,6 +273,27 @@ async fn model_effect_ledger_is_fenced_idempotent_and_terminal() {
             .unwrap()
             .is_empty()
     );
+    let events: Vec<String> = store
+        .db
+        .query_all_raw(sql(
+            "SELECT event_type FROM run_events WHERE node_instance_id = ? AND event_type IN ('effect.prepared','effect.started','effect.succeeded','llm.call.started','llm.call.completed') ORDER BY seq",
+            vec![claimed.node_instance_id.into()],
+        ))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| row.try_get("", "event_type").unwrap())
+        .collect();
+    assert_eq!(
+        events,
+        [
+            "effect.prepared",
+            "effect.started",
+            "llm.call.started",
+            "effect.succeeded",
+            "llm.call.completed",
+        ]
+    );
 }
 
 pub(super) fn prepare_command(

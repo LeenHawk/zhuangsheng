@@ -18,7 +18,7 @@ use crate::{
     StorageError, StorageResult,
     graph::helpers::{load_object_json, put_inline_object, sql},
     memory::{decide_in, load_proposal},
-    runtime::{ResumeAttempt, add_object_ref, create_resume_attempt},
+    runtime::{Event, ResumeAttempt, add_object_ref, append_event, create_resume_attempt},
 };
 
 use super::{
@@ -98,6 +98,26 @@ pub(super) async fn settle_memory_proposal_response<C: ConnectionTrait>(
         let decision_ref = persist_decision(connection, command, decision, &proposal, now).await?;
         settle_blocker(connection, command, decision, &decision_ref, now).await?;
         let output_ref = persist_tool_output(connection, plan, &proposal, now).await?;
+        append_event(
+            connection,
+            Event {
+                run_id: &context.run_id,
+                event_type: "tool.call.completed",
+                importance: "critical",
+                node_instance_id: Some(&context.node_instance_id),
+                attempt_id: Some(&context.node_attempt_id),
+                payload: json!({
+                    "schemaVersion":1,
+                    "waitId":command.wait_id,
+                    "toolCallId":plan.tool_call_id,
+                    "callIndex":plan.call_index,
+                    "proposalId":plan.proposal_id,
+                    "outputRef":output_ref,
+                }),
+                now,
+            },
+        )
+        .await?;
         let call = checkpoint
             .current_batch
             .iter_mut()

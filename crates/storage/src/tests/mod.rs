@@ -57,6 +57,7 @@ mod roleplay_compatibility;
 mod runtime_aggregator;
 mod runtime_checkpoint;
 mod runtime_control;
+mod runtime_event_compaction;
 mod runtime_expand;
 mod runtime_human_wait;
 mod runtime_join_by_key;

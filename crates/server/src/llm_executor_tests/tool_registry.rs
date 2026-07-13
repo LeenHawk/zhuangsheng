@@ -250,7 +250,7 @@ async fn custom_tool_result_is_persisted_before_the_next_model_call() {
     assert!(
         events
             .iter()
-            .any(|event| event.event_type == "llm.tool.completed")
+            .any(|event| event.event_type == "tool.call.completed")
     );
 }
 

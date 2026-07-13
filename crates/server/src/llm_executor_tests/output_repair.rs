@@ -281,7 +281,7 @@ async fn json_repair_reuses_completed_tool_results_without_dispatching_tools_aga
     assert_eq!(
         events
             .iter()
-            .filter(|event| event.event_type == "llm.tool.completed")
+            .filter(|event| event.event_type == "tool.call.completed")
             .count(),
         1
     );

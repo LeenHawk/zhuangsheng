@@ -70,7 +70,7 @@ async fn node_owned_staging_pins_run_context_and_commit_origin() {
         .db
         .query_one_raw(sql(
             "SELECT a.context_id, r.context_id AS run_context_id FROM artifacts a JOIN graph_runs r ON r.id = a.origin_run_id WHERE a.id = ?",
-            vec![artifact.metadata.artifact_id.into()],
+            vec![artifact.metadata.artifact_id.clone().into()],
         ))
         .await
         .unwrap()
@@ -78,5 +78,22 @@ async fn node_owned_staging_pins_run_context_and_commit_origin() {
     assert_eq!(
         row.try_get::<String>("", "context_id").unwrap(),
         row.try_get::<String>("", "run_context_id").unwrap()
+    );
+    let event = store
+        .db
+        .query_one_raw(sql(
+            "SELECT payload_json FROM run_events WHERE run_id = ? AND event_type = 'artifact.committed'",
+            vec![claimed.run_id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let payload: serde_json::Value =
+        serde_json::from_str(&event.try_get::<String>("", "payload_json").unwrap()).unwrap();
+    assert_eq!(
+        payload
+            .pointer("/artifactId")
+            .and_then(serde_json::Value::as_str),
+        Some(artifact.metadata.artifact_id.as_str())
     );
 }

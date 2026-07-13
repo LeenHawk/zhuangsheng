@@ -96,7 +96,22 @@ pub(super) async fn prepare_retry(
         &transaction,
         &retry.node_instance_id,
         &command.fence.invoking_node_attempt_id,
-        "llm.tool.retry_prepared",
+        "effect.prepared",
+        json!({
+            "schemaVersion":1,
+            "toolCallId":command.tool_call_id,
+            "effectId":retry.effect_id,
+            "effectAttemptId":command.effect_attempt_id,
+            "callIndex":retry.call_index,
+        }),
+        now,
+    )
+    .await?;
+    append_tool_event(
+        &transaction,
+        &retry.node_instance_id,
+        &command.fence.invoking_node_attempt_id,
+        "tool.call.retry_prepared",
         json!({
             "schemaVersion":1,
             "toolCallId":command.tool_call_id,

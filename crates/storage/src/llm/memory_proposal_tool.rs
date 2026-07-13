@@ -186,6 +186,11 @@ async fn open_wait<C: ConnectionTrait>(
         add_object_ref(connection, object, "node_wait", &command.wait_id, role, now).await?;
     }
     append_event(connection, Event { run_id, event_type: "llm.tool.memory_proposals_requested", importance: "critical", node_instance_id: Some(&command.node_instance_id), attempt_id: Some(&command.originating_attempt_id), payload: json!({"schemaVersion":1,"waitId":command.wait_id,"modelCallId":command.model_call_id,"proposalIds":plans.iter().map(|plan| &plan.proposal_id).collect::<Vec<_>>() }), now }).await?;
+    for plan in &plans {
+        for event_type in ["tool.call.requested", "tool.call.awaiting_approval"] {
+            append_event(connection, Event { run_id, event_type, importance: "critical", node_instance_id: Some(&command.node_instance_id), attempt_id: Some(&command.originating_attempt_id), payload: json!({"schemaVersion":1,"waitId":command.wait_id,"modelCallId":command.model_call_id,"toolCallId":plan.tool_call_id,"callIndex":plan.call_index,"proposalId":plan.proposal_id}), now }).await?;
+        }
+    }
     Ok(())
 }
 

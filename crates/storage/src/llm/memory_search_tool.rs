@@ -234,6 +234,20 @@ async fn persist_tool_call<C: ConnectionTrait>(
         connection,
         &command.node_instance_id,
         &command.originating_attempt_id,
+        "tool.call.requested",
+        json!({
+            "schemaVersion":1,
+            "toolCallId":call.tool_call_id,
+            "modelCallId":command.model_call_id,
+            "callIndex":call.call_index,
+        }),
+        now,
+    )
+    .await?;
+    append_tool_event(
+        connection,
+        &command.node_instance_id,
+        &command.originating_attempt_id,
         "llm.tool.memory_search_completed",
         json!({
             "schemaVersion": 1,
@@ -244,6 +258,21 @@ async fn persist_tool_call<C: ConnectionTrait>(
             "scopeSnapshotToken": resolved.scope_snapshot_token,
             "resultCount": resolved.envelope.records.len(),
             "truncated": resolved.envelope.truncated,
+        }),
+        now,
+    )
+    .await?;
+    append_tool_event(
+        connection,
+        &command.node_instance_id,
+        &command.originating_attempt_id,
+        "tool.call.completed",
+        json!({
+            "schemaVersion":1,
+            "toolCallId":call.tool_call_id,
+            "modelCallId":command.model_call_id,
+            "callIndex":call.call_index,
+            "resultDigest":result_digest,
         }),
         now,
     )
