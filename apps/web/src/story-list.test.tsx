@@ -12,6 +12,7 @@ describe("StoryList", () => {
     render(
       <StoryList
         stories={[]}
+        attention={[]}
         templates={[template]}
         templateSettings={{ graphrev_1: settings }}
         secretStatus={{ initialized: true, storeId: "store_1", formatVersion: 1, locked: false }}
@@ -50,6 +51,7 @@ describe("StoryList", () => {
     const onConfigure = vi.fn();
     render(<StoryList
       stories={[]}
+      attention={[]}
       templates={[]}
       templateSettings={{}}
       secretStatus={null}
@@ -66,7 +68,47 @@ describe("StoryList", () => {
     fireEvent.click(screen.getByRole("button", { name: "配置首个 Agent" }));
     expect(onConfigure).toHaveBeenCalledOnce();
   });
+
+  it("renders the lightweight attention projection without fetching each timeline", () => {
+    const onOpen = vi.fn();
+    render(<StoryList
+      stories={[story]}
+      attention={[{
+        conversationId: story.id,
+        runId: "run_1",
+        waitId: "wait_1",
+        kind: "tool_approval",
+        createdAt: 1_700_000_000_001,
+      }]}
+      templates={[]}
+      templateSettings={{}}
+      secretStatus={null}
+      loading={false}
+      pending={false}
+      error={null}
+      onReload={() => undefined}
+      onCreate={async () => undefined}
+      onUnlockSecretStore={async () => undefined}
+      onOpen={onOpen}
+      onConfigure={() => undefined}
+    />);
+
+    expect(screen.getByRole("heading", { name: "需要处理" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /工具操作等待确认/ }));
+    expect(onOpen).toHaveBeenCalledWith(story.id);
+  });
 });
+
+const story = {
+  id: "conversation_1",
+  title: "月下档案馆",
+  contextId: "context_1",
+  activeBranchId: "branch_1",
+  activeHeadCommitId: "commit_1",
+  runProfile: null,
+  createdAt: 1_700_000_000_000,
+  updatedAt: 1_700_000_000_000,
+};
 
 const template = {
   graphId: "graph_1",

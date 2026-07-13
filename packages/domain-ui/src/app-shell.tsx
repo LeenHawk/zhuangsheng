@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { BookOpen, Brain, FileArchive, GitBranch, Orbit, Settings, Sparkles, Workflow } from "lucide-react";
+import { BookOpen, Brain, FileArchive, GitBranch, LockKeyhole, LockKeyholeOpen, Orbit, Settings, Sparkles, Wifi, WifiOff, Workflow } from "lucide-react";
 
-import type { UiExperienceMode } from "@zhuangsheng/api-client";
+import type { SecretStoreStatusView, UiExperienceMode } from "@zhuangsheng/api-client";
 import { Badge, cn } from "@zhuangsheng/ui";
 import { CommandPalette } from "./command-palette";
 import { usePlatformCapabilities } from "./platform-capabilities";
@@ -11,9 +11,15 @@ type Section = "stories" | "library" | "memory" | "artifacts" | "studio" | "runs
 interface AppShellProps {
   mode: UiExperienceMode;
   section: Section;
+  status: AppShellStatus;
   onModeChange: (mode: UiExperienceMode) => void;
   onSectionChange: (section: Section) => void;
   children: ReactNode;
+}
+
+export interface AppShellStatus {
+  connection: "online" | "offline" | "unknown";
+  secretStore: SecretStoreStatusView | null;
 }
 
 const userNavigation = [
@@ -31,7 +37,7 @@ const expertNavigation = [
   { id: "artifacts" as const, label: "Artifacts", icon: FileArchive },
 ];
 
-export function AppShell({ mode, section, onModeChange, onSectionChange, children }: AppShellProps) {
+export function AppShell({ mode, section, status, onModeChange, onSectionChange, children }: AppShellProps) {
   const navigation = mode === "expert" ? expertNavigation : userNavigation;
   const platform = usePlatformCapabilities();
   return (
@@ -55,9 +61,11 @@ export function AppShell({ mode, section, onModeChange, onSectionChange, childre
             ))}
           </nav>
           <CommandPalette items={navigation.map(({ id, label }) => ({ id, label }))} onSelect={onSectionChange} />
-          <Badge className="hidden sm:inline-flex" tone={platform.localFirst ? "success" : "info"}>
+          <Badge className="hidden lg:inline-flex" tone={platform.localFirst ? "success" : "info"}>
             {platform.localFirst ? "本地 SQLite" : "Web 服务"}
           </Badge>
+          <ConnectionBadge status={status.connection} localFirst={platform.localFirst} />
+          <SecretBadge status={status.secretStore} />
           <div className="ml-auto flex items-center gap-2 rounded-xl border border-default bg-surface p-1" aria-label="界面模式">
             {(["user", "expert"] as const).map((value) => (
               <button key={value} onClick={() => onModeChange(value)} className={cn("min-h-8 rounded-lg px-3 text-xs font-semibold text-muted transition-colors", mode === value && "bg-elevated text-primary shadow-sm")} aria-pressed={mode === value}>
@@ -80,6 +88,19 @@ export function AppShell({ mode, section, onModeChange, onSectionChange, childre
       </nav>
     </div>
   );
+}
+
+function ConnectionBadge({ status, localFirst }: { status: AppShellStatus["connection"]; localFirst: boolean }) {
+  const label = status === "online" ? (localFirst ? "本地存储可用" : "服务已连接") : status === "offline" ? "当前离线" : "连接状态未知";
+  const Icon = status === "online" ? Wifi : WifiOff;
+  return <Badge aria-label={label} title={label} className="gap-1 px-2" tone={status === "online" ? "success" : status === "offline" ? "warning" : "neutral"}><Icon className="size-3.5" /><span className="hidden xl:inline">{label}</span></Badge>;
+}
+
+function SecretBadge({ status }: { status: SecretStoreStatusView | null }) {
+  const unlocked = status?.initialized === true && !status.locked;
+  const label = status === null ? "Secret 状态未知" : !status.initialized ? "Secret 未初始化" : status.locked ? "Secret 已锁定" : "Secret 已解锁";
+  const Icon = unlocked ? LockKeyholeOpen : LockKeyhole;
+  return <Badge aria-label={label} title={label} className="gap-1 px-2" tone={unlocked ? "success" : status?.locked ? "warning" : "neutral"}><Icon className="size-3.5" /><span className="hidden xl:inline">{label}</span></Badge>;
 }
 
 export function SurfacePlaceholder({ label, title, description }: { label: string; title: string; description: string }) {

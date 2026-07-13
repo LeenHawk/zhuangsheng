@@ -1,22 +1,33 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppShell, ApplicationSettings, CommandPalette, LibraryPage, PlatformCapabilitiesProvider } from "@zhuangsheng/domain-ui";
+import { AppShell, ApplicationSettings, CommandPalette, LibraryPage, notifyShellStatusChanged, PlatformCapabilitiesProvider, useAppShellStatus } from "@zhuangsheng/domain-ui";
 import { webPlatformCapabilities } from "@zhuangsheng/api-client";
 import { defaultUiPreferences } from "./ui-preferences";
 
 describe("global UI surfaces", () => {
   afterEach(cleanup);
-  it("receives platform capabilities from the shell composition root", () => {
+  it("receives platform, connection, and secret status from the shell composition root", async () => {
+    const loadStatus = vi.fn()
+      .mockResolvedValueOnce({ initialized: true, storeId: "store_1", formatVersion: 1, locked: true })
+      .mockResolvedValue({ initialized: true, storeId: "store_1", formatVersion: 1, locked: false });
     render(<PlatformCapabilitiesProvider value={webPlatformCapabilities}>
-      <AppShell mode="user" section="stories" onModeChange={() => undefined} onSectionChange={() => undefined}>
-        <div>content</div>
-      </AppShell>
+      <ShellHarness loadStatus={loadStatus} />
     </PlatformCapabilitiesProvider>);
     expect(screen.getByText("Web 服务")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("服务已连接")).toBeInTheDocument());
+    expect(screen.getByLabelText("Secret 已锁定")).toBeInTheDocument();
+    const mobileNavigation = screen.getByRole("navigation", { name: "移动导航" });
+    expect(mobileNavigation).toHaveClass("md:hidden");
+    expect(within(mobileNavigation).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "故事", "资料库", "记忆", "设置",
+    ]);
+    within(mobileNavigation).getAllByRole("button").forEach((button) => expect(button).toHaveClass("min-h-11"));
+    notifyShellStatusChanged();
+    await waitFor(() => expect(screen.getByLabelText("Secret 已解锁")).toBeInTheDocument());
   });
 
   it("saves application preferences separately from runtime configuration", () => {
@@ -60,3 +71,8 @@ describe("global UI surfaces", () => {
     input.remove();
   });
 });
+
+function ShellHarness({ loadStatus }: { loadStatus: () => Promise<{ initialized: boolean; storeId: string | null; formatVersion: number | null; locked: boolean }> }) {
+  const status = useAppShellStatus(loadStatus, false);
+  return <AppShell mode="user" section="stories" status={status} onModeChange={() => undefined} onSectionChange={() => undefined}><div>content</div></AppShell>;
+}

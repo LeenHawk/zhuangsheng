@@ -62,6 +62,23 @@ export interface ConversationView {
 
 export interface ConversationListView {
   items: ConversationView[];
+  attention: ConversationAttentionView[];
+}
+
+export type ConversationAttentionKind =
+  | "tool_approval"
+  | "human_response"
+  | "memory_proposal_review"
+  | "secret_store_unlocked"
+  | "effect_resolution"
+  | "projection_conflict";
+
+export interface ConversationAttentionView {
+  conversationId: string;
+  runId: string;
+  waitId: string | null;
+  kind: ConversationAttentionKind;
+  createdAt: number;
 }
 
 export type CandidateStatus =

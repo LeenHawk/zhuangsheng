@@ -6,18 +6,20 @@ import {
   createOpeningConversation,
   stringifyJsonExact,
   type ConversationRunSpec,
+  type ConversationAttentionView,
   type ConversationView,
   type RolePlayGraphOptionView,
   type RolePlaySettingsView,
   type SecretStoreStatusView,
 } from "@zhuangsheng/api-client";
-import { StoryList } from "@zhuangsheng/domain-ui";
+import { notifyShellStatusChanged, StoryList } from "@zhuangsheng/domain-ui";
 
 import { client, messageFor } from "./api";
 
 export function StoriesRoute() {
   const navigate = useNavigate();
   const [stories, setStories] = useState<ConversationView[]>([]);
+  const [attention, setAttention] = useState<ConversationAttentionView[]>([]);
   const [templates, setTemplates] = useState<RolePlayGraphOptionView[]>([]);
   const [templateSettings, setTemplateSettings] = useState<Record<string, RolePlaySettingsView | null>>({});
   const [secretStatus, setSecretStatus] = useState<SecretStoreStatusView | null>(null);
@@ -35,6 +37,7 @@ export function StoriesRoute() {
     const errors: string[] = [];
     if (storiesResult.status === "fulfilled") {
       setStories(storiesResult.value.items);
+      setAttention(storiesResult.value.attention);
     } else {
       errors.push(messageFor(storiesResult.reason));
     }
@@ -75,10 +78,12 @@ export function StoriesRoute() {
   const unlock = async (masterPassword: string, idempotencyKey: string) => {
     const session = await client.secrets.unlock({ masterPassword, idempotencyKey });
     setSecretStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+    notifyShellStatusChanged();
   };
   return (
     <StoryList
       stories={stories}
+      attention={attention}
       templates={templates}
       templateSettings={templateSettings}
       secretStatus={secretStatus}

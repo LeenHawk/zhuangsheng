@@ -103,4 +103,11 @@ async fn projector_classifies_candidate_head_mismatch_as_terminal_conflict() {
             .unwrap()
             .is_none()
     );
+    let list = store.list_conversation_views().await.unwrap();
+    assert_eq!(list.attention.len(), 1);
+    assert_eq!(
+        list.attention[0].kind,
+        zhuangsheng_core::conversation::ConversationAttentionKind::ProjectionConflict
+    );
+    assert_eq!(list.attention[0].conversation_id, list.items[0].id);
 }

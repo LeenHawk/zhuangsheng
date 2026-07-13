@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ArrowRight, BookOpen, Feather, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, BookOpen, CircleAlert, Feather, Plus, RefreshCw } from "lucide-react";
 
 import type {
   ConversationRunSpec,
+  ConversationAttentionView,
   ConversationView,
   RolePlayGraphOptionView,
   RolePlaySettingsView,
@@ -13,6 +14,7 @@ import { NewStoryWizard } from "./new-story-wizard";
 
 interface StoryListProps {
   stories: ConversationView[];
+  attention: ConversationAttentionView[];
   templates: RolePlayGraphOptionView[];
   templateSettings: Record<string, RolePlaySettingsView | null>;
   secretStatus: SecretStoreStatusView | null;
@@ -26,7 +28,7 @@ interface StoryListProps {
   onConfigure: () => void;
 }
 
-export function StoryList({ stories, templates, templateSettings, secretStatus, loading, pending, error, onReload, onCreate, onUnlockSecretStore, onOpen, onConfigure }: StoryListProps) {
+export function StoryList({ stories, attention, templates, templateSettings, secretStatus, loading, pending, error, onReload, onCreate, onUnlockSecretStore, onOpen, onConfigure }: StoryListProps) {
   const [showCreate, setShowCreate] = useState(false);
   const available = templates.filter((template) => template.replyOutputKeys.length > 0 && template.compatibility.mode !== "expert_only");
   return (
@@ -41,6 +43,20 @@ export function StoryList({ stories, templates, templateSettings, secretStatus, 
         <div className="story-orb absolute -right-24 -top-28 size-96 rounded-full" aria-hidden="true" />
       </section>
       {showCreate && <NewStoryWizard templates={available} settings={templateSettings} secretStatus={secretStatus} pending={pending} onSubmit={async (...input) => { await onCreate(...input); setShowCreate(false); }} onUnlock={onUnlockSecretStore} onClose={() => setShowCreate(false)} />}
+      {attention.length > 0 && <section className="mt-10" aria-labelledby="story-attention-heading">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-warning">Action required</p>
+        <h2 id="story-attention-heading" className="mt-2 font-display text-2xl font-bold">需要处理</h2>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{attention.map((item) => {
+          const story = stories.find((candidate) => candidate.id === item.conversationId);
+          return <button key={`${item.runId}:${item.waitId ?? item.kind}`} type="button" onClick={() => onOpen(item.conversationId)} className="text-left">
+            <Card className="h-full border-warning/30 p-4 transition hover:border-warning/60">
+              <div className="flex items-center gap-2 font-semibold"><CircleAlert className="size-4 text-warning" />{attentionLabel(item)}</div>
+              <p className="mt-2 truncate text-sm text-secondary">{story?.title || "未命名故事"}</p>
+              <p className="mt-2 text-xs text-muted">打开故事查看安全摘要并处理</p>
+            </Card>
+          </button>;
+        })}</div>
+      </section>}
       <div className="mt-10 flex items-end justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">Your stories</p><h2 className="mt-2 font-display text-2xl font-bold">最近的故事</h2></div>{stories.length > 0 && <span className="text-sm text-muted">{stories.length} 个</span>}</div>
       {error && <Card className="mt-5 border-danger/30 p-4 text-sm text-danger"><p>{error}</p><Button className="mt-3" size="compact" variant="secondary" onClick={onReload}>重试</Button></Card>}
       {loading ? <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="正在加载故事">{[0,1,2].map((item) => <div key={item} className="h-44 animate-pulse rounded-2xl bg-elevated" />)}</div> : stories.length === 0 ? <Card className="mt-5 grid min-h-56 place-items-center p-8 text-center"><div><div className="mx-auto grid size-12 place-items-center rounded-2xl bg-elevated text-secondary"><BookOpen className="size-5" /></div><h3 className="mt-4 font-semibold">还没有故事</h3><p className="mt-1 text-sm text-muted">创建故事后，服务端会同时建立 Context、根分支与首个可恢复 head。</p></div></Card> : <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{stories.map((story) => <button key={story.id} onClick={() => onOpen(story.id)} className="group text-left"><Card className="h-full p-5 transition hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-panel"><div className="flex items-start justify-between"><div className="grid size-11 place-items-center rounded-2xl bg-accent-soft text-accent"><BookOpen className="size-5" /></div><ArrowRight className="size-4 text-muted transition group-hover:translate-x-1 group-hover:text-accent" /></div><h3 className="mt-5 truncate font-display text-lg font-bold">{story.title || "未命名故事"}</h3><p className="mt-2 line-clamp-2 text-sm text-secondary">分支 {shortId(story.activeBranchId)} · head {shortId(story.activeHeadCommitId)}</p><p className="mt-5 text-xs text-muted">{new Date(story.updatedAt).toLocaleString()}</p></Card></button>)}</div>}
@@ -49,3 +65,12 @@ export function StoryList({ stories, templates, templateSettings, secretStatus, 
 }
 
 const shortId = (value: string) => value.length > 18 ? `${value.slice(0, 10)}…${value.slice(-5)}` : value;
+
+const attentionLabel = (item: ConversationAttentionView) => ({
+  tool_approval: "工具操作等待确认",
+  human_response: "角色需要更多信息",
+  memory_proposal_review: "记忆变更等待审核",
+  secret_store_unlocked: "模型连接需要解锁",
+  effect_resolution: "外部操作结果需要协调",
+  projection_conflict: "故事分支冲突需要处理",
+}[item.kind]);

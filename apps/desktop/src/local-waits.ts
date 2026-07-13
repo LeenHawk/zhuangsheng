@@ -9,7 +9,7 @@ import {
   type ToolApprovalDecisionInput,
   type WaitView,
 } from "@zhuangsheng/api-client";
-import type { HandledWaitSummary } from "@zhuangsheng/domain-ui";
+import { notifyShellStatusChanged, type HandledWaitSummary } from "@zhuangsheng/domain-ui";
 
 import { localErrorMessage, runtime, secrets } from "./bridge";
 
@@ -81,6 +81,7 @@ export function useLocalWaits(runIds: string[]) {
     const idempotencyKey = secretCommandIds.current[ref] ?? createIdempotencyKey();
     secretCommandIds.current[ref] = idempotencyKey;
     await secrets[mode]({ masterPassword, idempotencyKey });
+    notifyShellStatusChanged();
     remember(wait, mode === "initialize" ? "安全存储已初始化并解锁" : "安全存储已解锁");
     await reload();
   });

@@ -1,5 +1,7 @@
 import type {
   ConversationListView,
+  ConversationAttentionKind,
+  ConversationAttentionView,
   ConversationMessageView,
   ConversationRunProfile,
   ConversationSelectionView,
@@ -65,8 +67,33 @@ export const decodeRunProfile = (
 
 export const decodeConversationList = (value: unknown): ConversationListView => {
   const item = record(value, "conversationList");
-  if (!Array.isArray(item.items)) throw new DecodeError("conversationList.items");
-  return { items: item.items.map(decodeConversation) };
+  if (!Array.isArray(item.items) || !Array.isArray(item.attention)) {
+    throw new DecodeError("conversationList");
+  }
+  return {
+    items: item.items.map(decodeConversation),
+    attention: item.attention.map(decodeAttention),
+  };
+};
+
+const attentionKinds = new Set<ConversationAttentionKind>([
+  "tool_approval", "human_response", "memory_proposal_review",
+  "secret_store_unlocked", "effect_resolution", "projection_conflict",
+]);
+
+const decodeAttention = (value: unknown, index: number): ConversationAttentionView => {
+  const path = `conversationList.attention[${index}]`;
+  const item = record(value, path);
+  if (!attentionKinds.has(item.kind as ConversationAttentionKind)) {
+    throw new DecodeError(`${path}.kind`);
+  }
+  return {
+    conversationId: string(item.conversationId, `${path}.conversationId`),
+    runId: string(item.runId, `${path}.runId`),
+    waitId: nullableString(item.waitId, `${path}.waitId`),
+    kind: item.kind as ConversationAttentionKind,
+    createdAt: number(item.createdAt, `${path}.createdAt`),
+  };
 };
 
 const message = (value: unknown, index: number): ConversationMessageView => {

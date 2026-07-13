@@ -98,6 +98,7 @@ describe("StoryDetail", () => {
       },
     }} />);
     const composer = screen.getByRole("textbox", { name: "继续故事" });
+    expect(composer.closest("form")?.parentElement).toHaveClass("sticky", "bottom-20", "md:static");
     fireEvent.change(composer, { target: { value: "打开最后一卷档案。" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     await waitFor(() => expect(onSubmitMessage).toHaveBeenCalledWith("打开最后一卷档案。"));

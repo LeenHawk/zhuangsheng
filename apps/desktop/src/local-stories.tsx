@@ -5,6 +5,7 @@ import {
   createOpeningConversation,
   stringifyJsonExact,
   type CandidateProjectionResolution,
+  type ConversationAttentionView,
   type ConversationRunSpec,
   type ConversationTimelineView,
   type ConversationView,
@@ -12,7 +13,7 @@ import {
   type RolePlaySettingsView,
   type SecretStoreStatusView,
 } from "@zhuangsheng/api-client";
-import { StoryDetail, StoryList } from "@zhuangsheng/domain-ui";
+import { notifyShellStatusChanged, StoryDetail, StoryList } from "@zhuangsheng/domain-ui";
 
 import { bridge, config, conversations, localErrorMessage, secrets } from "./bridge";
 import { useLocalWaits } from "./local-waits";
@@ -32,6 +33,7 @@ export function LocalStories({ initialStoryId, onStoryOpened, onInspectRun, onCo
 
 function LocalStoryList({ onOpen, onConfigure }: { onOpen: (id: string) => void; onConfigure: () => void }) {
   const [stories, setStories] = useState<ConversationView[]>([]);
+  const [attention, setAttention] = useState<ConversationAttentionView[]>([]);
   const [templates, setTemplates] = useState<RolePlayGraphOptionView[]>([]);
   const [templateSettings, setTemplateSettings] = useState<Record<string, RolePlaySettingsView | null>>({});
   const [secretStatus, setSecretStatus] = useState<SecretStoreStatusView | null>(null);
@@ -44,7 +46,7 @@ function LocalStoryList({ onOpen, onConfigure }: { onOpen: (id: string) => void;
       const [list, options, status] = await Promise.all([
         conversations.listConversations(), conversations.listRolePlayGraphOptions(), secrets.status(),
       ]);
-      setStories(list.items); setTemplates(options); setSecretStatus(status);
+      setStories(list.items); setAttention(list.attention); setTemplates(options); setSecretStatus(status);
       const details = await Promise.allSettled(options.map((template) => config.getRolePlaySettings(template.revisionId)));
       setTemplateSettings(Object.fromEntries(options.map((template, index) => [template.revisionId, details[index]?.status === "fulfilled" ? details[index].value : null])));
     } catch (cause) { setError(localErrorMessage(cause)); }
@@ -69,8 +71,9 @@ function LocalStoryList({ onOpen, onConfigure }: { onOpen: (id: string) => void;
   const unlock = async (masterPassword: string, idempotencyKey: string) => {
     const session = await secrets.unlock({ masterPassword, idempotencyKey });
     setSecretStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+    notifyShellStatusChanged();
   };
-  return <StoryList stories={stories} templates={templates} templateSettings={templateSettings} secretStatus={secretStatus} loading={loading} pending={pending} error={error} onReload={() => void reload()} onCreate={create} onUnlockSecretStore={unlock} onOpen={onOpen} onConfigure={onConfigure} />;
+  return <StoryList stories={stories} attention={attention} templates={templates} templateSettings={templateSettings} secretStatus={secretStatus} loading={loading} pending={pending} error={error} onReload={() => void reload()} onCreate={create} onUnlockSecretStore={unlock} onOpen={onOpen} onConfigure={onConfigure} />;
 }
 
 function LocalStory({ id, onBack, onInspectRun }: { id: string; onBack: () => void; onInspectRun: (id: string) => void }) {

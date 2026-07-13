@@ -9,7 +9,7 @@ import {
   type WaitView,
   type JsonValue,
 } from "@zhuangsheng/api-client";
-import type { HandledWaitSummary, StoryLiveCandidate } from "@zhuangsheng/domain-ui";
+import { notifyShellStatusChanged, type HandledWaitSummary, type StoryLiveCandidate } from "@zhuangsheng/domain-ui";
 
 import { client, messageFor } from "./api";
 
@@ -104,6 +104,7 @@ export function useStoryWaits(liveCandidates: StoryLiveCandidate[]) {
       } else {
         await client.secrets.unlock({ masterPassword, idempotencyKey });
       }
+      notifyShellStatusChanged();
       rememberHandled(wait, mode === "initialize" ? "安全存储已初始化并解锁" : "安全存储已解锁");
       await reload();
     });

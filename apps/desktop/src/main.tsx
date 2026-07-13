@@ -8,6 +8,7 @@ import {
   loadApplicationPreferences,
   PlatformCapabilitiesProvider,
   SurfacePlaceholder,
+  useAppShellStatus,
 } from "@zhuangsheng/domain-ui";
 
 import { LocalStories } from "./local-stories";
@@ -16,11 +17,12 @@ import { LocalMemory } from "./local-memory";
 import { LocalLibrary } from "./local-library";
 import { LocalArtifacts } from "./local-artifacts";
 import { LocalContexts } from "./local-contexts";
-import { desktopPlatformCapabilities } from "./bridge";
+import { desktopPlatformCapabilities, secrets } from "./bridge";
 import "../../web/src/styles.css";
 
 const LocalRuns = lazy(async () => ({ default: (await import("./local-runs")).LocalRuns }));
 const LocalGraphStudio = lazy(async () => ({ default: (await import("./local-graph-studio")).LocalGraphStudio }));
+const loadLocalSecretStore = () => secrets.status();
 
 function DesktopApp() {
   const [mode, setMode] = useState<UiExperienceMode>(() =>
@@ -31,6 +33,7 @@ function DesktopApp() {
   const [inspectRunId, setInspectRunId] = useState<string | null>(null);
   const [resumeStoryId, setResumeStoryId] = useState<string | null>(null);
   const [inspectContext, setInspectContext] = useState<{ contextId: string; branchId: string } | null>(null);
+  const shellStatus = useAppShellStatus(loadLocalSecretStore, true);
   const clearInspectRun = useCallback(() => setInspectRunId(null), []);
   const clearResumeStory = useCallback(() => setResumeStoryId(null), []);
   const clearInspectContext = useCallback(() => setInspectContext(null), []);
@@ -57,7 +60,7 @@ function DesktopApp() {
   const changeMode = (next: UiExperienceMode) => {
     localStorage.setItem("zhuangsheng.uiMode", next); setMode(next);
   };
-  return <PlatformCapabilitiesProvider value={desktopPlatformCapabilities}><AppShell mode={mode} section={section} onModeChange={changeMode} onSectionChange={setSection}>{content}</AppShell></PlatformCapabilitiesProvider>;
+  return <PlatformCapabilitiesProvider value={desktopPlatformCapabilities}><AppShell mode={mode} section={section} status={shellStatus} onModeChange={changeMode} onSectionChange={setSection}>{content}</AppShell></PlatformCapabilitiesProvider>;
 }
 
 const root = document.getElementById("root");

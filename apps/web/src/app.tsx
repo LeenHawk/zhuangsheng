@@ -2,16 +2,20 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { webPlatformCapabilities, type UiExperienceMode } from "@zhuangsheng/api-client";
-import { AppShell, PlatformCapabilitiesProvider, SurfacePlaceholder } from "@zhuangsheng/domain-ui";
+import { AppShell, PlatformCapabilitiesProvider, SurfacePlaceholder, useAppShellStatus } from "@zhuangsheng/domain-ui";
 
-import { StoriesRoute } from "./stories-route";
-import { StoryRoute } from "./story-route";
-import { RunRoute, RunsRoute } from "./run-routes";
-import { SettingsRoute } from "./settings-route";
-import { MemoryRoute } from "./memory-route";
-import { ArtifactsRoute } from "./artifacts-route";
 import { loadUiPreferences } from "./ui-preferences";
+import { client } from "./api";
 
+const loadWebSecretStore = () => client.secrets.status();
+
+const StoriesRoute = lazy(async () => ({ default: (await import("./stories-route")).StoriesRoute }));
+const StoryRoute = lazy(async () => ({ default: (await import("./story-route")).StoryRoute }));
+const RunsRoute = lazy(async () => ({ default: (await import("./run-routes")).RunsRoute }));
+const RunRoute = lazy(async () => ({ default: (await import("./run-routes")).RunRoute }));
+const SettingsRoute = lazy(async () => ({ default: (await import("./settings-route")).SettingsRoute }));
+const MemoryRoute = lazy(async () => ({ default: (await import("./memory-route")).MemoryRoute }));
+const ArtifactsRoute = lazy(async () => ({ default: (await import("./artifacts-route")).ArtifactsRoute }));
 const GraphStudioRoute = lazy(async () => {
   const module = await import("./graph-routes");
   return { default: module.GraphStudioRoute };
@@ -25,6 +29,7 @@ export function App() {
   const location = useLocation();
   const [mode, setMode] = useModePreference();
   const [startPage, setStartPage] = useState(loadUiPreferences().startPage);
+  const shellStatus = useAppShellStatus(loadWebSecretStore, false);
   useEffect(() => {
     const update = (event: Event) => {
       const value = (event as CustomEvent<{ defaultMode: UiExperienceMode; startPage: "stories" | "library" }>).detail;
@@ -51,22 +56,22 @@ export function App() {
   const changeSection = (next: typeof section) =>
     navigate(next === "stories" ? "/stories" : next === "studio" ? "/expert/studio" : next === "runs" ? "/expert/runs" : next === "contexts" ? "/expert/contexts" : next === "artifacts" ? "/expert/artifacts" : `/${next}`);
   return (
-    <PlatformCapabilitiesProvider value={webPlatformCapabilities}><AppShell mode={mode} section={section} onModeChange={setMode} onSectionChange={changeSection}>
-      <Routes>
+    <PlatformCapabilitiesProvider value={webPlatformCapabilities}><AppShell mode={mode} section={section} status={shellStatus} onModeChange={setMode} onSectionChange={changeSection}>
+      <Suspense fallback={<SurfacePlaceholder label="页面" title="正在读取权威状态" description="正在加载领域投影与可用操作。" />}><Routes>
         <Route path="/" element={<Navigate to={`/${startPage}`} replace />} />
         <Route path="/stories" element={<StoriesRoute />} />
         <Route path="/stories/:conversationId" element={<StoryRoute />} />
         <Route path="/memory" element={<MemoryRoute />} />
-        <Route path="/library" element={<Suspense fallback={<SurfacePlaceholder label="资料库" title="正在读取资料" description="正在加载版本化资源投影。" />}><LibraryRoute /></Suspense>} />
+        <Route path="/library" element={<LibraryRoute />} />
         <Route path="/settings" element={<SettingsRoute />} />
-        <Route path="/expert/studio" element={<Suspense fallback={<SurfacePlaceholder label="专家 surface" title="正在加载 Agent Studio" description="正在加载 Graph 编辑能力。" />}><GraphStudioRoute /></Suspense>} />
+        <Route path="/expert/studio" element={<GraphStudioRoute />} />
         <Route path="/expert/runs" element={<RunsRoute />} />
         <Route path="/expert/runs/:runId" element={<RunRoute />} />
-        <Route path="/expert/contexts" element={<Suspense fallback={<SurfacePlaceholder label="Expert Context" title="正在读取 Context" description="正在加载 branch 与 commit projection。" />}><ContextsRoute /></Suspense>} />
-        <Route path="/expert/contexts/:contextId" element={<Suspense fallback={<SurfacePlaceholder label="Expert Context" title="正在读取 Context" description="正在加载 branch 与 commit projection。" />}><ContextRoute /></Suspense>} />
+        <Route path="/expert/contexts" element={<ContextsRoute />} />
+        <Route path="/expert/contexts/:contextId" element={<ContextRoute />} />
         <Route path="/expert/artifacts" element={<ArtifactsRoute />} />
         <Route path="*" element={<Navigate to="/stories" replace />} />
-      </Routes>
+      </Routes></Suspense>
     </AppShell></PlatformCapabilitiesProvider>
   );
 }

@@ -12,6 +12,7 @@ mod context_merge_guards;
 mod context_merge_support;
 mod context_patch;
 mod context_replay;
+mod conversation_attention;
 mod conversation_historical_selection;
 mod conversation_projection;
 mod conversation_projection_conflict;

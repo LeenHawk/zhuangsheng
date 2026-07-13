@@ -66,7 +66,15 @@ const timeline = {
 
 describe("conversation decoders", () => {
   it("decodes the active timeline without passing raw server objects through", () => {
-    expect(decodeConversationList({ items: [conversation] }).items[0]?.id).toBe("conversation_1");
+    const list = decodeConversationList({
+      items: [conversation],
+      attention: [{
+        conversationId: "conversation_1", runId: "run_1", waitId: "wait_1",
+        kind: "tool_approval", createdAt: 1_700_000_000_001,
+      }],
+    });
+    expect(list.items[0]?.id).toBe("conversation_1");
+    expect(list.attention[0]?.kind).toBe("tool_approval");
     const decoded = decodeTimeline(timeline);
     expect(decoded.messages[0]?.content[0]).toEqual({ type: "text", text: "Open the archive" });
     expect(decoded.turns[0]?.candidates[0]?.status).toBe("running");

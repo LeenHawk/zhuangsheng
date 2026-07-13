@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { GraphStudio } from "@zhuangsheng/domain-ui";
 
 import { parseGraphDraft } from "./graph-draft-validation";
+
+beforeAll(() => vi.stubGlobal("ResizeObserver", class {
+  observe() { /* layout is outside this semantic contract test */ }
+  unobserve() { /* layout is outside this semantic contract test */ }
+  disconnect() { /* layout is outside this semantic contract test */ }
+}));
+afterAll(() => vi.unstubAllGlobals());
 
 describe("Graph Studio", () => {
   it("rejects identity changes and reports dangling endpoints without repairing the document", () => {
@@ -31,7 +38,7 @@ describe("Graph Studio", () => {
       selectedGraphId="graph_1"
       draft={{ graphId: "graph_1", document: { graphId: "graph_1", nodes: [], edges: [] }, revisionToken: "draftrev_1", updatedAt: 1 }}
       jsonText={'{"graphId":"graph_1","nodes":[],"edges":[]}'}
-      projection={{ nodes: [], edges: [] }}
+      projection={{ nodes: [{ id: "input", kind: "input", name: "Story input", isEntry: true, inputs: [], outputs: [{ name: "default" }] }], edges: [] }}
       diagnostics={[]}
       applied={null}
       dirty
@@ -46,6 +53,11 @@ describe("Graph Studio", () => {
     />);
 
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    const mobileList = screen.getByText("移动端只读结构列表").closest("div");
+    expect(mobileList).toHaveClass("md:hidden");
+    expect(screen.getByText(/完整 Graph 编辑需要至少 640px/)).toBeInTheDocument();
+    expect(within(mobileList as HTMLElement).getByText("Story input")).toBeInTheDocument();
+    expect(screen.getByLabelText("GraphDraft JSON").closest("section")?.parentElement?.parentElement).toHaveClass("hidden", "md:grid");
     fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
     expect(onSave).toHaveBeenCalledOnce();
     fireEvent.change(screen.getByLabelText("新 Graph 名称"), { target: { value: "Branch agent" } });

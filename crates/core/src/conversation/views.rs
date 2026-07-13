@@ -11,6 +11,28 @@ use super::{
 #[serde(rename_all = "camelCase")]
 pub struct ConversationListView {
     pub items: Vec<ConversationView>,
+    pub attention: Vec<ConversationAttentionView>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationAttentionKind {
+    ToolApproval,
+    HumanResponse,
+    MemoryProposalReview,
+    SecretStoreUnlocked,
+    EffectResolution,
+    ProjectionConflict,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationAttentionView {
+    pub conversation_id: String,
+    pub run_id: String,
+    pub wait_id: Option<String>,
+    pub kind: ConversationAttentionKind,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -19,6 +19,7 @@ import {
   ApplicationSettings,
   buildRolePresetSpec,
   loadApplicationPreferences,
+  notifyShellStatusChanged,
   saveApplicationPreferences,
   SettingsSetup,
   type RolePresetInput,
@@ -82,22 +83,26 @@ export function LocalSettings() {
     });
     setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
     setSecretRefs((items) => [...items.filter((item) => item.secretRef.id !== stored.secretRef.id), stored]);
+    notifyShellStatusChanged();
   });
   const unlockSecretStore = (masterPassword: string, idempotencyKey: string) => action("secret_control", async () => {
     const session = await secrets.unlock({ masterPassword, idempotencyKey });
     activeSecretSession.current = session.sessionId;
     setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+    notifyShellStatusChanged();
   });
   const lockSecretStore = (idempotencyKey: string) => action("secret_control", async () => {
     await secrets.lock({ expectedSessionId: activeSecretSession.current, idempotencyKey });
     activeSecretSession.current = null;
     setStatus((current) => current ? { ...current, locked: true } : current);
+    notifyShellStatusChanged();
   });
   const changeSecretStorePassword = (currentPassword: string, newPassword: string, unlockKey: string, changeKey: string) => action("secret_control", async () => {
     const unlocked = await secrets.unlock({ masterPassword: currentPassword, idempotencyKey: unlockKey });
     const session = await secrets.changePassword({ currentPassword, newPassword, sessionId: unlocked.sessionId, idempotencyKey: changeKey });
     activeSecretSession.current = session.sessionId;
     setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+    notifyShellStatusChanged();
   });
   const publishChannel = (input: ChannelInput) => action("channel", async () => {
     const signature = `channel:${stringifyJsonExact(input)}`;

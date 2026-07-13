@@ -4,6 +4,7 @@ import { createIdempotencyKey, stringifyJsonExact, type ChannelModelDiscoveryVie
 
 import { client, messageFor } from "./api";
 import { buildRolePresetSpec, type RolePresetInput } from "./role-preset-spec";
+import { notifyShellStatusChanged } from "@zhuangsheng/domain-ui";
 
 export interface ChannelSetupInput {
   name: string;
@@ -72,6 +73,7 @@ export function useInitialSetup() {
       const secret = await client.secrets.put({ secretId: input.secretId, name: input.name, kind: "api_key", value: input.value, sessionId: session.sessionId, idempotencyKey: input.putCommandKey });
       setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
       setSecrets((items) => [...items.filter((item) => item.secretRef.id !== secret.secretRef.id), secret]);
+      notifyShellStatusChanged();
     } catch (cause) { setError(messageFor(cause)); throw cause; }
     finally { setPending(null); }
   };
@@ -82,6 +84,7 @@ export function useInitialSetup() {
       const session = await client.secrets.unlock({ masterPassword, idempotencyKey });
       activeSecretSession.current = session.sessionId;
       setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+      notifyShellStatusChanged();
     } catch (cause) { setError(messageFor(cause)); throw cause; }
     finally { setPending(null); }
   };
@@ -92,6 +95,7 @@ export function useInitialSetup() {
       await client.secrets.lock({ expectedSessionId: activeSecretSession.current, idempotencyKey });
       activeSecretSession.current = null;
       setStatus((current) => current ? { ...current, locked: true } : current);
+      notifyShellStatusChanged();
     } catch (cause) { setError(messageFor(cause)); throw cause; }
     finally { setPending(null); }
   };
@@ -103,6 +107,7 @@ export function useInitialSetup() {
       const session = await client.secrets.changePassword({ currentPassword, newPassword, sessionId: unlocked.sessionId, idempotencyKey: changeKey });
       activeSecretSession.current = session.sessionId;
       setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+      notifyShellStatusChanged();
     } catch (cause) { setError(messageFor(cause)); throw cause; }
     finally { setPending(null); }
   };
