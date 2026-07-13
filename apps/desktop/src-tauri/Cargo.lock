@@ -6609,7 +6609,7 @@ dependencies = [
 
 [[package]]
 name = "zhuangsheng-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6629,7 +6629,7 @@ dependencies = [
 
 [[package]]
 name = "zhuangsheng-desktop"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "serde",
  "tauri",
@@ -6643,7 +6643,7 @@ dependencies = [
 
 [[package]]
 name = "zhuangsheng-server"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -6666,7 +6666,7 @@ dependencies = [
 
 [[package]]
 name = "zhuangsheng-storage"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "argon2",
  "async-trait",
@@ -6690,7 +6690,7 @@ dependencies = [
 
 [[package]]
 name = "zhuangsheng-tauri-adapter"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "serde",
  "serde_json",
