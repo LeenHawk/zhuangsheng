@@ -48,6 +48,7 @@ mod model_stream_failure;
 mod model_transport;
 mod opaque_resources;
 mod output_repair;
+mod text_transform;
 mod tool_dispatch;
 mod tool_retry;
 

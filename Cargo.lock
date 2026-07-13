@@ -4169,6 +4169,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "base64",
+ "fancy-regex",
  "gproxy-protocol",
  "hex",
  "jsonschema",

@@ -19,6 +19,7 @@ mod secret;
 mod service_operations;
 mod service_validation;
 mod stream_ledger;
+pub mod text_transform;
 mod tool_batch;
 mod tool_ledger;
 mod tool_registry;

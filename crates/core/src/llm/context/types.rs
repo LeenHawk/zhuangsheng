@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::graph::InputSelector;
+use crate::{graph::InputSelector, llm::text_transform::TextTransformRule};
 
 pub const CONTEXT_SEMANTIC_POLICY_VERSION: u32 = 1;
 
@@ -26,6 +26,8 @@ pub struct ContextAssemblySpec {
     pub budget: Option<ContextBudgetPolicy>,
     #[serde(default)]
     pub post_process: Vec<PromptPostProcessRule>,
+    #[serde(default)]
+    pub text_transforms: Vec<TextTransformRule>,
     pub preview: Option<PreviewPolicy>,
 }
 

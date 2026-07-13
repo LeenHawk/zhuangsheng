@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    llm::{LlmConfigError, LlmConfigResult},
+    llm::{LlmConfigError, LlmConfigResult, text_transform::normalize_text_transforms},
     selector,
 };
 
@@ -75,6 +75,7 @@ pub fn normalize_context_spec(
         ));
     }
     validate_post_process(&spec.post_process)?;
+    spec.text_transforms = normalize_text_transforms(spec.text_transforms)?;
     spec.preview.get_or_insert(PreviewPolicy {
         content: PreviewContent::MetadataOnly,
         count: PreviewCount::Local,
@@ -416,6 +417,7 @@ mod tests {
             }],
             budget: None,
             post_process: vec![],
+            text_transforms: vec![],
             preview: None,
         };
         let normalized =

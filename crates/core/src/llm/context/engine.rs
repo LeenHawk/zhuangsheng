@@ -21,6 +21,7 @@ use super::{
     normalize_context_spec,
     post_process::{apply_post_process, single_prompt},
     resolve::resolve_items,
+    text_transform::apply_prompt_text_transforms,
 };
 
 pub fn assemble_context(
@@ -32,6 +33,7 @@ pub fn assemble_context(
     validate_bindings(input)?;
     let resolved_bindings_digest = canonical::hash(&input.bindings)?;
     let mut groups = resolve_items(input, &spec.items)?;
+    apply_prompt_text_transforms(&mut groups, &spec)?;
     validate_candidates(input, &groups)?;
     let history_len = groups
         .iter()

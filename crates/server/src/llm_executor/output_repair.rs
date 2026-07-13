@@ -11,6 +11,7 @@ use zhuangsheng_core::{
 
 use crate::llm_executor_support::{finalize_failure, new_id};
 
+use super::text_transform::apply_canonical_output_transforms;
 use super::{LocalLlmExecutor, model_call::CompletedModelCall};
 
 #[cfg(test)]
@@ -58,11 +59,17 @@ pub(super) async fn finalize_or_prepare_repair(
         &completed.decoded.response.items,
         &completed.transcript,
     ) {
-        Ok(value) => Ok(OutputDecision::Final(LlmAttemptExecution::Finalize(
-            BuiltinResult::Completed {
-                outputs: [("default".into(), value)].into_iter().collect(),
-            },
-        ))),
+        Ok(value) => match apply_canonical_output_transforms(value, execution) {
+            Ok(value) => Ok(OutputDecision::Final(LlmAttemptExecution::Finalize(
+                BuiltinResult::Completed {
+                    outputs: [("default".into(), value)].into_iter().collect(),
+                },
+            ))),
+            Err(error) => Ok(OutputDecision::Final(finalize_failure(
+                error.code,
+                &error.message,
+            ))),
+        },
         Err(error) => {
             let Some(LlmOutputSpec::Json { .. }) = execution.output.as_ref() else {
                 return Ok(OutputDecision::Final(finalize_failure(

@@ -4,7 +4,13 @@ use serde_json::json;
 
 use crate::{
     graph::{InputSelector, SelectorResult},
-    llm::ir::{ContextSensitivity, ContextTrust, MessageRole},
+    llm::{
+        ir::{ContextSensitivity, ContextTrust, MessageRole},
+        text_transform::{
+            RegexMacroMode, TextTransformPlacement, TextTransformRule, TextTransformScope,
+            TextTransformSurface,
+        },
+    },
 };
 
 use super::{engine_test_support::*, *};
@@ -477,4 +483,62 @@ fn sensitive_context_and_non_missing_template_errors_fail_closed() {
     )
     .unwrap_err();
     assert_eq!(error.code, "context_template_selection_failed");
+}
+
+#[test]
+fn prompt_text_transforms_run_before_budget_with_history_depth() {
+    let mut context_spec = spec(vec![item(
+        "history",
+        ContextRole::Context,
+        ContextSource::History {
+            binding_id: "history".into(),
+            strategy: HistoryStrategy::All,
+        },
+        ContextPosition::History,
+        false,
+        0,
+        Some(OverflowPolicy::KeepRecent { count: None }),
+    )]);
+    context_spec.text_transforms = vec![TextTransformRule {
+        id: "latest-only".into(),
+        name: "Latest only".into(),
+        scope: TextTransformScope::Preset,
+        order: 0,
+        find_regex: "/foo/g".into(),
+        replace_string: "transformed".into(),
+        trim_strings: Vec::new(),
+        placements: vec![TextTransformPlacement::UserInput],
+        surfaces: vec![TextTransformSurface::Prompt],
+        disabled: false,
+        run_on_edit: false,
+        macro_mode: RegexMacroMode::None,
+        min_depth: Some(0),
+        max_depth: Some(0),
+    }];
+    let values = vec![
+        history_value("old", 1, MessageRole::User, "foo"),
+        history_value("latest", 2, MessageRole::User, "foo"),
+    ];
+    let output = assemble_context(
+        &assembly_input(
+            context_spec,
+            json!(null),
+            BTreeMap::from([("history".into(), data_binding("history", values))]),
+            100,
+        ),
+        &ScalarCounter,
+    )
+    .unwrap();
+    assert_eq!(message_text(&output.messages[0]), "foo");
+    assert_eq!(message_text(&output.messages[1]), "transformed");
+    let provenance = output
+        .provenance
+        .iter()
+        .find(|value| value.source_id == "latest")
+        .unwrap();
+    assert!(
+        provenance
+            .transformations
+            .contains(&"text_transform:prompt:latest-only".into())
+    );
 }

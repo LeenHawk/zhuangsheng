@@ -82,6 +82,7 @@ fn preset_spec() -> ContextAssemblySpec {
             strategy: Some(ContextBudgetStrategy::Strict),
         }),
         post_process: vec![],
+        text_transforms: vec![],
         preview: None,
     }
 }

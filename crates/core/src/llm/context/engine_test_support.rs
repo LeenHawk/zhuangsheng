@@ -38,6 +38,7 @@ pub(super) fn spec(items: Vec<ContextItem>) -> ContextAssemblySpec {
             strategy: Some(ContextBudgetStrategy::Strict),
         }),
         post_process: Vec::new(),
+        text_transforms: Vec::new(),
         preview: None,
     }
 }

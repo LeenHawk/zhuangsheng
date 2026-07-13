@@ -412,6 +412,7 @@ fn context_spec(with_optional: bool) -> ContextAssemblySpec {
             strategy: Some(ContextBudgetStrategy::Strict),
         }),
         post_process: Vec::new(),
+        text_transforms: Vec::new(),
         preview: None,
     }
 }

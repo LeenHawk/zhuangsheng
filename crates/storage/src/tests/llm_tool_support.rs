@@ -154,6 +154,7 @@ async fn prepare_running_tool_attempt_with_bindings(
                 items: vec![],
                 budget: None,
                 post_process: vec![],
+                text_transforms: vec![],
                 preview: None,
             },
             idempotency_key: "tool-ledger-preset-version".into(),

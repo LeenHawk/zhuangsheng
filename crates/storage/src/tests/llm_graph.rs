@@ -67,6 +67,7 @@ async fn graph_apply_resolves_llm_channel_and_preset_heads() {
                 items: vec![],
                 budget: None,
                 post_process: vec![],
+                text_transforms: vec![],
                 preview: None,
             },
             idempotency_key: "llm-preset-version".into(),

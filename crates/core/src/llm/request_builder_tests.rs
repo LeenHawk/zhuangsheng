@@ -320,6 +320,7 @@ fn fixture() -> Fixture {
         items: Vec::new(),
         budget: None,
         post_process: Vec::new(),
+        text_transforms: Vec::new(),
         preview: None,
     };
     let config = ContextConfigSnapshot::GraphInline {

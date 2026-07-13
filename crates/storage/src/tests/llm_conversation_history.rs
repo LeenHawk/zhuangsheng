@@ -176,6 +176,7 @@ fn history_spec() -> ContextAssemblySpec {
         }],
         budget: None,
         post_process: vec![],
+        text_transforms: vec![],
         preview: None,
     }
 }

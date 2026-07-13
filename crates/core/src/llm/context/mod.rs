@@ -13,6 +13,7 @@ mod resolve;
 mod resolve_support;
 mod resolve_template;
 mod template;
+mod text_transform;
 mod types;
 
 pub use engine::assemble_context;

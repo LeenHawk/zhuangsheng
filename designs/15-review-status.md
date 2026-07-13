@@ -6,6 +6,8 @@
 
 `design-complete` 不表示所有未来能力已设计，也不表示具体 crate、SQL DDL 或 UI 像素已经冻结。它表示阶段一可以按 `22-implementation-blueprint.md` 开始实现；实现证据若推翻假设，应按本文规则重新打开对应决策。
 
+2026-07-13 根据产品需求重新打开“完整 SillyTavern 兼容”边界。预设与正则的权威映射、执行 surface、安全限制和导入验收以 `28-sillytavern-compatibility.md` 为准；它不改变 core/runtime 与 adapter 的既有依赖方向。
+
 ## 冻结的核心边界
 
 - Core RuntimeService 独立于 Axum、Tauri、SeaORM entity、provider SDK 和 UI。
