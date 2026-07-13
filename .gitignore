@@ -10,3 +10,4 @@ dist/
 coverage/
 *.tsbuildinfo
 .tsbuild/
+apps/desktop/src-tauri/gen/

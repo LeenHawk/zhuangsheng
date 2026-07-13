@@ -81,3 +81,8 @@ cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --no-default-featu
 ```
 
 完整 Tauri/WRY bundle 仍必须在安装了对应平台系统依赖的机器上验收。
+Linux 上可用仓库固定的 Tauri CLI 生成调试安装包：
+
+```bash
+corepack pnpm --filter @zhuangsheng/desktop exec tauri build --debug --bundles deb --ci
+```
