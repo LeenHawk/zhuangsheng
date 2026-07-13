@@ -26,3 +26,8 @@ zhuangsheng-core = { path = "../../../crates/core" }
 zhuangsheng-server = { path = "../../../crates/server", default-features = false }
 zhuangsheng-storage = { path = "../../../crates/storage" }
 zhuangsheng-tauri-adapter = { path = "../../../crates/adapters/tauri" }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
