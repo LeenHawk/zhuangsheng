@@ -66,11 +66,15 @@ export class HttpConversationClient {
     return decodeConversationList(await this.request("/v1/conversations", { signal }));
   }
 
-  async createConversation(input: CreateConversationInput): Promise<ConversationView> {
+  async createConversation(
+    input: CreateConversationInput,
+    options: ConversationCommandOptions = {},
+  ): Promise<ConversationView> {
     return decodeConversation(await this.request("/v1/conversations", {
       method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": createIdempotencyKey() },
+      headers: this.commandHeaders(options.idempotencyKey),
       body: JSON.stringify({ title: input.title?.trim() || null, defaultRun: input.defaultRun ?? null }),
+      signal: options.signal,
     }));
   }
 
@@ -107,10 +111,10 @@ export class HttpConversationClient {
   async submitConversationTurn(
     id: string,
     input: SubmitConversationTurnInput,
-    signal?: AbortSignal,
+    options: ConversationCommandOptions = {},
   ): Promise<SubmitConversationTurnAck> {
     return decodeSubmitTurnAck(await this.request(`/v1/conversations/${encodeURIComponent(id)}/turns`, {
-      method: "POST", headers: this.commandHeaders(), body: JSON.stringify(input), signal,
+      method: "POST", headers: this.commandHeaders(options.idempotencyKey), body: JSON.stringify(input), signal: options.signal,
     }));
   }
 

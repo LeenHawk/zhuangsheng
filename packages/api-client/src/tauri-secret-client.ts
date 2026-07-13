@@ -7,6 +7,7 @@ import {
 } from "./decode-secret";
 import type {
   PutSecretInput,
+  ChangeMasterPasswordInput,
   LockSecretStoreInput,
   LockSecretStoreResult,
   SecretMetadataView,
@@ -46,12 +47,7 @@ export class TauriSecretClient {
     } }));
   }
 
-  async changePassword(input: {
-    currentPassword: string;
-    newPassword: string;
-    sessionId: string;
-    idempotencyKey: string;
-  }): Promise<SecretStoreSessionView> {
+  async changePassword(input: ChangeMasterPasswordInput): Promise<SecretStoreSessionView> {
     return decodeSecretStoreSession(await this.bridge.invoke("change_master_password", { input }));
   }
 

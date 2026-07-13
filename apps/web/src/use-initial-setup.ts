@@ -34,14 +34,16 @@ export function useInitialSetup() {
   const [discoverySource, setDiscoverySource] = useState<ChannelRevisionView | null>(null);
   const [rolePlaySettings, setRolePlaySettings] = useState<RolePlaySettingsView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<"secret" | "channel" | "preset" | "template" | "preview" | "discovery" | "model" | "settings" | null>(null);
+  const [pending, setPending] = useState<"secret" | "secret_control" | "channel" | "preset" | "template" | "preview" | "discovery" | "model" | "settings" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const commandKeys = useRef(new Map<string, string>());
+  const activeSecretSession = useRef<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError(null); setDiscovery(null); setDiscoverySource(null); setRolePlaySettings(null);
     try {
       const nextStatus = await client.secrets.status(signal);
+      if (nextStatus.locked) activeSecretSession.current = null;
       const [nextSecrets, nextChannels, nextPresets, nextTemplates] = await Promise.all([
         nextStatus.initialized ? client.secrets.list(signal) : Promise.resolve([]),
         client.config.listChannels(signal), client.config.listPresets(signal),
@@ -66,9 +68,41 @@ export function useInitialSetup() {
     try {
       const passwordInput = { masterPassword: input.masterPassword, idempotencyKey: input.passwordCommandKey };
       const session = status.initialized ? await client.secrets.unlock(passwordInput) : await client.secrets.initialize(passwordInput);
+      activeSecretSession.current = session.sessionId;
       const secret = await client.secrets.put({ secretId: input.secretId, name: input.name, kind: "api_key", value: input.value, sessionId: session.sessionId, idempotencyKey: input.putCommandKey });
       setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
       setSecrets((items) => [...items.filter((item) => item.secretRef.id !== secret.secretRef.id), secret]);
+    } catch (cause) { setError(messageFor(cause)); throw cause; }
+    finally { setPending(null); }
+  };
+
+  const unlockSecretStore = async (masterPassword: string, idempotencyKey: string) => {
+    setPending("secret_control"); setError(null);
+    try {
+      const session = await client.secrets.unlock({ masterPassword, idempotencyKey });
+      activeSecretSession.current = session.sessionId;
+      setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+    } catch (cause) { setError(messageFor(cause)); throw cause; }
+    finally { setPending(null); }
+  };
+
+  const lockSecretStore = async (idempotencyKey: string) => {
+    setPending("secret_control"); setError(null);
+    try {
+      await client.secrets.lock({ expectedSessionId: activeSecretSession.current, idempotencyKey });
+      activeSecretSession.current = null;
+      setStatus((current) => current ? { ...current, locked: true } : current);
+    } catch (cause) { setError(messageFor(cause)); throw cause; }
+    finally { setPending(null); }
+  };
+
+  const changeSecretStorePassword = async (currentPassword: string, newPassword: string, unlockKey: string, changeKey: string) => {
+    setPending("secret_control"); setError(null);
+    try {
+      const unlocked = await client.secrets.unlock({ masterPassword: currentPassword, idempotencyKey: unlockKey });
+      const session = await client.secrets.changePassword({ currentPassword, newPassword, sessionId: unlocked.sessionId, idempotencyKey: changeKey });
+      activeSecretSession.current = session.sessionId;
+      setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
     } catch (cause) { setError(messageFor(cause)); throw cause; }
     finally { setPending(null); }
   };
@@ -177,5 +211,5 @@ export function useInitialSetup() {
     finally { setPending(null); }
   };
 
-  return { status, secrets, channels, presets, templates, preview, discovery, rolePlaySettings, loading, pending, error, reload: () => void load(), storeSecret, publishChannel, publishRolePreset, previewPreset: (preset: ContextPresetView) => void previewPreset(preset), createTemplate, discoverModels: (channel: ChannelView) => void discoverModels(channel), publishDiscoveredModel, inspectTemplate: (template: RolePlayGraphOptionView) => void inspectTemplate(template) };
+  return { status, secrets, channels, presets, templates, preview, discovery, rolePlaySettings, loading, pending, error, reload: () => void load(), storeSecret, unlockSecretStore, lockSecretStore, changeSecretStorePassword, publishChannel, publishRolePreset, previewPreset: (preset: ContextPresetView) => void previewPreset(preset), createTemplate, discoverModels: (channel: ChannelView) => void discoverModels(channel), publishDiscoveredModel, inspectTemplate: (template: RolePlayGraphOptionView) => void inspectTemplate(template) };
 }

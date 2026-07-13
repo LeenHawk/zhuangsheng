@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsSetup } from "@zhuangsheng/domain-ui";
@@ -54,6 +54,9 @@ describe("first-run settings", () => {
       error={null}
       onReload={() => undefined}
       onStoreSecret={onStoreSecret}
+      onUnlockSecretStore={async () => undefined}
+      onLockSecretStore={async () => undefined}
+      onChangeSecretStorePassword={async () => undefined}
       onPublishChannel={async () => undefined}
       onPublishPreset={async () => undefined}
       onPreviewPreset={() => undefined}
@@ -71,6 +74,37 @@ describe("first-run settings", () => {
     expect(onStoreSecret.mock.calls[0]?.[0]).toMatchObject({ secretId: "provider-api-key", value: "secret-provider-value", masterPassword: "long-master-password", passwordCommandKey: expect.any(String), putCommandKey: expect.any(String) });
     await waitFor(() => expect(screen.getByLabelText("API key")).toHaveValue(""));
     expect(screen.getByLabelText("设置主密码")).toHaveValue("");
+  });
+
+  it("uses dedicated dialogs for unlock and password change and clears them on close", async () => {
+    const onUnlock = vi.fn(async () => undefined);
+    const onChange = vi.fn(async () => undefined);
+    render(<SettingsSetup
+      status={{ initialized: true, storeId: "store_1", formatVersion: 1, locked: true }}
+      secrets={[]} channels={[]} presets={[]} templates={[]} preview={null} discovery={null}
+      rolePlaySettings={null} loading={false} pending={null} error={null}
+      onReload={() => undefined} onStoreSecret={async () => undefined}
+      onUnlockSecretStore={onUnlock} onLockSecretStore={async () => undefined}
+      onChangeSecretStorePassword={onChange} onPublishChannel={async () => undefined}
+      onPublishPreset={async () => undefined} onPreviewPreset={() => undefined}
+      onCreateTemplate={async () => undefined} onDiscoverModels={() => undefined}
+      onPublishDiscoveredModel={async () => undefined} onInspectTemplate={() => undefined}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "解锁" }));
+    let dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("当前主密码"), { target: { value: "current-master-password" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "解锁" }));
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith("current-master-password", expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "修改主密码" }));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("当前主密码")).toHaveValue("");
+    fireEvent.change(within(dialog).getByLabelText("当前主密码"), { target: { value: "current-master-password" } });
+    fireEvent.change(within(dialog).getByLabelText("新主密码"), { target: { value: "replacement-master-password" } });
+    fireEvent.change(within(dialog).getByLabelText("确认新主密码"), { target: { value: "replacement-master-password" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认修改" }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("current-master-password", "replacement-master-password", expect.any(String), expect.any(String)));
   });
 
   it("maps friendly connection and character fields to canonical commands", async () => {
@@ -92,6 +126,9 @@ describe("first-run settings", () => {
       error={null}
       onReload={() => undefined}
       onStoreSecret={async () => undefined}
+      onUnlockSecretStore={async () => undefined}
+      onLockSecretStore={async () => undefined}
+      onChangeSecretStorePassword={async () => undefined}
       onPublishChannel={onPublishChannel}
       onPublishPreset={onPublishPreset}
       onPreviewPreset={onPreviewPreset}

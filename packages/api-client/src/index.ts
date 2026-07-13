@@ -10,6 +10,7 @@ export * from "./decode-memory";
 export * from "./decode-graphs";
 export * from "./decode-config";
 export * from "./config-types";
+export * from "./conversation-opening";
 export * from "./graph-types";
 export * from "./http-client";
 export * from "./http-conversation-client";

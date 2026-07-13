@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import type {
-  CandidateProjectionResolution,
-  ConversationRunSpec,
-  ConversationTimelineView,
-  ConversationView,
-  RolePlayGraphOptionView,
+import {
+  createIdempotencyKey,
+  createOpeningConversation,
+  type CandidateProjectionResolution,
+  type ConversationRunSpec,
+  type ConversationTimelineView,
+  type ConversationView,
+  type RolePlayGraphOptionView,
+  type RolePlaySettingsView,
+  type SecretStoreStatusView,
 } from "@zhuangsheng/api-client";
 import { StoryDetail, StoryList } from "@zhuangsheng/domain-ui";
 
-import { bridge, conversations, localErrorMessage } from "./bridge";
+import { bridge, config, conversations, localErrorMessage, secrets } from "./bridge";
 import { useLocalWaits } from "./local-waits";
 
 export function LocalStories({ initialStoryId, onStoryOpened, onInspectRun, onConfigure }: {
@@ -28,27 +32,44 @@ export function LocalStories({ initialStoryId, onStoryOpened, onInspectRun, onCo
 function LocalStoryList({ onOpen, onConfigure }: { onOpen: (id: string) => void; onConfigure: () => void }) {
   const [stories, setStories] = useState<ConversationView[]>([]);
   const [templates, setTemplates] = useState<RolePlayGraphOptionView[]>([]);
+  const [templateSettings, setTemplateSettings] = useState<Record<string, RolePlaySettingsView | null>>({});
+  const [secretStatus, setSecretStatus] = useState<SecretStoreStatusView | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [list, options] = await Promise.all([
-        conversations.listConversations(), conversations.listRolePlayGraphOptions(),
+      const [list, options, status] = await Promise.all([
+        conversations.listConversations(), conversations.listRolePlayGraphOptions(), secrets.status(),
       ]);
-      setStories(list.items); setTemplates(options);
+      setStories(list.items); setTemplates(options); setSecretStatus(status);
+      const details = await Promise.allSettled(options.map((template) => config.getRolePlaySettings(template.revisionId)));
+      setTemplateSettings(Object.fromEntries(options.map((template, index) => [template.revisionId, details[index]?.status === "fulfilled" ? details[index].value : null])));
     } catch (cause) { setError(localErrorMessage(cause)); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void reload(); }, [reload]);
-  const create = async (title: string | undefined, defaultRun: ConversationRunSpec) => {
+  const createKeys = useRef<{ signature: string; conversation: string; turn: string } | null>(null);
+  const create = async (title: string | undefined, defaultRun: ConversationRunSpec, openingMessage: string) => {
+    const signature = JSON.stringify({ title: title ?? null, defaultRun, openingMessage });
+    if (createKeys.current?.signature !== signature) createKeys.current = { signature, conversation: createIdempotencyKey(), turn: createIdempotencyKey() };
+    const keys = createKeys.current;
     setPending(true); setError(null);
-    try { onOpen((await conversations.createConversation({ title, defaultRun })).id); }
+    try {
+      const { conversation: story } = await createOpeningConversation(conversations, {
+        title, run: defaultRun, openingMessage,
+      }, keys);
+      createKeys.current = null; onOpen(story.id);
+    }
     catch (cause) { setError(localErrorMessage(cause)); throw cause; }
     finally { setPending(false); }
   };
-  return <StoryList stories={stories} templates={templates} loading={loading} pending={pending} error={error} onReload={() => void reload()} onCreate={create} onOpen={onOpen} onConfigure={onConfigure} />;
+  const unlock = async (masterPassword: string, idempotencyKey: string) => {
+    const session = await secrets.unlock({ masterPassword, idempotencyKey });
+    setSecretStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
+  };
+  return <StoryList stories={stories} templates={templates} templateSettings={templateSettings} secretStatus={secretStatus} loading={loading} pending={pending} error={error} onReload={() => void reload()} onCreate={create} onUnlockSecretStore={unlock} onOpen={onOpen} onConfigure={onConfigure} />;
 }
 
 function LocalStory({ id, onBack, onInspectRun }: { id: string; onBack: () => void; onInspectRun: (id: string) => void }) {

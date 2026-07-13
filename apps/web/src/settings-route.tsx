@@ -23,6 +23,9 @@ export function SettingsRoute() {
     error={setup.error}
     onReload={setup.reload}
     onStoreSecret={setup.storeSecret}
+    onUnlockSecretStore={setup.unlockSecretStore}
+    onLockSecretStore={setup.lockSecretStore}
+    onChangeSecretStorePassword={setup.changeSecretStorePassword}
     onPublishChannel={setup.publishChannel}
     onPublishPreset={setup.publishRolePreset}
     onPreviewPreset={setup.previewPreset}

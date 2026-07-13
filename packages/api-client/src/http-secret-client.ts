@@ -2,6 +2,7 @@ import { decodeLockSecretStore, decodeSecretList, decodeSecretMetadata, decodeSe
 import { requestJson } from "./http-json";
 import type {
   SecretPasswordCommandInput,
+  ChangeMasterPasswordInput,
   LockSecretStoreInput,
   LockSecretStoreResult,
   PutSecretInput,
@@ -38,6 +39,14 @@ export class HttpSecretClient {
 
   async list(signal?: AbortSignal): Promise<SecretMetadataView[]> {
     return decodeSecretList(await requestJson(this.baseUrl, "/v1/secrets", { signal }));
+  }
+
+  async changePassword(input: ChangeMasterPasswordInput): Promise<SecretStoreSessionView> {
+    return decodeSecretStoreSession(await requestJson(this.baseUrl, "/v1/secret-store/change-password", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
+      body: JSON.stringify({ currentPassword: input.currentPassword, newPassword: input.newPassword, sessionId: input.sessionId }),
+    }));
   }
 
   async put(input: PutSecretInput): Promise<SecretMetadataView> {

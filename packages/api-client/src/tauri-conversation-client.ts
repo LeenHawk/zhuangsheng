@@ -43,11 +43,14 @@ export class TauriConversationClient {
     return decodeConversationList(await this.bridge.invoke("list_conversations", {}));
   }
 
-  async createConversation(input: CreateConversationInput): Promise<ConversationView> {
+  async createConversation(
+    input: CreateConversationInput,
+    options: ConversationCommandOptions = {},
+  ): Promise<ConversationView> {
     return decodeConversation(await this.bridge.invoke("create_conversation", { command: {
       title: input.title?.trim() || null,
       defaultRun: input.defaultRun ?? null,
-      idempotencyKey: createIdempotencyKey(),
+      idempotencyKey: options.idempotencyKey ?? createIdempotencyKey(),
     } }));
   }
 
@@ -82,11 +85,12 @@ export class TauriConversationClient {
   async submitConversationTurn(
     id: string,
     input: SubmitConversationTurnInput,
+    options: ConversationCommandOptions = {},
   ): Promise<SubmitConversationTurnAck> {
     return decodeSubmitTurnAck(await this.bridge.invoke("submit_conversation_turn", { command: {
       conversationId: id,
       ...input,
-      idempotencyKey: createIdempotencyKey(),
+      idempotencyKey: options.idempotencyKey ?? createIdempotencyKey(),
     } }));
   }
 

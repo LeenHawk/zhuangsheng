@@ -19,13 +19,13 @@ describe("Tauri application clients", () => {
       expectedHeadCommitId: "commit_1",
       userContent: [{ type: "text", text: "hello" }],
       run: { graphRevisionId: "revision_1", replyOutputKey: "reply", inputShape: "conversation_message_v1" },
-    });
+    }, { idempotencyKey: "turn-key" });
     expect(result).toEqual({ turnId: "turn_1", runId: "run_1", status: "running" });
     expect(calls[0]?.operation).toBe("submit_conversation_turn");
     expect(calls[0]?.payload).toMatchObject({ command: {
       conversationId: "conversation_1",
       expectedHeadCommitId: "commit_1",
-      idempotencyKey: expect.any(String),
+      idempotencyKey: "turn-key",
     } });
   });
 

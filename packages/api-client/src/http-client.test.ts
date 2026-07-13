@@ -35,7 +35,7 @@ describe("HttpApiClient conversation commands", () => {
     await new HttpApiClient("https://roleplay.example").createConversation({
       title: "The Archive",
       defaultRun,
-    });
+    }, { idempotencyKey: "conversation-key" });
 
     const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
     expect(request.input).toBe("https://roleplay.example/v1/conversations");
@@ -83,7 +83,7 @@ describe("HttpApiClient conversation commands", () => {
       expectedHeadCommitId: "commit_1",
       userContent: [{ type: "text", text: "Continue" }],
       run,
-    });
+    }, { idempotencyKey: "turn-key" });
 
     expect(calls.map((call) => call.input)).toEqual([
       "https://roleplay.example/v1/conversations/conversation%2F1/run-profile",
@@ -96,7 +96,7 @@ describe("HttpApiClient conversation commands", () => {
       run,
     });
     expect(calls[0]?.init?.headers).toMatchObject({ "idempotency-key": "command-key" });
-    expect(calls[1]?.init?.headers).toMatchObject({ "idempotency-key": "command-key" });
+    expect(calls[1]?.init?.headers).toMatchObject({ "idempotency-key": "turn-key" });
   });
 
   it("uses the canonical turn routes for regeneration and selection", async () => {

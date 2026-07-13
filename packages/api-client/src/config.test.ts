@@ -163,4 +163,24 @@ describe("HttpSecretClient metadata commands", () => {
     expect(JSON.parse(request.init.body as string)).toEqual({ expectedSessionId: "session_1" });
     expect(result).toEqual({ locked: true });
   });
+
+  it("changes the master password only through the dedicated sensitive command", async () => {
+    let call: { input: RequestInfo | URL; init?: RequestInit } | null = null;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      call = { input, init };
+      return Response.json({ storeId: "store_1", formatVersion: 1, sessionId: "session_2", expiresAt: 99 });
+    });
+    const result = await new HttpSecretClient("https://settings.example").changePassword({
+      currentPassword: "old-master-password",
+      newPassword: "new-master-password",
+      sessionId: "session_1",
+      idempotencyKey: "change-key",
+    });
+    const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
+    expect(request.input).toBe("https://settings.example/v1/secret-store/change-password");
+    expect(request.init.headers).toMatchObject({ "idempotency-key": "change-key" });
+    expect(JSON.parse(request.init.body as string)).toEqual({ currentPassword: "old-master-password", newPassword: "new-master-password", sessionId: "session_1" });
+    expect(result.sessionId).toBe("session_2");
+    expect(JSON.stringify(result)).not.toContain("master-password");
+  });
 });

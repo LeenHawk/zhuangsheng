@@ -7,11 +7,15 @@ import { ChannelSetupCard } from "./channel-setup-card";
 import { AgentTemplateSetupCard } from "./agent-template-setup-card";
 import { RolePresetSetupCard } from "./role-preset-setup-card";
 import { SecretSetupCard } from "./secret-setup-card";
+import { SecretStoreControls } from "./secret-store-controls";
 
 interface Props {
   status: SecretStoreStatusView | null; secrets: SecretMetadataView[]; channels: ChannelView[]; presets: ContextPresetView[]; templates: RolePlayGraphOptionView[];
-  preview: ContextPresetPreviewView | null; discovery: ChannelModelDiscoveryView | null; rolePlaySettings: RolePlaySettingsView | null; loading: boolean; pending: "secret" | "channel" | "preset" | "template" | "preview" | "discovery" | "model" | "settings" | null; error: string | null; onReload: () => void;
+  preview: ContextPresetPreviewView | null; discovery: ChannelModelDiscoveryView | null; rolePlaySettings: RolePlaySettingsView | null; loading: boolean; pending: "secret" | "secret_control" | "channel" | "preset" | "template" | "preview" | "discovery" | "model" | "settings" | null; error: string | null; onReload: () => void;
   onStoreSecret: React.ComponentProps<typeof SecretSetupCard>["onSubmit"];
+  onUnlockSecretStore: React.ComponentProps<typeof SecretStoreControls>["onUnlock"];
+  onLockSecretStore: React.ComponentProps<typeof SecretStoreControls>["onLock"];
+  onChangeSecretStorePassword: React.ComponentProps<typeof SecretStoreControls>["onChangePassword"];
   onPublishChannel: React.ComponentProps<typeof ChannelSetupCard>["onSubmit"];
   onPublishPreset: React.ComponentProps<typeof RolePresetSetupCard>["onSubmit"];
   onPreviewPreset: React.ComponentProps<typeof RolePresetSetupCard>["onPreview"];
@@ -30,6 +34,7 @@ export function SettingsSetup(props: Props) {
       {props.error && <div role="alert" className="flex items-center gap-2 rounded-xl border border-danger/25 bg-danger/5 p-3 text-sm text-danger"><AlertCircle className="size-4" /><span className="flex-1">{props.error}</span><Button size="compact" variant="secondary" onClick={props.onReload}><RefreshCw className="size-3.5" />刷新</Button></div>}
       {!props.loading && <>
         <SecretSetupCard status={props.status} secrets={props.secrets} pending={props.pending === "secret"} onSubmit={props.onStoreSecret} />
+        {props.status?.initialized && <SecretStoreControls status={props.status} pending={props.pending === "secret_control"} onUnlock={props.onUnlockSecretStore} onLock={props.onLockSecretStore} onChangePassword={props.onChangeSecretStorePassword} />}
         <ChannelSetupCard channels={props.channels} secrets={props.secrets} discovery={props.discovery} publishPending={props.pending === "channel" || props.pending === "model"} discoveryPending={props.pending === "discovery"} onSubmit={props.onPublishChannel} onDiscover={props.onDiscoverModels} onPublishDiscovered={props.onPublishDiscoveredModel} />
         <RolePresetSetupCard presets={props.presets} preview={props.preview} pending={props.pending === "preset"} previewPending={props.pending === "preview"} onSubmit={props.onPublishPreset} onPreview={props.onPreviewPreset} />
         <AgentTemplateSetupCard channels={props.channels} presets={props.presets} templates={props.templates} settings={props.rolePlaySettings} pending={props.pending === "template"} settingsPending={props.pending === "settings"} onSubmit={props.onCreateTemplate} onInspect={props.onInspectTemplate} />

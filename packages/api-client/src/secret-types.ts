@@ -26,6 +26,13 @@ export interface LockSecretStoreResult {
   locked: true;
 }
 
+export interface ChangeMasterPasswordInput {
+  currentPassword: string;
+  newPassword: string;
+  sessionId: string;
+  idempotencyKey: string;
+}
+
 export interface SecretRef {
   scheme: "secret";
   id: string;
