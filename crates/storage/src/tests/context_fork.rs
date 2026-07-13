@@ -7,7 +7,11 @@ use zhuangsheng_core::{
 };
 
 use super::applied_graph;
-use crate::{StorageError, graph::helpers::sql, tests::store};
+use crate::{
+    StorageError,
+    graph::helpers::{now_ms, sql},
+    tests::store,
+};
 
 const NOW: i64 = 1_700_000_600_000;
 
@@ -67,6 +71,26 @@ async fn fork_reconstructs_reachable_history_and_replays_after_branch_advances()
             .await
             .unwrap(),
         branch
+    );
+    store
+        .maintain_content_objects(now_ms() + 60_001, 60_000, 1_000)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .get_context_at_commit(&run.input_commit_id)
+            .await
+            .unwrap()
+            .value,
+        json!({})
+    );
+    assert_eq!(
+        store
+            .get_working_context(&branch.context_id, &branch.branch_id)
+            .await
+            .unwrap()
+            .value,
+        json!({"forked":true})
     );
     let mut conflicting_replay = command;
     conflicting_replay.from_commit_id = advanced.id.clone();

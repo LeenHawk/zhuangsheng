@@ -225,6 +225,16 @@ async fn confirmed_success_binds_result_without_rewriting_attempt_fact() {
         row.try_get::<String>("", "response_object_id").unwrap(),
         result_object_id
     );
+    store
+        .maintain_content_objects(setup.now + 60_005, 60_000, 1_000)
+        .await
+        .unwrap();
+    assert_eq!(
+        load_object_json::<_, serde_json::Value>(&store.db, &result_object_id)
+            .await
+            .unwrap(),
+        json!({"text":"confirmed result"})
+    );
     let checkpoint = load_checkpoint(&store, &setup.claimed.node_instance_id).await;
     let active = checkpoint.active_model_effect.unwrap();
     assert_eq!(active.status, LlmLogicalCallStatus::Completed);

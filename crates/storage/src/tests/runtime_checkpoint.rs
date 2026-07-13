@@ -47,6 +47,9 @@ async fn checkpoint_captures_a_consistent_slice_and_replays_its_journal_tail() {
         .try_get("", "lifecycle")
         .unwrap();
     assert_eq!(lifecycle, "live");
+    let recovered_after_gc = store.recover_runtime_runs().await.unwrap();
+    assert_eq!(recovered_after_gc[0].checkpoint_id, checkpoint.id);
+    assert!(recovered_after_gc[0].projection_consistent);
 }
 
 #[tokio::test]

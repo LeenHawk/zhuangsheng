@@ -14,7 +14,10 @@ use zhuangsheng_core::{
     state::{ActorKind, ActorRef},
 };
 
-use crate::{StorageError, graph::helpers::sql};
+use crate::{
+    StorageError,
+    graph::helpers::{now_ms, sql},
+};
 
 use super::store;
 
@@ -64,6 +67,15 @@ async fn create_proposal_review_apply_and_search_are_durable() {
     assert!(!search.truncated);
     assert_eq!(count(&store, "memory_proposal_transitions").await, 4);
     assert_eq!(count(&store, "domain_events").await, 1);
+    store
+        .maintain_content_objects(now_ms() + 60_001, 60_000, 1_000)
+        .await
+        .unwrap();
+    let after_gc = store.get_memory_record(&proposed.memory_id).await.unwrap();
+    assert_eq!(
+        after_gc.content.unwrap().text,
+        "Dragons guard the northern gate"
+    );
 }
 
 #[tokio::test]
