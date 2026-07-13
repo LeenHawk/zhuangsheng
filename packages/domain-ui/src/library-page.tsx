@@ -49,8 +49,8 @@ function ResourceGrid({ children, empty }: { children: React.ReactNode; empty: s
 function ResourceCard({ icon, title, id, status, detail, action }: { icon: React.ReactNode; title: string; id: string; status: string; detail: string; action?: { label: string; run: () => void } }) { return <Card className="p-5"><div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-elevated text-info">{icon}</div><div className="min-w-0"><h2 className="truncate font-semibold">{title}</h2><p className="truncate font-mono text-[11px] text-muted">{id}</p></div></div><Badge className="mt-4" tone={status.includes("draft") ? "warning" : "success"}>{status}</Badge><p className="mt-2 break-words text-xs text-secondary">{detail}</p>{action && <Button className="mt-3" size="compact" variant="secondary" onClick={action.run}>{action.label}</Button>}</Card>; }
 
 async function downloadSillyTavern(actions: SillyTavernImportActions, versionId: string) {
-  const result = await actions.export({ presetVersionId: versionId });
-  for (const document of result.bundle.documents) {
+  const result = await actions.export(versionId);
+  for (const document of result.documents) {
     const url = URL.createObjectURL(new Blob([stringifyJsonExact(document.document, 2)], { type: "application/json" }));
     const link = window.document.createElement("a");
     link.href = url; link.download = document.fileName; link.click(); URL.revokeObjectURL(url);

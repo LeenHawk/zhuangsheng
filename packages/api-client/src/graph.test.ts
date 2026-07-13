@@ -185,11 +185,21 @@ describe("HttpGraphClient", () => {
       call = { input, init };
       return new Response(JSON.stringify({ id: "graphrev_1", graphId: "graph_1", revisionNo: 1, operationTaxonomyVersion: 1, adapterDecoderVersion: 1, definition: {}, contentHash: "hash", createdAt: 1, warnings: [] }), { status: 201 });
     });
-    await new HttpGraphClient("https://role.example").createRolePlayTemplate("Alice", "channel_1", "preset_1", { idempotencyKey: "template-key" });
+    await new HttpGraphClient("https://role.example").createRolePlayTemplate("Alice", "channel_1", "preset_1", {
+      idempotencyKey: "template-key",
+      generation: { temperature: 0.8 },
+      extensions: { openai: { extraBody: { min_p: 0.1 } } },
+    });
     const request = call as unknown as { input: RequestInfo | URL; init: RequestInit };
     expect(request.input).toBe("https://role.example/v1/roleplay/templates");
     expect(request.init.headers).toMatchObject({ "idempotency-key": "template-key" });
-    expect(JSON.parse(request.init.body as string)).toEqual({ name: "Alice", channelId: "channel_1", presetId: "preset_1" });
+    expect(JSON.parse(request.init.body as string)).toEqual({
+      name: "Alice",
+      channelId: "channel_1",
+      presetId: "preset_1",
+      generation: { temperature: 0.8 },
+      extensions: { openai: { extraBody: { min_p: 0.1 } } },
+    });
   });
 
   it("reads role play settings without making the browser inspect graph definitions", async () => {

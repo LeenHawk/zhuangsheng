@@ -127,7 +127,9 @@ export function LocalSettings() {
     setPreview(null); await load();
   });
   const createTemplate = (input: { name: string; channelId: string; presetId: string }) => action("template", async () => {
-    const result = await config.createRolePlayTemplate(input.name, input.channelId, input.presetId, keyFor(`template:${stringifyJsonExact(input)}`));
+    const result = await config.createRolePlayTemplate(input.name, input.channelId, input.presetId, {
+      idempotencyKey: keyFor(`template:${stringifyJsonExact(input)}`),
+    });
     setTemplates(await conversations.listRolePlayGraphOptions()); return result;
   });
   const previewPreset = (preset: ContextPresetView) => void action("preview", async () => {

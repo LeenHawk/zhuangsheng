@@ -8,7 +8,6 @@ import {
   decodeContextPresets,
   decodeContextPresetVersion,
 } from "./decode-config";
-import { decodeSillyTavernImportPreview, decodeSillyTavernImportResult, decodeSillyTavernRegexTestResult, decodeSillyTavernVersionExport } from "./decode-sillytavern";
 import { decodeGraphRevision } from "./decode-graphs";
 import { decodeRolePlaySettings } from "./decode-roleplay";
 import { DecodeError } from "./decode-error";
@@ -21,18 +20,10 @@ import type {
   ContextPresetVersionView,
   ContextPresetView,
   DiscoveredChannelModel,
-  ExportSillyTavernInput,
   PublishChannelInput,
   PublishPresetInput,
-  ApplySillyTavernImportInput,
-  SillyTavernImportInput,
-  SillyTavernImportPreviewView,
-  SillyTavernImportResultView,
-  SillyTavernRegexTestResultView,
-  SillyTavernVersionExportView,
-  TestSillyTavernRegexInput,
 } from "./config-types";
-import type { GraphRevisionView } from "./graph-types";
+import type { GraphRevisionView, RolePlayTemplateSpec } from "./graph-types";
 import type { RolePlaySettingsView } from "./roleplay-types";
 import type { TauriBridge } from "./transport";
 import { buildDiscoveredModelRevisionSpec } from "./channel-model-selection";
@@ -152,75 +143,19 @@ export class TauriConfigClient {
     } }));
   }
 
-  async previewSillyTavernImport(
-    input: SillyTavernImportInput,
-  ): Promise<SillyTavernImportPreviewView> {
-    return decodeSillyTavernImportPreview(await this.bridge.invoke(
-      "preview_sillytavern_import",
-      { command: {
-        document: input.document,
-        sourceName: input.sourceName ?? null,
-        targetPresetId: input.targetPresetId ?? null,
-      } },
-    ));
-  }
-
-  async applySillyTavernImport(
-    input: ApplySillyTavernImportInput,
-    idempotencyKey = createIdempotencyKey(),
-  ): Promise<SillyTavernImportResultView> {
-    return decodeSillyTavernImportResult(await this.bridge.invoke(
-      "apply_sillytavern_import",
-      { command: {
-        document: input.document,
-        sourceName: input.sourceName ?? null,
-        targetPresetId: input.targetPresetId ?? null,
-        expectedHeadVersionId: input.expectedHeadVersionId ?? null,
-        channelId: input.channelId ?? null,
-        idempotencyKey,
-      } },
-    ));
-  }
-
-  async testSillyTavernRegex(
-    input: TestSillyTavernRegexInput,
-  ): Promise<SillyTavernRegexTestResultView> {
-    return decodeSillyTavernRegexTestResult(await this.bridge.invoke(
-      "test_sillytavern_regex",
-      { command: {
-        document: input.document,
-        sourceName: input.sourceName ?? null,
-        targetPresetId: input.targetPresetId ?? null,
-        input: input.input,
-        placement: input.placement,
-        surface: input.surface,
-        depth: input.depth ?? null,
-        isEdit: input.isEdit ?? false,
-        macros: input.macros ?? {},
-      } },
-    ));
-  }
-
-  async exportSillyTavern(
-    input: ExportSillyTavernInput,
-  ): Promise<SillyTavernVersionExportView> {
-    return decodeSillyTavernVersionExport(await this.bridge.invoke(
-      "export_sillytavern",
-      { command: {
-        presetVersionId: input.presetVersionId,
-        graphRevisionId: input.graphRevisionId ?? null,
-      } },
-    ));
-  }
-
   async createRolePlayTemplate(
     name: string,
     channelId: string,
     presetId: string,
-    idempotencyKey = createIdempotencyKey(),
+    options: RolePlayTemplateSpec & { idempotencyKey?: string } = {},
   ): Promise<GraphRevisionView> {
     return decodeGraphRevision(await this.bridge.invoke("create_roleplay_template", { command: {
-      name, channelId, presetId, idempotencyKey,
+      name,
+      channelId,
+      presetId,
+      generation: options.generation ?? null,
+      extensions: options.extensions ?? null,
+      idempotencyKey: options.idempotencyKey ?? createIdempotencyKey(),
     } }));
   }
 

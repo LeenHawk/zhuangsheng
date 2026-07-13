@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { ArtifactView, ChannelView, ContextPresetVersionView, ContextPresetView, RolePlayGraphOptionView } from "@zhuangsheng/api-client";
 import { LibraryPage } from "@zhuangsheng/domain-ui";
+import { createSillyTavernWorkflow } from "@zhuangsheng/sillytavern-compat";
 
 import { client, messageFor } from "./api";
 
@@ -15,6 +16,16 @@ export function LibraryRoute() {
   const [artifacts, setArtifacts] = useState<ArtifactView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const resources = useRef({ presets, versions });
+  resources.current = { presets, versions };
+  const sillyTavern = useMemo(() => createSillyTavernWorkflow({
+    presets: () => resources.current.presets,
+    versions: () => resources.current.versions,
+    createPreset: (name, key) => client.config.createPreset(name, key),
+    publishPreset: (presetId, input, key) => client.config.publishPreset(presetId, input, key),
+    createRolePlayTemplate: (name, channelId, presetId, options) =>
+      client.graphs.createRolePlayTemplate(name, channelId, presetId, options),
+  }), []);
   const reload = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError(null);
     try {
@@ -28,5 +39,5 @@ export function LibraryRoute() {
     finally { if (!signal?.aborted) setLoading(false); }
   }, []);
   useEffect(() => { const controller = new AbortController(); void reload(controller.signal); return () => controller.abort(); }, [reload]);
-  return <LibraryPage presets={presets} channels={channels} versions={versions} templates={templates} artifacts={artifacts} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={() => navigate("/settings")} onOpenArtifacts={() => navigate("/expert/artifacts")} contentUrl={(id) => client.artifacts.contentUrl(id)} sillyTavern={{ preview: (input) => client.config.previewSillyTavernImport(input), test: (input) => client.config.testSillyTavernRegex(input), apply: (input) => client.config.applySillyTavernImport(input), export: (input) => client.config.exportSillyTavern(input) }} />;
+  return <LibraryPage presets={presets} channels={channels} versions={versions} templates={templates} artifacts={artifacts} loading={loading} error={error} onReload={() => void reload()} onOpenSettings={() => navigate("/settings")} onOpenArtifacts={() => navigate("/expert/artifacts")} contentUrl={(id) => client.artifacts.contentUrl(id)} sillyTavern={sillyTavern} />;
 }

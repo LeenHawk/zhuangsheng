@@ -3,18 +3,19 @@ import { FileJson, Import, Settings2 } from "lucide-react";
 
 import {
   parseJsonExact,
-  type ApplySillyTavernImportInput,
   type ChannelView,
   type ContextPresetView,
   type JsonValue,
-  type SillyTavernImportInput,
-  type SillyTavernImportPreviewView,
-  type SillyTavernImportResultView,
-  type SillyTavernRegexTestResultView,
-  type TestSillyTavernRegexInput,
-  type ExportSillyTavernInput,
-  type SillyTavernVersionExportView,
 } from "@zhuangsheng/api-client";
+import type {
+  ApplySillyTavernImportInput,
+  SillyTavernExportBundleView,
+  SillyTavernImportInput,
+  SillyTavernImportPreviewView,
+  SillyTavernImportResultView,
+  SillyTavernRegexTestResultView,
+  TestSillyTavernRegexInput,
+} from "@zhuangsheng/sillytavern-compat";
 import { Badge, Button, Card } from "@zhuangsheng/ui";
 
 import { SillyTavernImportPreview } from "./sillytavern-import-preview";
@@ -24,7 +25,7 @@ export interface SillyTavernImportActions {
   preview(input: SillyTavernImportInput): Promise<SillyTavernImportPreviewView>;
   apply(input: ApplySillyTavernImportInput): Promise<SillyTavernImportResultView>;
   test(input: TestSillyTavernRegexInput): Promise<SillyTavernRegexTestResultView>;
-  export(input: ExportSillyTavernInput): Promise<SillyTavernVersionExportView>;
+  export(versionId: string): Promise<SillyTavernExportBundleView>;
 }
 
 export function SillyTavernImportCard({
@@ -48,6 +49,8 @@ export function SillyTavernImportCard({
   const [error, setError] = useState<string | null>(null);
   const target = presets.find((preset) => preset.id === targetId);
   const usableChannels = channels.filter((channel) => channel.headRevisionId);
+  const generationOnlyBlocked = preview !== null && preview.contextSpec === null
+    && (!target?.headVersionId || !channelId);
 
   const chooseFile = async (file: File | undefined) => {
     if (!file) return;
@@ -74,7 +77,7 @@ export function SillyTavernImportCard({
     finally { setPending(null); }
   };
   const apply = async () => {
-    if (!source || !preview || (!preview.contextSpec && (!target || !channelId)) || pending) return;
+    if (!source || !preview || generationOnlyBlocked || pending) return;
     setPending("apply"); setError(null);
     try {
       const result = await actions.apply({
@@ -107,9 +110,10 @@ export function SillyTavernImportCard({
           <option value="">只发布 ContextPreset，不创建 Agent</option>
           {usableChannels.map((channel) => <option key={channel.id} value={channel.id}>使用 {channel.name} 创建可运行 Agent</option>)}
         </select>
-        <Button disabled={(!preview.contextSpec && (!target || !channelId)) || pending !== null} onClick={() => void apply()}>{pending === "apply" ? "正在发布…" : channelId ? "导入并创建 Agent" : target ? `发布到 ${target.name}` : "确认并创建 preset"}</Button>
+        <Button disabled={generationOnlyBlocked || pending !== null} onClick={() => void apply()}>{pending === "apply" ? "正在发布…" : channelId ? "导入并创建 Agent" : target ? `发布到 ${target.name}` : "确认并创建 preset"}</Button>
       </div>
-      {!preview.contextSpec && <p className="mt-2 text-xs text-warning">这个文件只有生成参数：请选择已有 ContextPreset 和 Channel，生成参数会固定进新的 Agent revision。</p>}
+      {!preview.contextSpec && <p className="mt-2 text-xs text-warning">这个文件只有生成参数：请选择已发布的 ContextPreset 和 Channel，生成参数会固定进新的 Agent revision。</p>}
+      {preview.contextSpec && (preview.generation || preview.providerExtensions) && !channelId && <p className="mt-2 text-xs text-warning">未选择 Channel：本次只发布 ContextPreset，生成参数不会写入 preset。</p>}
     </>}
   </Card>;
 }

@@ -2,7 +2,7 @@ import { decodeCreateGraph, decodeGraphDraft, decodeGraphList, decodeGraphRevisi
 import { DecodeError } from "./decode-error";
 import { stringifyJsonExact } from "./exact-json";
 import { decodeRolePlayCompatibility, decodeRolePlaySettings } from "./decode-roleplay";
-import type { CreateGraphResult, GraphDraftView, GraphRevisionView, GraphSummary, JsonObject } from "./graph-types";
+import type { CreateGraphResult, GraphDraftView, GraphRevisionView, GraphSummary, JsonObject, RolePlayTemplateSpec } from "./graph-types";
 import type { RolePlayCompatibilityView } from "./types";
 import type { RolePlaySettingsView } from "./roleplay-types";
 import { requestJson } from "./http-json";
@@ -88,12 +88,18 @@ export class HttpGraphClient {
     name: string,
     channelId: string,
     presetId: string,
-    options: GraphCommandOptions = {},
+    options: GraphCommandOptions & RolePlayTemplateSpec = {},
   ): Promise<GraphRevisionView> {
     return decodeGraphRevision(await this.request("/v1/roleplay/templates", {
       method: "POST",
       headers: this.commandHeaders(options.idempotencyKey),
-      body: stringifyJsonExact({ name, channelId, presetId }),
+      body: stringifyJsonExact({
+        name,
+        channelId,
+        presetId,
+        generation: options.generation ?? null,
+        extensions: options.extensions ?? null,
+      }),
       signal: options.signal,
     }));
   }

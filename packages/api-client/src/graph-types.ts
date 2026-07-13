@@ -43,6 +43,11 @@ export interface GraphRevisionView {
   warnings: ValidationIssue[];
 }
 
+export interface RolePlayTemplateSpec {
+  generation?: JsonObject | null;
+  extensions?: JsonObject | null;
+}
+
 export interface GraphPortProjection {
   name: string;
 }

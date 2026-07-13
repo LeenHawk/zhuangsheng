@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
-import { stringifyJsonExact, type SillyTavernImportPreviewView } from "@zhuangsheng/api-client";
+import { stringifyJsonExact } from "@zhuangsheng/api-client";
+import type { SillyTavernImportPreviewView } from "@zhuangsheng/sillytavern-compat";
 import { Badge, Card } from "@zhuangsheng/ui";
 
 export function SillyTavernImportPreview({
@@ -31,7 +32,7 @@ export function SillyTavernImportPreview({
 function ExpertDetails({ preview }: { preview: SillyTavernImportPreviewView }) {
   return <div className="space-y-3 rounded-xl border border-default p-3">
     <div className="flex flex-wrap gap-2"><Badge tone="info">compat v{preview.compatibilityVersion}</Badge><Badge>{preview.sourceHash}</Badge>{preview.inactiveFields.map((field) => <Badge key={field} tone="warning">inactive · {field}</Badge>)}</div>
-    {preview.textTransforms.length > 0 && <div><p className="text-xs font-semibold">Regex execution plan</p><div className="mt-2 space-y-2">{preview.textTransforms.map((rule) => <div key={rule.id} className="rounded-lg bg-elevated p-2 text-xs"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{rule.name}</span><Badge>{rule.scope}</Badge>{rule.surfaces.map((surface) => <Badge key={surface} tone="info">{surface}</Badge>)}{rule.disabled && <Badge tone="warning">disabled</Badge>}</div><code className="mt-1 block break-all text-[11px] text-secondary">{rule.findRegex} → {rule.replaceString}</code><p className="mt-1 text-[11px] text-muted">placement: {rule.placements.join(", ") || "none"} · depth {rule.minDepth ?? "*"}..{rule.maxDepth ?? "*"}</p></div>)}</div></div>}
+    {preview.textTransforms.length > 0 && <div><p className="text-xs font-semibold">Regex execution plan</p><div className="mt-2 space-y-2">{preview.textTransforms.map((rule) => <div key={rule.id} className="rounded-lg bg-elevated p-2 text-xs"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{rule.name}</span><Badge>{rule.sourceScope}</Badge>{rule.surfaces.map((surface) => <Badge key={surface} tone="info">{surface}</Badge>)}{rule.disabled && <Badge tone="warning">disabled</Badge>}</div><code className="mt-1 block break-all text-[11px] text-secondary">{rule.findRegex} → {rule.replaceString}</code><p className="mt-1 text-[11px] text-muted">target: {rule.targets.join(", ") || "inactive"} · depth {rule.minDepth ?? "*"}..{rule.maxDepth ?? "*"}{rule.inactivePlacements.length ? ` · inactive placement ${rule.inactivePlacements.join(", ")}` : ""}</p></div>)}</div></div>}
   </div>;
 }
 

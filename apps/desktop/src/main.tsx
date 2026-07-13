@@ -14,7 +14,6 @@ import {
 import { LocalStories } from "./local-stories";
 import { LocalSettings } from "./local-settings";
 import { LocalMemory } from "./local-memory";
-import { LocalLibrary } from "./local-library";
 import { LocalArtifacts } from "./local-artifacts";
 import { LocalContexts } from "./local-contexts";
 import { desktopPlatformCapabilities, secrets } from "./bridge";
@@ -22,6 +21,7 @@ import "../../web/src/styles.css";
 
 const LocalRuns = lazy(async () => ({ default: (await import("./local-runs")).LocalRuns }));
 const LocalGraphStudio = lazy(async () => ({ default: (await import("./local-graph-studio")).LocalGraphStudio }));
+const LocalLibrary = lazy(async () => ({ default: (await import("./local-library")).LocalLibrary }));
 const loadLocalSecretStore = () => secrets.status();
 
 function DesktopApp() {
@@ -51,7 +51,7 @@ function DesktopApp() {
         : section === "memory"
           ? <LocalMemory />
           : section === "library"
-            ? <LocalLibrary onOpenSettings={() => setSection("settings")} onOpenArtifacts={() => setSection("artifacts")} />
+            ? <Suspense fallback={<SurfacePlaceholder label="本地资料库" title="正在加载兼容工具" description="正在准备 ContextPreset 与本地导入器。" />}><LocalLibrary onOpenSettings={() => setSection("settings")} onOpenArtifacts={() => setSection("artifacts")} /></Suspense>
             : section === "artifacts"
               ? <LocalArtifacts />
               : section === "contexts"
