@@ -13,7 +13,7 @@ use zhuangsheng_core::{
 
 use crate::{
     StorageError, StorageResult,
-    context::query::load_context,
+    context::{query::load_context, replay::reconstruct},
     graph::helpers::{new_id, put_inline_object, sql},
 };
 
@@ -44,14 +44,36 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
     }
     let run = connection
         .query_one_raw(sql(
-            "SELECT context_id, branch_id FROM graph_runs WHERE id = ?",
+            "SELECT context_id, branch_id, input_commit_id FROM graph_runs WHERE id = ?",
             vec![run_id.into()],
         ))
         .await?
         .ok_or_else(|| StorageError::Integrity("LLM run binding missing".into()))?;
     let context_id: String = run.try_get("", "context_id")?;
     let branch_id: String = run.try_get("", "branch_id")?;
+    let input_commit_id: String = run.try_get("", "input_commit_id")?;
     let context = load_context(connection, &context_id, &branch_id).await?;
+    let history_context = if memory.node.reads.iter().any(|read| {
+        matches!(
+            read.source,
+            StaticMemoryReadSource::ConversationHistory { .. }
+        )
+    }) {
+        let reconstructed = reconstruct(connection, &input_commit_id).await?;
+        if reconstructed.context_id != context_id {
+            return Err(StorageError::Integrity(
+                "conversation history input commit crosses context boundary".into(),
+            ));
+        }
+        Some(zhuangsheng_core::application::context::WorkingContextView {
+            context_id: context_id.clone(),
+            branch_id: branch_id.clone(),
+            head_commit_id: input_commit_id,
+            value: reconstructed.value,
+        })
+    } else {
+        None
+    };
     if !memory.node.working_writes.is_empty() {
         connection.execute_raw(sql(
             "INSERT OR IGNORE INTO node_static_write_bases (node_instance_id,context_id,branch_id,base_commit_id,created_at) VALUES (?,?,?,?,?)",
@@ -64,7 +86,15 @@ pub(super) async fn resolve_llm_reads<C: ConnectionTrait>(
                 resolve_working(read, path, &context_id, &branch_id, &context)?
             }
             StaticMemoryReadSource::ConversationHistory { .. } => {
-                conversation_history::resolve(connection, &context_id, &branch_id, &context).await?
+                conversation_history::resolve(
+                    connection,
+                    &context_id,
+                    &branch_id,
+                    history_context
+                        .as_ref()
+                        .expect("history context was reconstructed"),
+                )
+                .await?
             }
             StaticMemoryReadSource::LongTermMemory { .. } => {
                 long_term_read::resolve_static(connection, read).await?

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use zhuangsheng_core::{
     application::{
         channel::{CreateChannelCommand, PublishChannelRevisionCommand},
+        context::CommitContextPatchCommand,
         conversation::{CreateConversationCommand, SubmitConversationTurnCommand},
         graph::CreateRolePlayTemplateCommand,
         preset::{CreateContextPresetCommand, PublishContextPresetVersionCommand},
@@ -16,6 +17,7 @@ use zhuangsheng_core::{
         ir::LlmContentPartIr,
     },
     scheduler::{Scheduler, SchedulerWork},
+    state::{ActorKind, ActorRef, AggregateKind, JsonPatchOp, StatePatch},
 };
 
 use crate::{
@@ -100,6 +102,30 @@ async fn roleplay_attempt_pins_ordered_conversation_history_with_content() {
             },
             1_700_001_000_001,
         )
+        .await
+        .unwrap();
+    store
+        .commit_context_patch(CommitContextPatchCommand {
+            patch: StatePatch {
+                aggregate_kind: AggregateKind::WorkingContext,
+                aggregate_id: submitted.run.context_id.clone(),
+                lineage_key: submitted.run.branch_id.clone(),
+                base_commit_id: submitted.run.input_commit_id.clone(),
+                operation_id: "advance-after-run-start".into(),
+                ops: vec![JsonPatchOp::Add {
+                    path: "/runtimeMarker".into(),
+                    value: serde_json::json!(true),
+                }],
+                schema_version: 1,
+                policy_version: 1,
+                author: ActorRef {
+                    kind: ActorKind::Application,
+                    id: Some("history-test".into()),
+                },
+            },
+            origin_run_id: None,
+            origin_node_instance_id: None,
+        })
         .await
         .unwrap();
     let claimed = claim_reply_attempt(&store, 1_700_001_000_002).await;

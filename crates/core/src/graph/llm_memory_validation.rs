@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use crate::{ValidationIssue, selector};
 
 use super::{
-    FinalValueSource, InputSelector, LlmNodeConfig, MemoryToolCapability, PreExecutionValueSource,
-    StaticContextWriteOp, StaticMemoryReadSource,
+    FinalValueSource, InputSelector, LlmNodeConfig, MemoryReadConsistency, MemoryToolCapability,
+    PreExecutionValueSource, StaticContextWriteOp, StaticMemoryReadSource,
 };
 
 pub(super) fn validate_llm_memory(
@@ -40,7 +40,10 @@ pub(super) fn validate_llm_memory(
                 scope.trim().is_empty() || !valid_pointer(path)
             }
             StaticMemoryReadSource::ConversationHistory { scope } => {
-                scope != "run-context" || read.limit.is_some() || !read.required
+                scope != "run-context"
+                    || read.limit.is_some()
+                    || !read.required
+                    || read.consistency != MemoryReadConsistency::Snapshot
             }
             StaticMemoryReadSource::LongTermMemory { scope, query } => {
                 scope.trim().is_empty()
