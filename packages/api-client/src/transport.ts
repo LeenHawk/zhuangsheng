@@ -1,4 +1,5 @@
 import { decodeRunStreamFrame } from "./stream-decode";
+import { stringifyJsonExact } from "./exact-json";
 import type { RunEventStreamObserver } from "./http-sse";
 
 export interface TransportRequest<TPayload = unknown> {
@@ -64,7 +65,7 @@ export class TauriTransport implements RuntimeTransport {
           for (const event of events) {
             if (event.durableSeq <= cursor) continue;
             const message = decodeRunStreamFrame({
-              id: String(event.durableSeq), event: event.type, data: JSON.stringify(event),
+              id: String(event.durableSeq), event: event.type, data: stringifyJsonExact(event),
             }, runId);
             observer.onMessage(message);
             cursor = event.durableSeq;

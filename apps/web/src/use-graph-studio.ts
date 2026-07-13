@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ApiError, createIdempotencyKey, decodeValidationIssues, type GraphDraftView, type GraphRevisionView, type GraphSummary, type HttpGraphClient } from "@zhuangsheng/api-client";
+import { ApiError, createIdempotencyKey, decodeValidationIssues, stringifyJsonExact, type GraphDraftView, type GraphRevisionView, type GraphSummary, type HttpGraphClient } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
 import { parseGraphDraft } from "./graph-draft-validation";
@@ -26,7 +26,7 @@ export function useGraphStudio(graphClient: HttpGraphClient = client.graphs) {
     try {
       const next = await graphClient.getDraft(graphId, signal);
       setDraft(next);
-      setJsonText(JSON.stringify(next.document, null, 2));
+      setJsonText(stringifyJsonExact(next.document, 2));
       setStatus("ready");
     } catch (cause) {
       if (signal?.aborted) return;
@@ -57,7 +57,7 @@ export function useGraphStudio(graphClient: HttpGraphClient = client.graphs) {
   }, [loadDraft, selectedGraphId]);
 
   const parsed = useMemo(() => parseGraphDraft(jsonText, selectedGraphId ?? ""), [jsonText, selectedGraphId]);
-  const savedText = draft ? JSON.stringify(draft.document, null, 2) : "";
+  const savedText = draft ? stringifyJsonExact(draft.document, 2) : "";
   const dirty = draft !== null && jsonText !== savedText;
   const keyFor = (signature: string) => {
     const existing = commandKeys.current.get(signature);
@@ -85,7 +85,7 @@ export function useGraphStudio(graphClient: HttpGraphClient = client.graphs) {
     setStatus("saving"); setError(null); setServerIssues([]);
     try {
       const next = await graphClient.updateDraft(draft.graphId, draft.revisionToken, parsed.document, { idempotencyKey: keyFor(signature) });
-      complete(signature); setDraft(next); setJsonText(JSON.stringify(next.document, null, 2)); setStatus("ready");
+      complete(signature); setDraft(next); setJsonText(stringifyJsonExact(next.document, 2)); setStatus("ready");
       setGraphs((items) => items.map((item) => item.id === next.graphId ? { ...item, name: typeof next.document.name === "string" ? next.document.name : item.name, updatedAt: next.updatedAt } : item));
     } catch (cause) { setError(commandError(cause, setServerIssues)); setStatus("ready"); }
   };

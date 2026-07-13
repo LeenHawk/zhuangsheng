@@ -1,8 +1,9 @@
 import { DecodeError } from "./decode-error";
+import { isJsonNumber } from "./exact-json";
 import type { JsonObject, JsonValue } from "./graph-types";
 
 export const record = (value: unknown, path: string): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value) || isJsonNumber(value)) {
     throw new DecodeError(path);
   }
   return value as Record<string, unknown>;
@@ -35,10 +36,7 @@ export const stringArray = (value: unknown, path: string): string[] => {
 
 export const jsonValue = (value: unknown, path: string): JsonValue => {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new DecodeError(path);
-    return value;
-  }
+  if (isJsonNumber(value)) return value;
   if (Array.isArray(value)) {
     return value.map((item, index) => jsonValue(item, `${path}[${index}]`));
   }
@@ -50,7 +48,7 @@ export const jsonValue = (value: unknown, path: string): JsonValue => {
 
 export const jsonObject = (value: unknown, path: string): JsonObject => {
   const decoded = jsonValue(value, path);
-  if (decoded === null || Array.isArray(decoded) || typeof decoded !== "object") {
+  if (decoded === null || Array.isArray(decoded) || typeof decoded !== "object" || isJsonNumber(decoded)) {
     throw new DecodeError(path);
   }
   return decoded;

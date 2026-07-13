@@ -1,5 +1,6 @@
 import { decodeLockSecretStore, decodeSecretList, decodeSecretMetadata, decodeSecretStoreSession, decodeSecretStoreStatus } from "./decode-secret";
 import { requestJson } from "./http-json";
+import { stringifyJsonExact } from "./exact-json";
 import type {
   SecretPasswordCommandInput,
   ChangeMasterPasswordInput,
@@ -32,7 +33,7 @@ export class HttpSecretClient {
     return decodeLockSecretStore(await requestJson(this.baseUrl, "/v1/secret-store/lock", {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
-      body: JSON.stringify({ expectedSessionId: input.expectedSessionId }),
+      body: stringifyJsonExact({ expectedSessionId: input.expectedSessionId }),
       signal,
     }));
   }
@@ -45,7 +46,7 @@ export class HttpSecretClient {
     return decodeSecretStoreSession(await requestJson(this.baseUrl, "/v1/secret-store/change-password", {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
-      body: JSON.stringify({ currentPassword: input.currentPassword, newPassword: input.newPassword, sessionId: input.sessionId }),
+      body: stringifyJsonExact({ currentPassword: input.currentPassword, newPassword: input.newPassword, sessionId: input.sessionId }),
     }));
   }
 
@@ -53,7 +54,7 @@ export class HttpSecretClient {
     return decodeSecretMetadata(await requestJson(this.baseUrl, `/v1/secrets/${encodeURIComponent(input.secretId)}`, {
       method: "PUT",
       headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
-      body: JSON.stringify({ name: input.name?.trim() || null, kind: input.kind, value: input.value, sessionId: input.sessionId }),
+      body: stringifyJsonExact({ name: input.name?.trim() || null, kind: input.kind, value: input.value, sessionId: input.sessionId }),
     }));
   }
 
@@ -64,7 +65,7 @@ export class HttpSecretClient {
     const value = await requestJson(this.baseUrl, path, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
-      body: JSON.stringify({ masterPassword: input.masterPassword }),
+      body: stringifyJsonExact({ masterPassword: input.masterPassword }),
     });
     return decodeSecretStoreSession(value);
   }

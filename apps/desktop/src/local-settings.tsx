@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createIdempotencyKey,
+  stringifyJsonExact,
   type ChannelModelDiscoveryView,
   type ChannelRevisionView,
   type ChannelView,
@@ -99,7 +100,7 @@ export function LocalSettings() {
     setStatus({ initialized: true, storeId: session.storeId, formatVersion: session.formatVersion, locked: false });
   });
   const publishChannel = (input: ChannelInput) => action("channel", async () => {
-    const signature = `channel:${JSON.stringify(input)}`;
+    const signature = `channel:${stringifyJsonExact(input)}`;
     let channel = channels.find((item) => item.name === input.name && item.headRevisionId === null);
     channel ??= await config.createChannel(input.name, keyFor(`${signature}:create`));
     await config.publishChannel(channel.id, {
@@ -112,7 +113,7 @@ export function LocalSettings() {
     await load();
   });
   const publishPreset = (input: RolePresetInput) => action("preset", async () => {
-    const signature = `preset:${JSON.stringify(input)}`;
+    const signature = `preset:${stringifyJsonExact(input)}`;
     let preset = presets.find((item) => item.name === input.name && item.headVersionId === null);
     preset ??= await config.createPreset(input.name, keyFor(`${signature}:create`));
     await config.publishPreset(preset.id, {
@@ -121,7 +122,7 @@ export function LocalSettings() {
     setPreview(null); await load();
   });
   const createTemplate = (input: { name: string; channelId: string; presetId: string }) => action("template", async () => {
-    const result = await config.createRolePlayTemplate(input.name, input.channelId, input.presetId, keyFor(`template:${JSON.stringify(input)}`));
+    const result = await config.createRolePlayTemplate(input.name, input.channelId, input.presetId, keyFor(`template:${stringifyJsonExact(input)}`));
     setTemplates(await conversations.listRolePlayGraphOptions()); return result;
   });
   const previewPreset = (preset: ContextPresetView) => void action("preview", async () => {

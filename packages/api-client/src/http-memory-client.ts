@@ -1,5 +1,6 @@
 import { decodeMemoryProposal, decodeMemoryProposalList, decodeMemoryRecord, decodeMemorySearch } from "./decode-memory";
 import { DecodeError } from "./decode-error";
+import { stringifyJsonExact } from "./exact-json";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
 import type { MemoryProposalCursor, MemoryProposalListView, MemoryProposalStatus, MemoryProposalView, MemoryRecordStatus, MemoryRecordView, MemorySearchView, ProposeMemoryInput } from "./memory-types";
@@ -15,7 +16,7 @@ export class HttpMemoryClient {
   }
 
   async search(scopeId: string, status: Extract<MemoryRecordStatus, "active" | "obsolete">, signal?: AbortSignal): Promise<MemorySearchView> {
-    return decodeMemorySearch(await requestJson(this.baseUrl, "/v1/memory-search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scopeId, text: null, tags: [], status, limit: 100 }), signal }));
+    return decodeMemorySearch(await requestJson(this.baseUrl, "/v1/memory-search", { method: "POST", headers: { "content-type": "application/json" }, body: stringifyJsonExact({ scopeId, text: null, tags: [], status, limit: 100 }), signal }));
   }
 
   async get(memoryId: string, signal?: AbortSignal): Promise<MemoryRecordView> {
@@ -42,6 +43,6 @@ export class HttpMemoryClient {
   }
 
   private command(path: string, body: unknown, key = createIdempotencyKey()): Promise<unknown> {
-    return requestJson(this.baseUrl, path, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": key }, body: JSON.stringify(body) });
+    return requestJson(this.baseUrl, path, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": key }, body: stringifyJsonExact(body) });
   }
 }

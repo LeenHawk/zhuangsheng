@@ -1,4 +1,5 @@
 import { DecodeError } from "./decode-error";
+import { isJsonNumber } from "./exact-json";
 import { nullableString, number, record, string } from "./decode-helpers";
 import type {
   RunListView,
@@ -81,10 +82,7 @@ const decodeOutputValue = (value: unknown, path: string): RunOutputValueView => 
 
 export const assertJson = (value: unknown, path: string): void => {
   if (value === null || typeof value === "string" || typeof value === "boolean") return;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new DecodeError(path);
-    return;
-  }
+  if (isJsonNumber(value)) return;
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertJson(item, `${path}[${index}]`));
     return;

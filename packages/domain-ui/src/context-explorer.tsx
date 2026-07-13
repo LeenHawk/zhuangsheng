@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, GitFork, RefreshCw } from "lucide-react";
 
-import type { ContextBranchView, ContextCommitView, ContextDiffView, MergeContextInput, MergeContextView, VersionSnapshotView, WorkingContextView } from "@zhuangsheng/api-client";
+import { stringifyJsonExact, type ContextBranchView, type ContextCommitView, type ContextDiffView, type MergeContextInput, type MergeContextView, type VersionSnapshotView, type WorkingContextView } from "@zhuangsheng/api-client";
 import { Badge, Button, Card } from "@zhuangsheng/ui";
 
 import { ContextMergePanel } from "./context-merge-panel";
@@ -40,6 +40,6 @@ export function ContextExplorer(props: {
   );
 }
 
-function JsonCard({ title, value }: { title: string; value: unknown }) { return <Card className="p-5"><h2 className="font-semibold">{title}</h2><pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-canvas p-3 text-xs text-secondary">{value === undefined ? "正在加载…" : JSON.stringify(value, null, 2)}</pre></Card>; }
+function JsonCard({ title, value }: { title: string; value: unknown }) { return <Card className="p-5"><h2 className="font-semibold">{title}</h2><pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-canvas p-3 text-xs text-secondary">{value === undefined ? "正在加载…" : stringifyJsonExact(value, 2)}</pre></Card>; }
 function CommitSelect(props: { label: string; value: string; commits: ContextCommitView[]; onChange: (id: string) => void }) { return <label className="text-xs font-semibold text-secondary">{props.label}<select className="mt-1.5 min-h-10 w-full rounded-xl border border-default bg-canvas px-2 font-mono text-xs" value={props.value} onChange={(event) => props.onChange(event.target.value)}><option value="">选择 commit</option>{props.commits.map((commit) => <option key={commit.id} value={commit.id}>#{commit.sequenceNo} {commit.id}</option>)}</select></label>; }
-function Value({ label, value }: { label: string; value: unknown }) { return <div><p className="text-[10px] font-bold uppercase text-muted">{label}</p><pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-[11px] text-secondary">{JSON.stringify(value, null, 2)}</pre></div>; }
+function Value({ label, value }: { label: string; value: unknown }) { return <div><p className="text-[10px] font-bold uppercase text-muted">{label}</p><pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-[11px] text-secondary">{stringifyJsonExact(value, 2)}</pre></div>; }

@@ -1,4 +1,4 @@
-import { projectGraphStructure, type GraphStructureProjection, type JsonObject, type ValidationIssue } from "@zhuangsheng/api-client";
+import { parseJsonExact, projectGraphStructure, type GraphStructureProjection, type JsonObject, type ValidationIssue } from "@zhuangsheng/api-client";
 
 export interface ParsedGraphDraft {
   document: JsonObject | null;
@@ -9,7 +9,7 @@ export interface ParsedGraphDraft {
 export function parseGraphDraft(text: string, expectedGraphId: string): ParsedGraphDraft {
   let value: unknown;
   try {
-    value = JSON.parse(text);
+    value = parseJsonExact(text);
   } catch (cause) {
     return invalid("invalid_json", "/", cause instanceof Error ? cause.message : "JSON 无法解析");
   }

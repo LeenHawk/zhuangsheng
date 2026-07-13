@@ -1,6 +1,6 @@
 import { LockKeyhole } from "lucide-react";
 
-import type { RolePlaySettingsView } from "@zhuangsheng/api-client";
+import { stringifyJsonExact, type RolePlaySettingsView } from "@zhuangsheng/api-client";
 import { Badge } from "@zhuangsheng/ui";
 
 export function RolePlaySettingsPanel({ settings }: { settings: RolePlaySettingsView }) {
@@ -13,7 +13,7 @@ export function RolePlaySettingsPanel({ settings }: { settings: RolePlaySettings
       <Setting label="Channel" value={settings.model.channelId} />
       <Setting label="主 LLM 节点" value={settings.primaryLlmNodeId} />
       <Setting label="ContextPreset" value={settings.contextPresetId || "内联 / 未绑定"} />
-      <Setting label="生成参数" value={settings.generation ? JSON.stringify(settings.generation) : "默认"} />
+      <Setting label="生成参数" value={settings.generation ? stringifyJsonExact(settings.generation) : "默认"} />
       <Setting label="流式输出" value={settings.streaming ? `${settings.streaming.enabled ? "启用" : "停用"} · ${settings.streaming.audience}` : "默认"} />
       {locked.length > 0 && <div className="md:col-span-2"><div className="flex items-center gap-1.5 text-secondary"><LockKeyhole className="size-3.5" />受保护的专家设置</div><div className="mt-1 flex flex-wrap gap-1">{locked.map((reason) => <Badge key={reason} tone="warning">{lockedLabel(reason)}</Badge>)}</div></div>}
     </div>

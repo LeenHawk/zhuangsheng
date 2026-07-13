@@ -85,6 +85,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::exact::invoke_exact_json,
             commands::start_run,
             commands::get_run,
             commands::list_recent_runs,

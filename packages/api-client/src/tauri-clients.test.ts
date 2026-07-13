@@ -5,6 +5,7 @@ import { TauriArtifactClient } from "./tauri-artifact-client";
 import { TauriContextClient } from "./tauri-context-client";
 import { TauriMemoryClient } from "./tauri-memory-client";
 import { TauriRuntimeClient } from "./tauri-runtime-client";
+import { isLosslessNumber } from "./exact-json";
 import type { TauriBridge } from "./transport";
 
 describe("Tauri application clients", () => {
@@ -117,6 +118,16 @@ describe("Tauri application clients", () => {
       "create_artifact_staging", "complete_artifact_staging",
     ]);
     expect(calls[1]?.payload).toMatchObject({ input: { bytes: [1, 2] } });
+  });
+
+  it("decodes referenced IPC JSON bytes without a Number round-trip", async () => {
+    const source = "{\"unsafeInteger\":9007199254740993,\"decimal\":1.234567890123456789}";
+    const runtime = new TauriRuntimeClient(bridge([], [...new TextEncoder().encode(source)]));
+
+    const value = await runtime.loadJsonValue("value_1") as Record<string, unknown>;
+
+    expect(isLosslessNumber(value.unsafeInteger)).toBe(true);
+    expect(isLosslessNumber(value.decimal)).toBe(true);
   });
 });
 

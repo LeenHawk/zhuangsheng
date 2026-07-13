@@ -1,6 +1,7 @@
 import type { ArtifactListView, ArtifactStagingView, ArtifactView, UploadArtifactInput } from "./artifact-types";
 import { decodeArtifact, decodeArtifactList, decodeArtifactStaging } from "./decode-artifacts";
 import { DecodeError } from "./decode-error";
+import { stringifyJsonExact } from "./exact-json";
 import { requestJson } from "./http-json";
 
 export class HttpArtifactClient {
@@ -40,7 +41,7 @@ export class HttpArtifactClient {
       },
       declaredMediaType: input.declaredMediaType?.trim() || input.object.type || null,
     };
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+    form.append("metadata", new Blob([stringifyJsonExact(metadata)], { type: "application/json" }));
     form.append("object", input.object, input.name?.trim() || "upload");
     const staging = decodeArtifactStaging(await requestJson(this.baseUrl, "/v1/artifacts/staging", {
       method: "POST",
@@ -62,7 +63,7 @@ export class HttpArtifactClient {
       {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
-        body: JSON.stringify({ expectedLifecycleGeneration: staging.lifecycleGeneration }),
+        body: stringifyJsonExact({ expectedLifecycleGeneration: staging.lifecycleGeneration }),
         signal,
       },
     ));

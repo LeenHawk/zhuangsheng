@@ -1,5 +1,6 @@
 import { decodeCreateGraph, decodeGraphDraft, decodeGraphList, decodeGraphRevision } from "./decode-graphs";
 import { DecodeError } from "./decode-error";
+import { stringifyJsonExact } from "./exact-json";
 import { decodeRolePlayCompatibility, decodeRolePlaySettings } from "./decode-roleplay";
 import type { CreateGraphResult, GraphDraftView, GraphRevisionView, GraphSummary, JsonObject } from "./graph-types";
 import type { RolePlayCompatibilityView } from "./types";
@@ -23,7 +24,7 @@ export class HttpGraphClient {
     return decodeCreateGraph(await this.request("/v1/graphs", {
       method: "POST",
       headers: this.commandHeaders(options.idempotencyKey),
-      body: JSON.stringify({ name }),
+      body: stringifyJsonExact({ name }),
       signal: options.signal,
     }));
   }
@@ -65,7 +66,7 @@ export class HttpGraphClient {
     return decodeGraphDraft(await this.request(`/v1/graphs/${encodeURIComponent(graphId)}/draft`, {
       method: "PUT",
       headers: { ...this.commandHeaders(options.idempotencyKey), "if-match": `"${revisionToken}"` },
-      body: JSON.stringify(document),
+      body: stringifyJsonExact(document),
       signal: options.signal,
     }));
   }
@@ -78,7 +79,7 @@ export class HttpGraphClient {
     return decodeGraphRevision(await this.request(`/v1/graphs/${encodeURIComponent(graphId)}/apply`, {
       method: "POST",
       headers: { ...this.commandHeaders(options.idempotencyKey), "if-match": `"${revisionToken}"` },
-      body: JSON.stringify({ operationTaxonomyVersion: 1, adapterDecoderVersion: 1 }),
+      body: stringifyJsonExact({ operationTaxonomyVersion: 1, adapterDecoderVersion: 1 }),
       signal: options.signal,
     }));
   }
@@ -92,7 +93,7 @@ export class HttpGraphClient {
     return decodeGraphRevision(await this.request("/v1/roleplay/templates", {
       method: "POST",
       headers: this.commandHeaders(options.idempotencyKey),
-      body: JSON.stringify({ name, channelId, presetId }),
+      body: stringifyJsonExact({ name, channelId, presetId }),
       signal: options.signal,
     }));
   }

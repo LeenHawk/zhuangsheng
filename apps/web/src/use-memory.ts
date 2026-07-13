@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError, createIdempotencyKey, type MemoryProposalCursor, type MemoryProposalView, type MemoryRecordView, type ProposeMemoryInput } from "@zhuangsheng/api-client";
+import { ApiError, createIdempotencyKey, stringifyJsonExact, type MemoryProposalCursor, type MemoryProposalView, type MemoryRecordView, type ProposeMemoryInput } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
 
@@ -34,7 +34,7 @@ export function useMemory() {
   const complete = (signature: string) => keys.current.delete(signature);
 
   const propose = async (input: Omit<ProposeMemoryInput, "scopeId" | "idempotencyKey">) => {
-    const signature = `propose:${scopeId}:${JSON.stringify(input)}`; setPending(signature); setError(null);
+    const signature = `propose:${scopeId}:${stringifyJsonExact(input)}`; setPending(signature); setError(null);
     try { await client.memory.propose({ ...input, scopeId, idempotencyKey: keyFor(signature) }); complete(signature); await load(); }
     catch (cause) { setError(memoryError(cause)); throw cause; }
     finally { setPending(null); }

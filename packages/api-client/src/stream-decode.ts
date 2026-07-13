@@ -1,4 +1,5 @@
 import { DecodeError } from "./decode-error";
+import { parseJsonExact } from "./exact-json";
 import { nullableString, number, record, string } from "./decode-helpers";
 import type { SseFrame } from "./sse-parser";
 import type {
@@ -96,7 +97,7 @@ const llmEvent = (frameType: string, value: unknown, path: string): LlmStreamEve
 
 const parseJson = (value: string, path: string): unknown => {
   try {
-    return JSON.parse(value);
+    return parseJsonExact(value);
   } catch {
     throw new DecodeError(path);
   }

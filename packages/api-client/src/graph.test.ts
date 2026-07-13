@@ -4,6 +4,7 @@ import { DecodeError } from "./decode-error";
 import { decodeGraphDraft, projectGraphStructure } from "./decode-graphs";
 import { decodeRolePlaySettings } from "./decode-roleplay";
 import { HttpGraphClient } from "./http-graph-client";
+import { isLosslessNumber, parseJsonExact, stringifyJsonExact } from "./exact-json";
 import type { JsonObject } from "./graph-types";
 
 const draftDocument: JsonObject = {
@@ -109,6 +110,29 @@ describe("HttpGraphClient", () => {
     expect(calls[0]?.init?.headers).toMatchObject({ "if-match": '"draftrev_1"', "idempotency-key": "save-key" });
     expect(calls[1]?.init?.headers).toMatchObject({ "if-match": '"draftrev_2"', "idempotency-key": "apply-key" });
     expect(JSON.parse(calls[1]?.init?.body as string)).toEqual({ operationTaxonomyVersion: 1, adapterDecoderVersion: 1 });
+  });
+
+  it("preserves exact decimals from HTTP response through a no-op draft save", async () => {
+    const numberFields = "\"unsafeInteger\":9007199254740993,\"decimal\":1.2345678901234567890123456789,\"exponent\":12345678901234567890e-17";
+    const bodies: string[] = [];
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.body) bodies.push(init.body as string);
+      return new Response(
+        `{\"graphId\":\"graph_1\",\"document\":{\"graphId\":\"graph_1\",\"nodes\":[],\"edges\":[],${numberFields}},\"revisionToken\":\"draftrev_1\",\"updatedAt\":1}`,
+        { status: 200 },
+      );
+    });
+    const client = new HttpGraphClient("https://studio.example");
+
+    const draft = await client.getDraft("graph_1");
+    expect(isLosslessNumber(draft.document.unsafeInteger)).toBe(true);
+    await client.updateDraft("graph_1", draft.revisionToken, draft.document, {
+      idempotencyKey: "exact-save",
+    });
+
+    const sent = parseJsonExact(bodies[0] ?? "") as JsonObject;
+    expect(stringifyJsonExact(sent)).toContain(numberFields);
+    expect(bodies[0]).not.toContain("9007199254740992");
   });
 
   it("loads the exact immutable revision path and rejects identity drift", async () => {

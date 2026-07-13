@@ -1,4 +1,6 @@
-export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+import type { JsonNumber } from "./exact-json";
+
+export type JsonValue = null | boolean | JsonNumber | string | JsonValue[] | JsonObject;
 
 export interface JsonObject {
   [key: string]: JsonValue;

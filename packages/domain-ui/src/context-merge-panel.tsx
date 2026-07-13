@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ContextBranchView, ExplicitMergeSelection, MergeContextInput, MergeContextView } from "@zhuangsheng/api-client";
+import { stringifyJsonExact, type ContextBranchView, type ExplicitMergeSelection, type MergeContextInput, type MergeContextView } from "@zhuangsheng/api-client";
 import { Button, Card } from "@zhuangsheng/ui";
 
 export function ContextMergePanel(props: {
@@ -46,7 +46,7 @@ export function ContextMergePanel(props: {
       <label className="mt-3 block text-xs font-semibold text-secondary">Source disposition<select className="mt-1.5 min-h-10 w-full rounded-xl border border-default bg-canvas px-3" value={disposition} onChange={(event) => setDisposition(event.target.value as typeof disposition)}><option value="keep_active">keep_active</option><option value="mark_merged">mark_merged</option></select></label>
       <Button className="mt-4" size="compact" variant="secondary" disabled={props.pending || !source || !target || sourceId === targetId} onClick={() => void merge()}>检查并合并</Button>
       {props.result?.status === "merged" && <p className="mt-3 text-sm text-success">已创建 merge commit：<span className="font-mono">{props.result.mergeCommitId}</span></p>}
-      {props.result?.status === "conflicted" && <div className="mt-5 space-y-3"><p className="text-sm text-warning">需要逐 path 选择最终值。</p>{props.result.conflicts.map((conflict) => <div key={conflict.conflictId} className="rounded-xl border border-warning/25 bg-warning/5 p-3"><p className="font-mono text-xs font-semibold">{conflict.path}</p><div className="mt-2 grid gap-2 md:grid-cols-3">{(["base", "source", "target"] as const).map((choice) => <label key={choice} className="rounded-lg bg-surface p-2 text-xs"><span className="flex gap-2 font-semibold"><input type="radio" name={conflict.conflictId} checked={(choices[conflict.conflictId] ?? "target") === choice} onChange={() => setChoices((current) => ({ ...current, [conflict.conflictId]: choice }))} />{choice}</span><pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap text-[11px] text-secondary">{JSON.stringify(conflict[choice], null, 2)}</pre></label>)}</div></div>)}<Button disabled={props.pending} onClick={() => void resolve()}>提交冲突选择</Button></div>}
+      {props.result?.status === "conflicted" && <div className="mt-5 space-y-3"><p className="text-sm text-warning">需要逐 path 选择最终值。</p>{props.result.conflicts.map((conflict) => <div key={conflict.conflictId} className="rounded-xl border border-warning/25 bg-warning/5 p-3"><p className="font-mono text-xs font-semibold">{conflict.path}</p><div className="mt-2 grid gap-2 md:grid-cols-3">{(["base", "source", "target"] as const).map((choice) => <label key={choice} className="rounded-lg bg-surface p-2 text-xs"><span className="flex gap-2 font-semibold"><input type="radio" name={conflict.conflictId} checked={(choices[conflict.conflictId] ?? "target") === choice} onChange={() => setChoices((current) => ({ ...current, [conflict.conflictId]: choice }))} />{choice}</span><pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap text-[11px] text-secondary">{stringifyJsonExact(conflict[choice], 2)}</pre></label>)}</div></div>)}<Button disabled={props.pending} onClick={() => void resolve()}>提交冲突选择</Button></div>}
     </Card>
   );
 }

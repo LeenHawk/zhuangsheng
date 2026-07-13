@@ -8,6 +8,7 @@ import {
   decodeTimeline,
 } from "./decode";
 import { DecodeError } from "./decode-error";
+import { stringifyJsonExact } from "./exact-json";
 import { decodeRolePlayGraphOptions } from "./decode-roleplay";
 import { decodeCandidateProjectionResolution, decodeTurnCandidates } from "./decode-turn";
 import { requestJson } from "./http-json";
@@ -73,7 +74,7 @@ export class HttpConversationClient {
     return decodeConversation(await this.request("/v1/conversations", {
       method: "POST",
       headers: this.commandHeaders(options.idempotencyKey),
-      body: JSON.stringify({ title: input.title?.trim() || null, defaultRun: input.defaultRun ?? null }),
+      body: stringifyJsonExact({ title: input.title?.trim() || null, defaultRun: input.defaultRun ?? null }),
       signal: options.signal,
     }));
   }
@@ -104,7 +105,7 @@ export class HttpConversationClient {
     return decodeRunProfile(await this.request(`/v1/conversations/${encodeURIComponent(id)}/run-profile`, {
       method: "PUT",
       headers: this.commandHeaders(),
-      body: JSON.stringify(input),
+      body: stringifyJsonExact(input),
     }));
   }
 
@@ -114,7 +115,7 @@ export class HttpConversationClient {
     options: ConversationCommandOptions = {},
   ): Promise<SubmitConversationTurnAck> {
     return decodeSubmitTurnAck(await this.request(`/v1/conversations/${encodeURIComponent(id)}/turns`, {
-      method: "POST", headers: this.commandHeaders(options.idempotencyKey), body: JSON.stringify(input), signal: options.signal,
+      method: "POST", headers: this.commandHeaders(options.idempotencyKey), body: stringifyJsonExact(input), signal: options.signal,
     }));
   }
 
@@ -124,7 +125,7 @@ export class HttpConversationClient {
     signal?: AbortSignal,
   ): Promise<RegenerateConversationCandidateAck> {
     return decodeRegenerateCandidateAck(await this.request(`/v1/turns/${encodeURIComponent(turnId)}/regenerations`, {
-      method: "POST", headers: this.commandHeaders(), body: JSON.stringify(input), signal,
+      method: "POST", headers: this.commandHeaders(), body: stringifyJsonExact(input), signal,
     }));
   }
 
@@ -133,7 +134,7 @@ export class HttpConversationClient {
     input: SelectConversationCandidateInput,
   ): Promise<ConversationSelectionView> {
     return decodeConversationSelection(await this.request(`/v1/turns/${encodeURIComponent(turnId)}/selection`, {
-      method: "PUT", headers: this.commandHeaders(), body: JSON.stringify(input),
+      method: "PUT", headers: this.commandHeaders(), body: stringifyJsonExact(input),
     }));
   }
 
@@ -148,7 +149,7 @@ export class HttpConversationClient {
       {
         method: "POST",
         headers: this.commandHeaders(options.idempotencyKey),
-        body: JSON.stringify(input),
+        body: stringifyJsonExact(input),
         signal: options.signal,
       },
     ));

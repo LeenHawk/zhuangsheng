@@ -1,6 +1,7 @@
 import { decodeChannel, decodeChannelModelDiscovery, decodeChannelRevision, decodeChannels, decodeContextPreset, decodeContextPresetPreview, decodeContextPresets, decodeContextPresetVersion } from "./decode-config";
 import type { ChannelModelDiscoveryView, ChannelRevisionView, ChannelView, ContextPresetPreviewView, ContextPresetVersionView, ContextPresetView, DiscoveredChannelModel, PublishChannelInput, PublishPresetInput } from "./config-types";
 import { DecodeError } from "./decode-error";
+import { stringifyJsonExact } from "./exact-json";
 import { requestJson } from "./http-json";
 import { createIdempotencyKey } from "./idempotency";
 import { buildDiscoveredModelRevisionSpec } from "./channel-model-selection";
@@ -27,7 +28,7 @@ export class HttpConfigClient {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           revisionId: input.revisionId ?? null,
           operationKey: input.operationKey ?? null,
         }),
@@ -121,7 +122,7 @@ export class HttpConfigClient {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           versionId: versionId ?? null,
           nodeInput: {},
           sampleBindings: {},
@@ -139,6 +140,6 @@ export class HttpConfigClient {
   }
 
   private command(path: string, body: unknown, idempotencyKey: string): Promise<unknown> {
-    return requestJson(this.baseUrl, path, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": idempotencyKey }, body: JSON.stringify(body) });
+    return requestJson(this.baseUrl, path, { method: "POST", headers: { "content-type": "application/json", "idempotency-key": idempotencyKey }, body: stringifyJsonExact(body) });
   }
 }

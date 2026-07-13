@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createIdempotencyKey,
+  stringifyJsonExact,
   type MemoryProposalCursor,
   type MemoryProposalView,
   type MemoryRecordView,
@@ -38,7 +39,7 @@ export function LocalMemory() {
   }, [scopeId]);
   useEffect(() => { void load(); }, [load]);
   const propose = async (input: Omit<ProposeMemoryInput, "scopeId" | "idempotencyKey">) => {
-    const signature = `propose:${scopeId}:${JSON.stringify(input)}`;
+    const signature = `propose:${scopeId}:${stringifyJsonExact(input)}`;
     setPending(signature); setError(null);
     try {
       await memory.propose({ ...input, scopeId, idempotencyKey: keyFor(signature) });

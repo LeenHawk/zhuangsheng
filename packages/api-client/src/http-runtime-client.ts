@@ -2,6 +2,7 @@ import { decodeOpenWaits, decodeWaitDelivery } from "./decode-waits";
 import { decodeEffectResolution } from "./decode-effect";
 import { assertJson, decodeRun, decodeRunList, decodeRunOutputs } from "./decode-runs";
 import { DecodeError } from "./decode-error";
+import { stringifyJsonExact } from "./exact-json";
 import { requestJson } from "./http-json";
 import { streamRunEvents, type RunEventStreamObserver } from "./http-sse";
 import type { SubmitHumanResponseInput, SubmitMemoryProposalDecisionInput, SubmitToolApprovalInput, WaitDeliveryView, WaitView } from "./wait-types";
@@ -24,7 +25,7 @@ export class HttpRuntimeClient {
       {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           input: input.input,
           context: input.context,
           deadlineAt: input.deadlineAt ?? null,
@@ -99,7 +100,7 @@ export class HttpRuntimeClient {
       {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
-        body: JSON.stringify(body),
+        body: stringifyJsonExact(body),
         signal,
       },
     ));
@@ -115,7 +116,7 @@ export class HttpRuntimeClient {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           deliveryId: input.deliveryId,
           response: {
             type: "blocker_decisions",
@@ -149,7 +150,7 @@ export class HttpRuntimeClient {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           deliveryId: input.deliveryId,
           response: {
             type: "blocker_decisions",
@@ -181,7 +182,7 @@ export class HttpRuntimeClient {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           deliveryId: input.deliveryId,
           response: { type: "value", value: input.value },
         }),
@@ -218,7 +219,7 @@ export class HttpRuntimeClient {
       {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           expectedEpoch: input.expectedEpoch,
           reason: input.reason?.trim() || null,
         }),

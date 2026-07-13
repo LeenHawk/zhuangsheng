@@ -19,6 +19,7 @@ mod config;
 mod context;
 mod conversation;
 mod error;
+mod exact;
 mod memory;
 mod runtime;
 mod secret;

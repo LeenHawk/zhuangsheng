@@ -24,6 +24,8 @@ pub mod artifact;
 pub mod config;
 #[path = "commands_context.rs"]
 pub mod context;
+#[path = "commands_exact.rs"]
+pub mod exact;
 #[path = "commands_conversation.rs"]
 pub mod conversation;
 #[path = "commands_graph.rs"]

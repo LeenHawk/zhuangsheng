@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createIdempotencyKey, type ChannelModelDiscoveryView, type ChannelRevisionView, type ChannelView, type ContextPresetPreviewView, type ContextPresetView, type DiscoveredChannelModel, type GenerationProviderKind, type RolePlayGraphOptionView, type RolePlaySettingsView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
+import { createIdempotencyKey, stringifyJsonExact, type ChannelModelDiscoveryView, type ChannelRevisionView, type ChannelView, type ContextPresetPreviewView, type ContextPresetView, type DiscoveredChannelModel, type GenerationProviderKind, type RolePlayGraphOptionView, type RolePlaySettingsView, type SecretMetadataView, type SecretStoreStatusView } from "@zhuangsheng/api-client";
 
 import { client, messageFor } from "./api";
 import { buildRolePresetSpec, type RolePresetInput } from "./role-preset-spec";
@@ -108,7 +108,7 @@ export function useInitialSetup() {
   };
 
   const publishChannel = async (input: ChannelSetupInput) => {
-    const signature = `channel:${JSON.stringify(input)}`;
+    const signature = `channel:${stringifyJsonExact(input)}`;
     setPending("channel"); setError(null);
     try {
       let channel = channels.find((item) => item.name === input.name && item.headRevisionId === null);
@@ -129,7 +129,7 @@ export function useInitialSetup() {
   };
 
   const publishRolePreset = async (input: RolePresetInput) => {
-    const signature = `preset:${JSON.stringify(input)}`;
+    const signature = `preset:${stringifyJsonExact(input)}`;
     setPending("preset"); setError(null);
     try {
       let preset = presets.find((item) => item.name === input.name && item.headVersionId === null);
@@ -146,7 +146,7 @@ export function useInitialSetup() {
   };
 
   const createTemplate = async (input: { name: string; channelId: string; presetId: string }) => {
-    const signature = `template:${JSON.stringify(input)}`;
+    const signature = `template:${stringifyJsonExact(input)}`;
     setPending("template"); setError(null);
     try {
       const revision = await client.graphs.createRolePlayTemplate(input.name, input.channelId, input.presetId, { idempotencyKey: keyFor(signature) });

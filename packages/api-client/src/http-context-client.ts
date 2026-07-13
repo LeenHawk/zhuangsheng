@@ -9,6 +9,7 @@ import {
   decodeWorkingContext,
 } from "./decode-context";
 import { DecodeError } from "./decode-error";
+import { stringifyJsonExact } from "./exact-json";
 import type {
   ContextBranchView,
   ContextCommitView,
@@ -80,7 +81,7 @@ export class HttpContextClient {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: stringifyJsonExact({
           patch: {
             aggregateKind: "working_context", aggregateId: contextId, lineageKey: branchId,
             baseCommitId: input.baseCommitId, operationId: input.operationId,
@@ -114,7 +115,7 @@ export class HttpContextClient {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ retentionUntil: input.retentionUntil ?? null, pinned: input.pinned }),
+        body: stringifyJsonExact({ retentionUntil: input.retentionUntil ?? null, pinned: input.pinned }),
         signal,
       },
     ));
@@ -133,7 +134,7 @@ export class HttpContextClient {
       {
         method: "POST",
         headers: this.commandHeaders(options.idempotencyKey),
-        body: JSON.stringify(input),
+        body: stringifyJsonExact(input),
         signal: options.signal,
       },
     ));
@@ -155,7 +156,7 @@ export class HttpContextClient {
       {
         method: "POST",
         headers: this.commandHeaders(options.idempotencyKey),
-        body: JSON.stringify({ ...input, selections: input.selections ?? [] }),
+        body: stringifyJsonExact({ ...input, selections: input.selections ?? [] }),
         signal: options.signal,
       },
     ));

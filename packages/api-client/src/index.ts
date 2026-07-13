@@ -36,6 +36,7 @@ export * from "./types";
 export * from "./roleplay-types";
 export * from "./context-types";
 export * from "./effect-types";
+export * from "./exact-json";
 export * from "./memory-types";
 export * from "./tool-types";
 export * from "./transport";

@@ -1,5 +1,6 @@
 import { decodeEffectResolution } from "./decode-effect";
 import { DecodeError } from "./decode-error";
+import { parseJsonExact } from "./exact-json";
 import { assertJson, decodeRun, decodeRunList, decodeRunOutputs } from "./decode-runs";
 import type { RunEventStreamObserver } from "./http-sse";
 import { decodeOpenWaits, decodeWaitDelivery } from "./decode-waits";
@@ -35,7 +36,7 @@ export class TauriRuntimeClient {
       throw new DecodeError("jsonValue.bytes");
     }
     let value: unknown;
-    try { value = JSON.parse(new TextDecoder().decode(Uint8Array.from(bytes as number[]))); }
+    try { value = parseJsonExact(new TextDecoder().decode(Uint8Array.from(bytes as number[]))); }
     catch { throw new DecodeError("jsonValue"); }
     assertJson(value, "jsonValue");
     return value;

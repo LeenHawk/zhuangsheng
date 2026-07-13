@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createIdempotencyKey,
   createOpeningConversation,
+  stringifyJsonExact,
   type CandidateProjectionResolution,
   type ConversationRunSpec,
   type ConversationTimelineView,
@@ -52,7 +53,7 @@ function LocalStoryList({ onOpen, onConfigure }: { onOpen: (id: string) => void;
   useEffect(() => { void reload(); }, [reload]);
   const createKeys = useRef<{ signature: string; conversation: string; turn: string } | null>(null);
   const create = async (title: string | undefined, defaultRun: ConversationRunSpec, openingMessage: string) => {
-    const signature = JSON.stringify({ title: title ?? null, defaultRun, openingMessage });
+    const signature = stringifyJsonExact({ title: title ?? null, defaultRun, openingMessage });
     if (createKeys.current?.signature !== signature) createKeys.current = { signature, conversation: createIdempotencyKey(), turn: createIdempotencyKey() };
     const keys = createKeys.current;
     setPending(true); setError(null);

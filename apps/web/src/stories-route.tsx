@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   createIdempotencyKey,
   createOpeningConversation,
+  stringifyJsonExact,
   type ConversationRunSpec,
   type ConversationView,
   type RolePlayGraphOptionView,
@@ -53,7 +54,7 @@ export function StoriesRoute() {
 
   const createKeys = useRef<{ signature: string; conversation: string; turn: string } | null>(null);
   const create = async (title: string | undefined, defaultRun: ConversationRunSpec, openingMessage: string) => {
-    const signature = JSON.stringify({ title: title ?? null, defaultRun, openingMessage });
+    const signature = stringifyJsonExact({ title: title ?? null, defaultRun, openingMessage });
     if (createKeys.current?.signature !== signature) createKeys.current = { signature, conversation: createIdempotencyKey(), turn: createIdempotencyKey() };
     const keys = createKeys.current;
     setPending(true);
