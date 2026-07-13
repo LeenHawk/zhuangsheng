@@ -39,12 +39,12 @@ jobs:
             arch: x64
             runner: windows-2025
             target: x86_64-pc-windows-msvc
-            bundles: nsis,msi
+            bundles: nsis
           - os: windows
             arch: arm64
             runner: windows-11-arm
             target: aarch64-pc-windows-msvc
-            bundles: nsis,msi
+            bundles: nsis
           - os: macos
             arch: x64
             runner: macos-15-intel
@@ -131,12 +131,10 @@ jobs:
 
           Copy-Item "$root/zhuangsheng-desktop.exe" "dist/zhuangsheng-windows-${{ matrix.arch }}.exe"
           $nsis = @(Get-ChildItem "$root/bundle/nsis" -Filter *.exe -File)
-          $msi = @(Get-ChildItem "$root/bundle/msi" -Filter *.msi -File)
-          if ($nsis.Count -ne 1 -or $msi.Count -ne 1) {
-            throw "Expected exactly one NSIS installer and one MSI package"
+          if ($nsis.Count -ne 1) {
+            throw "Expected exactly one NSIS installer"
           }
           Copy-Item $nsis[0].FullName "dist/zhuangsheng-windows-${{ matrix.arch }}-setup.exe"
-          Copy-Item $msi[0].FullName "dist/zhuangsheng-windows-${{ matrix.arch }}.msi"
 
           $lines = Get-ChildItem dist -File | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
