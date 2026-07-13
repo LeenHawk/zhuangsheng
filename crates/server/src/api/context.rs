@@ -10,6 +10,7 @@ use zhuangsheng_core::application::context::{
     VersionSnapshotView, WorkingContextView,
 };
 use zhuangsheng_core::runtime::{ContextBranchView, ForkContextCommand};
+use zhuangsheng_core::state::{ActorKind, ActorRef};
 
 use super::{
     AppState,
@@ -141,13 +142,14 @@ async fn commit_patch(
     Path((context_id, branch_id)): Path<(String, String)>,
     body: Result<Json<CommitContextPatchCommand>, JsonRejection>,
 ) -> ApiResult<(StatusCode, Json<ContextCommitView>)> {
-    let Json(command) = json_body(body)?;
+    let Json(mut command) = json_body(body)?;
     if command.patch.aggregate_id != context_id || command.patch.lineage_key != branch_id {
         return Err(ApiError::bad_request(
             "context_path_mismatch",
             "patch aggregate does not match request path",
         ));
     }
+    command.patch.author = local_actor();
     let result = state.context_service.commit_context_patch(command).await?;
     Ok((StatusCode::CREATED, Json(result)))
 }
@@ -183,4 +185,11 @@ async fn create_snapshot(
 
 fn json_body<T>(body: Result<Json<T>, JsonRejection>) -> ApiResult<Json<T>> {
     body.map_err(|error| ApiError::bad_request("invalid_json_body", error.body_text()))
+}
+
+fn local_actor() -> ActorRef {
+    ActorRef {
+        kind: ActorKind::User,
+        id: Some("local-user".into()),
+    }
 }

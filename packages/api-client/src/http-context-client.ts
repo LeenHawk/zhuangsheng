@@ -87,7 +87,9 @@ export class HttpContextClient {
             ops: input.ops.map((operation) => operation.op === "append"
               ? { ...operation, element_id: operation.elementId, elementId: undefined }
               : operation),
-            schemaVersion: input.schemaVersion, policyVersion: input.policyVersion, author: input.author,
+            schemaVersion: input.schemaVersion,
+            policyVersion: input.policyVersion,
+            author: { kind: "user", id: "local-user" },
           },
           originRunId: input.originRunId ?? null,
           originNodeInstanceId: input.originNodeInstanceId ?? null,

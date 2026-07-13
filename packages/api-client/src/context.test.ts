@@ -166,7 +166,7 @@ describe("HttpContextClient", () => {
     await client.commitPatch("context/1", "branch/1", {
       baseCommitId: "commit/2", operationId: "operation_3",
       ops: [{ op: "append", path: "/lore", elementId: "entry_1", value: { text: "moon" } }],
-      schemaVersion: 1, policyVersion: 1, author: { kind: "user", id: "local-user" },
+      schemaVersion: 1, policyVersion: 1,
     });
     await client.createSnapshot("commit/2", { pinned: true });
     expect(calls.map((call) => call.input)).toEqual([

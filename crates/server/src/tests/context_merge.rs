@@ -81,6 +81,25 @@ async fn context_merge_http_merges_disjoint_fork_changes() {
     .await;
     assert_eq!(projection["value"]["source"], 1);
     assert_eq!(projection["value"]["target"], 2);
+    let commits = call(
+        &app,
+        request(
+            "GET",
+            &format!("/v1/contexts/{context}/commits"),
+            json!(null),
+            &[],
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    let source_commit = commits
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["operationId"] == "merge-http-source-change")
+        .unwrap();
+    assert_eq!(source_commit["author"]["kind"], "user");
+    assert_eq!(source_commit["author"]["id"], "local-user");
 }
 
 pub(super) async fn fork(
@@ -123,7 +142,7 @@ pub(super) async fn commit(
                     "aggregateKind":"working_context","aggregateId":context,"lineageKey":branch,
                     "baseCommitId":base,"operationId":operation,
                     "ops":[{"op":"add","path":path,"value":value}],
-                    "schemaVersion":1,"policyVersion":1,"author":{"kind":"user","id":null}
+                    "schemaVersion":1,"policyVersion":1,"author":{"kind":"node","id":"forged-node"}
                 },
                 "originRunId":null,"originNodeInstanceId":null
             }),

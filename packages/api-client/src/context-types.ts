@@ -69,7 +69,6 @@ export interface CommitContextPatchInput {
   ops: ContextPatchOperation[];
   schemaVersion: number;
   policyVersion: number;
-  author: { kind: ContextActorKind; id: string | null };
   originRunId?: string | null;
   originNodeInstanceId?: string | null;
 }
