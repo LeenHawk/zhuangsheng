@@ -7,6 +7,7 @@ mod config;
 mod context;
 mod graph;
 mod memory;
+mod plugin;
 mod runtime;
 
 #[derive(Serialize)]
@@ -59,6 +60,9 @@ impl TauriAdapter {
             return result;
         }
         if let Some(result) = memory::dispatch(self, operation, payload).await {
+            return result;
+        }
+        if let Some(result) = plugin::dispatch(self, operation, payload).await {
             return result;
         }
         if operation == "list_tool_descriptors" {

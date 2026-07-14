@@ -27,6 +27,7 @@ use zhuangsheng_core::application::{
     conversation::ConversationService,
     graph::GraphService,
     memory::MemoryService,
+    plugin::PluginPackageService,
     preset::ContextPresetService,
     secret::SecretStoreService,
     tool::ToolRegistryService,
@@ -53,6 +54,7 @@ pub struct AppServices {
     pub context: Arc<dyn ContextService>,
     pub conversation: Arc<dyn ConversationService>,
     pub memory: Arc<dyn MemoryService>,
+    pub plugin: Arc<dyn PluginPackageService>,
     pub runtime: Arc<dyn RuntimeService>,
     pub secret: Arc<dyn SecretStoreService>,
     pub tool_registry: Arc<dyn ToolRegistryService>,
@@ -70,6 +72,7 @@ pub fn app(services: AppServices) -> Router {
         context_service: services.context,
         conversation_service: services.conversation,
         memory_service: services.memory,
+        plugin_service: services.plugin,
         runtime_service: services.runtime,
         secret_service: services.secret,
         tool_registry_service: services.tool_registry,
@@ -91,6 +94,7 @@ pub fn app(services: AppServices) -> Router {
         .merge(api::conversation::routes())
         .merge(api::conversation_candidate::routes())
         .merge(api::memory::routes())
+        .merge(api::plugin::routes())
         .merge(api::runtime::routes())
         .merge(api::secret::routes())
         .merge(api::tool::routes())

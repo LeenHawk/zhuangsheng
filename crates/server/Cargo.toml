@@ -32,6 +32,7 @@ ulid.workspace = true
 url.workspace = true
 zeroize.workspace = true
 zhuangsheng-core = { path = "../core" }
+zhuangsheng-plugin-host = { path = "../plugin-host" }
 zhuangsheng-storage = { path = "../storage" }
 
 [dev-dependencies]

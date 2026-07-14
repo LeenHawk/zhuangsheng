@@ -22,7 +22,9 @@ tauri-build = { version = "2", default-features = false, features = [] }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", default-features = false, features = [], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+tracing = "0.1"
 zhuangsheng-core = { path = "../../../crates/core" }
+zhuangsheng-plugin-host = { path = "../../../crates/plugin-host" }
 zhuangsheng-server = { path = "../../../crates/server", default-features = false }
 zhuangsheng-storage = { path = "../../../crates/storage" }
 zhuangsheng-tauri-adapter = { path = "../../../crates/adapters/tauri" }

@@ -6636,10 +6636,28 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "tracing",
  "zhuangsheng-core",
+ "zhuangsheng-plugin-host",
  "zhuangsheng-server",
  "zhuangsheng-storage",
  "zhuangsheng-tauri-adapter",
+]
+
+[[package]]
+name = "zhuangsheng-plugin-host"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "tracing",
+ "ulid",
+ "url",
+ "zeroize",
+ "zhuangsheng-core",
 ]
 
 [[package]]
@@ -6662,6 +6680,7 @@ dependencies = [
  "url",
  "zeroize",
  "zhuangsheng-core",
+ "zhuangsheng-plugin-host",
  "zhuangsheng-storage",
 ]
 

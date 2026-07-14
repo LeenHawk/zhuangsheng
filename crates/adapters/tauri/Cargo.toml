@@ -12,5 +12,6 @@ zeroize.workspace = true
 zhuangsheng-core = { path = "../../core" }
 
 [dev-dependencies]
+async-trait.workspace = true
 tokio.workspace = true
 zhuangsheng-storage = { path = "../../storage" }

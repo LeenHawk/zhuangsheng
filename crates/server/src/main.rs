@@ -12,6 +12,7 @@ use zhuangsheng_core::{
         conversation::ConversationService,
         graph::GraphService,
         memory::MemoryService,
+        plugin::PluginPackageService,
         preset::ContextPresetService,
         secret::{SecretResolver, SecretStoreService},
         tool::ToolRegistryService,
@@ -19,6 +20,7 @@ use zhuangsheng_core::{
     runtime::RuntimeService,
     scheduler::{Scheduler, SchedulerStore},
 };
+use zhuangsheng_plugin_host::GitPluginManager;
 use zhuangsheng_server::llm_executor::LocalLlmExecutor;
 use zhuangsheng_server::provider::HttpProviderClient;
 use zhuangsheng_server::{AppServices, RemoteModelDiscoveryService, StreamEventHub, app};
@@ -35,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://zhuangsheng.db?mode=rwc".into());
     let bind_address = env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".into());
+    let plugin_dir = env::var("PLUGIN_DIR").unwrap_or_else(|_| "plugins".into());
     let store = Arc::new(SqliteStore::connect(database_url).await?);
     let recovered = store.recover_runtime_runs().await?;
     if !recovered.is_empty() {
@@ -54,6 +57,11 @@ async fn main() -> anyhow::Result<()> {
     let runtime_service: Arc<dyn RuntimeService> = store.clone();
     let secret_service: Arc<dyn SecretStoreService> = store.clone();
     let tool_registry_service: Arc<dyn ToolRegistryService> = store.clone();
+    let plugin_service: Arc<dyn PluginPackageService> = Arc::new(GitPluginManager::new(
+        store.clone(),
+        store.clone(),
+        plugin_dir,
+    )?);
     let stream_events = StreamEventHub::new();
     let model_discovery = Arc::new(RemoteModelDiscoveryService::new(
         channel_service.clone(),
@@ -65,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(run_artifact_maintenance(store.clone()));
     tokio::spawn(run_content_object_maintenance(store.clone()));
     tokio::spawn(run_conversation_projector(store.clone()));
+    tokio::spawn(run_plugin_updates(plugin_service.clone()));
     let scheduler_store: Arc<dyn SchedulerStore> = store;
     tokio::spawn(run_scheduler(
         Scheduler::new(scheduler_store, "server-local-worker").with_llm_executor(llm_executor),
@@ -82,6 +91,7 @@ async fn main() -> anyhow::Result<()> {
             context: context_service,
             conversation: conversation_service,
             memory: memory_service,
+            plugin: plugin_service,
             runtime: runtime_service,
             secret: secret_service,
             tool_registry: tool_registry_service,
@@ -134,6 +144,19 @@ async fn run_conversation_projector(store: Arc<SqliteStore>) {
             tracing::warn!(%error, "conversation candidate projection failed");
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+async fn run_plugin_updates(service: Arc<dyn PluginPackageService>) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(15 * 60)).await;
+        match service.refresh_automatic().await {
+            Ok(updated) if !updated.is_empty() => {
+                tracing::info!(count = updated.len(), "activated automatic plugin updates")
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "automatic plugin update scan failed"),
+        }
     }
 }
 

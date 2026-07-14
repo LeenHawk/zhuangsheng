@@ -10,6 +10,7 @@ pub mod error;
 pub mod graph;
 pub mod graph_roleplay;
 pub mod memory;
+pub mod plugin;
 pub mod preset;
 pub mod runtime;
 pub mod secret;
@@ -24,6 +25,7 @@ use zhuangsheng_core::application::{
     conversation::ConversationService,
     graph::GraphService,
     memory::MemoryService,
+    plugin::PluginPackageService,
     preset::ContextPresetService,
     secret::SecretStoreService,
 };
@@ -41,6 +43,7 @@ pub struct AppState {
     pub context_service: Arc<dyn ContextService>,
     pub conversation_service: Arc<dyn ConversationService>,
     pub memory_service: Arc<dyn MemoryService>,
+    pub plugin_service: Arc<dyn PluginPackageService>,
     pub runtime_service: Arc<dyn RuntimeService>,
     pub secret_service: Arc<dyn SecretStoreService>,
     pub tool_registry_service: Arc<dyn zhuangsheng_core::application::tool::ToolRegistryService>,

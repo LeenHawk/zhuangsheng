@@ -4226,6 +4226,7 @@ dependencies = [
  "url",
  "zeroize",
  "zhuangsheng-core",
+ "zhuangsheng-plugin-host",
  "zhuangsheng-storage",
 ]
 
@@ -4258,6 +4259,7 @@ dependencies = [
 name = "zhuangsheng-tauri-adapter"
 version = "0.0.1"
 dependencies = [
+ "async-trait",
  "serde",
  "serde_json",
  "tokio",

@@ -16,6 +16,8 @@ use zhuangsheng_tauri_adapter::{TauriAdapter, TauriServices};
 
 #[cfg(feature = "tauri-ipc")]
 mod commands;
+#[cfg(feature = "tauri-runtime")]
+mod plugin_updates;
 
 #[cfg(feature = "tauri-runtime")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -62,6 +64,8 @@ pub fn run() {
                 store.clone(),
                 Arc::new(HttpProviderClient::new()?),
             ));
+            let plugin_service = plugin_updates::create(store.clone(), directory.join("plugins"))?;
+            tauri::async_runtime::spawn(plugin_updates::monitor(plugin_service.clone()));
             app.manage(TauriAdapter::new(TauriServices {
                 runtime: store.clone(),
                 artifact: store.clone(),
@@ -72,6 +76,7 @@ pub fn run() {
                 conversation: store.clone(),
                 context: store.clone(),
                 memory: store.clone(),
+                plugin: plugin_service,
                 secret: store.clone(),
                 tool_registry: store.clone(),
             }));
@@ -142,6 +147,13 @@ pub fn run() {
             commands::memory::apply_memory_proposal,
             commands::memory::get_memory_record,
             commands::memory::search_memory,
+            commands::plugin::inspect_git_plugin_source,
+            commands::plugin::activate_plugin_candidate,
+            commands::plugin::list_plugins,
+            commands::plugin::configure_plugin,
+            commands::plugin::check_plugin_update,
+            commands::plugin::rollback_plugin,
+            commands::plugin::get_plugin_entrypoint,
             commands::graph::list_graphs,
             commands::graph::get_graph_draft,
             commands::graph::update_graph_draft,

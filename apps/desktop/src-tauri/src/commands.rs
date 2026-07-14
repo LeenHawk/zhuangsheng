@@ -32,6 +32,8 @@ pub mod conversation;
 pub mod graph;
 #[path = "commands_memory.rs"]
 pub mod memory;
+#[path = "commands_plugin.rs"]
+pub mod plugin;
 #[path = "commands_runtime_extra.rs"]
 pub mod runtime_extra;
 #[path = "commands_secret.rs"]

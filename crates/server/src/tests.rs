@@ -25,6 +25,8 @@ mod conversation_projection_resolution;
 mod conversation_turn;
 mod effect_resolution;
 mod model_discovery;
+mod plugin;
+mod plugin_support;
 mod roleplay_compatibility;
 mod roleplay_journey;
 mod roleplay_provider;
@@ -55,6 +57,7 @@ fn test_app_with_discovery(
         context: store.clone(),
         conversation: store.clone(),
         memory: store.clone(),
+        plugin: plugin_support::service(),
         runtime: store.clone(),
         secret: store.clone(),
         tool_registry: store,

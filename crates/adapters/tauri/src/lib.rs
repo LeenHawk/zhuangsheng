@@ -7,6 +7,7 @@ use zhuangsheng_core::application::{
     conversation::ConversationService,
     graph::GraphService,
     memory::MemoryService,
+    plugin::PluginPackageService,
     preset::ContextPresetService,
     secret::SecretStoreService,
     tool::ToolRegistryService,
@@ -21,6 +22,7 @@ mod conversation;
 mod error;
 mod exact;
 mod memory;
+mod plugin;
 mod runtime;
 mod secret;
 mod tool;
@@ -42,6 +44,7 @@ pub struct TauriServices {
     pub conversation: Arc<dyn ConversationService>,
     pub context: Arc<dyn ContextService>,
     pub memory: Arc<dyn MemoryService>,
+    pub plugin: Arc<dyn PluginPackageService>,
     pub secret: Arc<dyn SecretStoreService>,
     pub tool_registry: Arc<dyn ToolRegistryService>,
 }
@@ -56,6 +59,7 @@ pub struct TauriAdapter {
     pub(crate) conversation: Arc<dyn ConversationService>,
     pub(crate) context: Arc<dyn ContextService>,
     pub(crate) memory: Arc<dyn MemoryService>,
+    pub(crate) plugin: Arc<dyn PluginPackageService>,
     pub(crate) secret: Arc<dyn SecretStoreService>,
     pub(crate) tool_registry: Arc<dyn ToolRegistryService>,
 }
@@ -72,6 +76,7 @@ impl TauriAdapter {
             conversation: services.conversation,
             context: services.context,
             memory: services.memory,
+            plugin: services.plugin,
             secret: services.secret,
             tool_registry: services.tool_registry,
         }
@@ -106,6 +111,7 @@ mod tests {
             conversation: store.clone(),
             context: store.clone(),
             memory: store.clone(),
+            plugin: crate::test_plugin::service(),
             secret: store.clone(),
             tool_registry: store.clone(),
         });
@@ -168,5 +174,13 @@ mod tests {
             .unwrap();
         assert_eq!(commit.author.kind, ActorKind::User);
         assert_eq!(commit.author.id.as_deref(), Some("local-user"));
+
+        let response = adapter.invoke_exact_json("list_plugins", "{}").await;
+        let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(response["ok"], true);
+        assert_eq!(response["value"], serde_json::json!([]));
     }
 }
+
+#[cfg(test)]
+mod test_plugin;
