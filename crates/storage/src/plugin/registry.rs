@@ -9,7 +9,10 @@ use zhuangsheng_core::{
 
 use crate::{SqliteStore, StorageError, StorageResult, graph::helpers::sql};
 
-use super::rows::{list_installations, load_candidate, load_installation};
+use super::{
+    candidate_lookup::load_staged_candidate_by_commit,
+    rows::{list_installations, load_candidate, load_installation},
+};
 
 impl SqliteStore {
     pub async fn register_plugin_candidate(
@@ -36,6 +39,15 @@ impl SqliteStore {
             return Err(StorageError::InvalidArgument(
                 "plugin candidate manifest hash mismatch".into(),
             ));
+        }
+        if let Some(existing) = load_staged_candidate_by_commit(
+            &self.db,
+            &candidate.manifest.id,
+            &candidate.resolved_commit,
+        )
+        .await?
+        {
+            return Ok(existing);
         }
         match load_candidate(&self.db, &candidate.id).await {
             Ok(existing) if existing == candidate => return Ok(existing),

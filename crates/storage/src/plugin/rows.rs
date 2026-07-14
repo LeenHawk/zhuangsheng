@@ -76,7 +76,7 @@ pub(super) async fn load_version<C: ConnectionTrait>(
     version_from_row(&row)
 }
 
-fn candidate_from_row(row: &QueryResult) -> StorageResult<PluginCandidateView> {
+pub(super) fn candidate_from_row(row: &QueryResult) -> StorageResult<PluginCandidateView> {
     let manifest = manifest(row, "manifest_json", "manifest_hash")?;
     let plugin_id: String = row.try_get("", "plugin_id")?;
     if manifest.id != plugin_id {

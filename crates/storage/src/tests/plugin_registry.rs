@@ -77,16 +77,29 @@ fn activate(
 #[tokio::test]
 async fn plugin_activation_requires_exact_permissions() {
     let store = store().await;
-    let candidate = candidate("candidate-1", "version-1", "1.0.0", '1', None);
+    let initial_candidate = candidate("candidate-1", "version-1", "1.0.0", '1', None);
     store
         .register_plugin_candidate(RegisterPluginCandidateCommand {
-            candidate: candidate.clone(),
+            candidate: initial_candidate.clone(),
         })
         .await
         .unwrap();
     assert_eq!(
         store
-            .register_plugin_candidate(RegisterPluginCandidateCommand { candidate })
+            .register_plugin_candidate(RegisterPluginCandidateCommand {
+                candidate: initial_candidate,
+            })
+            .await
+            .unwrap()
+            .id,
+        "candidate-1"
+    );
+    let duplicate_commit = candidate("candidate-copy", "version-copy", "1.0.0", '1', None);
+    assert_eq!(
+        store
+            .register_plugin_candidate(RegisterPluginCandidateCommand {
+                candidate: duplicate_commit,
+            })
             .await
             .unwrap()
             .id,

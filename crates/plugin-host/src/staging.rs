@@ -50,9 +50,18 @@ pub(super) async fn stage_source(
         .await
         .map_err(|_| ApplicationError::Internal)?;
     let inspect_root = work.clone();
-    let inspected = tokio::task::spawn_blocking(move || inspect_package(&inspect_root))
-        .await
-        .map_err(|_| ApplicationError::Internal)??;
+    let inspected = match tokio::task::spawn_blocking(move || inspect_package(&inspect_root)).await
+    {
+        Ok(Ok(value)) => value,
+        Ok(Err(error)) => {
+            let _ = fs::remove_dir_all(&candidate_dir).await;
+            return Err(error);
+        }
+        Err(_) => {
+            let _ = fs::remove_dir_all(&candidate_dir).await;
+            return Err(ApplicationError::Internal);
+        }
+    };
     let current = match manager
         .registry
         .get_plugin_installation(&inspected.manifest.id)
@@ -60,12 +69,18 @@ pub(super) async fn stage_source(
     {
         Ok(value) => Some(value),
         Err(ApplicationError::NotFound { .. }) => None,
-        Err(error) => return Err(error),
+        Err(error) => {
+            let _ = fs::remove_dir_all(&candidate_dir).await;
+            return Err(error);
+        }
     };
-    if current
-        .as_ref()
-        .is_some_and(|value| value.active_version.resolved_commit == commit)
-    {
+    if current.as_ref().is_some_and(|value| {
+        value.active_version.resolved_commit == commit
+            || value
+                .previous_versions
+                .iter()
+                .any(|version| version.resolved_commit == commit)
+    }) {
         let _ = fs::remove_dir_all(candidate_dir).await;
         return Ok(StageResult::UpToDate);
     }
@@ -81,7 +96,7 @@ pub(super) async fn stage_source(
         .filter(|permission| !current_permissions.contains(permission))
         .collect();
     let candidate = PluginCandidateView {
-        id: candidate_id,
+        id: candidate_id.clone(),
         planned_version_id,
         source_url: source.url,
         source_ref: source.source_ref,
@@ -100,7 +115,12 @@ pub(super) async fn stage_source(
         .register_plugin_candidate(RegisterPluginCandidateCommand { candidate })
         .await
     {
-        Ok(value) => Ok(StageResult::Candidate(value)),
+        Ok(value) => {
+            if value.id != candidate_id {
+                let _ = fs::remove_dir_all(candidate_dir).await;
+            }
+            Ok(StageResult::Candidate(value))
+        }
         Err(error) => {
             let _ = fs::remove_dir_all(candidate_dir).await;
             Err(error)
