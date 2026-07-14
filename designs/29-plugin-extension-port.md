@@ -173,7 +173,9 @@ GET  /v1/plugins/{pluginId}/entrypoint
 
 Tauri 暴露等价 command，并同时进入 exact JSON dispatcher。桌面端 package root 位于 app data 的 `plugins/`；服务端默认使用 `PLUGIN_DIR=plugins`。两者都调用同一 package service，不在 Tauri 中启动 Axum。
 
-当前 Git transport 调用受限环境下的 `git` executable，并关闭 system/global config、交互 prompt、file/ext protocol、template 和 hook 继承。正式桌面发行包必须把兼容 Git runtime 作为安装依赖或随应用提供；Android/iOS 没有系统 Git 时，安装与更新返回 `plugin_git_unavailable`，但这不影响未启用插件时的应用启动。移动端内嵌 Git transport 是后续独立交付项，不能假装当前已支持。
+Git transport 使用编译进 `plugin-host` 的 `gix`，HTTPS 后端为 reqwest + rustls，不启动 `git`/`git.exe`，也不要求用户安装 Git。仓库使用 `open::Options::isolated()`，不会读取 system/global Git config、credential helper、交互 prompt、template 或 hook；认证只接受 Secret Store 显式注入的账号。
+
+拉取只接受 branch/tag 名或默认 HEAD，使用 depth 1，随后记录实际 resolved commit。API 不接受裸 40 位 object ID，避免依赖服务端是否允许 `want <sha>`；需要固定已知版本时应发布 tag。Android/iOS 因此不再依赖系统 Git，但仍必须完成各 target 的 rustls 平台证书、文件权限、包体和真机网络验证，不能仅凭内嵌实现宣称移动端已交付。
 
 ## 暂缓能力
 
@@ -182,7 +184,7 @@ Tauri 暴露等价 command，并同时进入 exact JSON dispatcher。桌面端 p
 - 经用户授权的外部链接打开 action；
 - 后端插件/WASI tool；
 - 插件签名、发布者信任库和撤销列表；
-- 移动端内嵌 Git client；
+- Android/iOS 真机 Git transport 与包体验证；
 - 从 registry 安装及差分下载。
 
 扩展这些能力时继续遵守：manifest 权限只声明，宿主 capability 才授予；前端插件与后端 capability 分开审批；插件数据不能成为 core runtime 的隐式全局 context。

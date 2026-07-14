@@ -30,12 +30,10 @@ pub(super) async fn stage_source(
     let candidate_dir = candidate_root(&manager.root, &candidate_id);
     let work = candidate_dir.join("work");
     let credential = credential(manager, &source).await?;
-    let git_home = manager.root.join("git-home");
     let checkout_result = checkout(GitCheckout {
         source_url: &source.git_url,
         source_ref: source.source_ref.as_deref(),
         destination: &work,
-        isolated_home: &git_home,
         credential,
     })
     .await;

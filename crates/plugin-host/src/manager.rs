@@ -29,7 +29,6 @@ impl GitPluginManager {
         let root = root.into();
         std::fs::create_dir_all(root.join("staging"))?;
         std::fs::create_dir_all(root.join("versions"))?;
-        std::fs::create_dir_all(root.join("git-home"))?;
         Ok(Self {
             registry,
             secrets,

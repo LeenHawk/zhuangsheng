@@ -18,6 +18,7 @@ chacha20poly1305 = "0.10"
 futures-core = "0.3"
 fancy-regex = "0.18"
 getrandom = "0.3"
+gix = { version = "0.85", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "sha1", "worktree-mutation"] }
 gproxy-protocol = "2"
 hex = "0.4"
 hkdf = "0.12"
@@ -36,7 +37,7 @@ sha2 = "0.10"
 subtle = "2.6"
 thiserror = "2.0"
 tempfile = "3.0"
-tokio = { version = "1.0", features = ["fs", "macros", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.0", features = ["fs", "macros", "rt-multi-thread", "signal", "sync", "time"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"

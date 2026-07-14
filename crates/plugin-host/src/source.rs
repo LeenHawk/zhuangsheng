@@ -72,6 +72,7 @@ pub(super) fn version_root(root: &Path, plugin_id: &str, version_id: &str) -> Pa
 fn valid_ref(value: &str) -> bool {
     value.len() <= 200
         && !value.starts_with('-')
+        && !(value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
         && !value.contains("..")
         && !value.contains("@{")
         && !value.contains(['\\', ':', '~', '^', '?', '*', '['])
@@ -84,5 +85,31 @@ pub(super) fn invalid(code: &'static str, message: &'static str) -> ApplicationE
     ApplicationError::InvalidArgument {
         code,
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn command(source_ref: Option<&str>) -> InspectGitPluginCommand {
+        InspectGitPluginCommand {
+            source_url: "https://example.test/plugin.git".into(),
+            source_ref: source_ref.map(str::to_owned),
+            credential_secret_id: None,
+            credential_username: None,
+        }
+    }
+
+    #[test]
+    fn source_ref_accepts_names_and_rejects_raw_object_ids() {
+        assert_eq!(
+            normalize_source(command(Some("release/v1")))
+                .unwrap()
+                .source_ref
+                .as_deref(),
+            Some("release/v1")
+        );
+        assert!(normalize_source(command(Some(&"a".repeat(40)))).is_err());
     }
 }
