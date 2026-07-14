@@ -15,6 +15,7 @@
     "@zhuangsheng/api-client": "workspace:*",
     "@zhuangsheng/domain-ui": "workspace:*",
     "@zhuangsheng/sillytavern-compat": "workspace:*",
+    "@zhuangsheng/ui-extension-host": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

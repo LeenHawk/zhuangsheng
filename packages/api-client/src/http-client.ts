@@ -7,6 +7,7 @@ import { HttpSecretClient } from "./http-secret-client";
 import { HttpContextClient } from "./http-context-client";
 import { HttpToolClient } from "./http-tool-client";
 import { HttpConversationClient } from "./http-conversation-client";
+import { HttpPluginClient } from "./http-plugin-client";
 
 export class HttpApiClient extends HttpConversationClient {
   readonly runtime: HttpRuntimeClient;
@@ -17,6 +18,7 @@ export class HttpApiClient extends HttpConversationClient {
   readonly artifacts: HttpArtifactClient;
   readonly contexts: HttpContextClient;
   readonly tools: HttpToolClient;
+  readonly plugins: HttpPluginClient;
 
   constructor(baseUrl = "") {
     super(baseUrl);
@@ -28,5 +30,6 @@ export class HttpApiClient extends HttpConversationClient {
     this.artifacts = new HttpArtifactClient(baseUrl);
     this.contexts = new HttpContextClient(baseUrl);
     this.tools = new HttpToolClient(baseUrl);
+    this.plugins = new HttpPluginClient(baseUrl);
   }
 }

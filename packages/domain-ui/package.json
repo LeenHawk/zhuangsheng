@@ -13,6 +13,7 @@
     "@zhuangsheng/api-client": "workspace:*",
     "@zhuangsheng/graph-view": "workspace:*",
     "@zhuangsheng/sillytavern-compat": "workspace:*",
+    "@zhuangsheng/ui-extension-host": "workspace:*",
     "@zhuangsheng/ui": "workspace:*",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0"

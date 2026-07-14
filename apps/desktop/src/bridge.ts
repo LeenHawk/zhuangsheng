@@ -11,6 +11,7 @@ import {
   TauriMemoryClient,
   TauriSecretClient,
   TauriToolClient,
+  TauriPluginClient,
   TauriTransport,
   parseJsonExact,
   stringifyJsonExact,
@@ -29,6 +30,8 @@ const exactJsonOperations = new Set([
   "get_working_context", "get_context_at_commit", "diff_context_commits",
   "list_memory_proposals", "propose_memory_change", "decide_memory_proposal",
   "apply_memory_proposal", "get_memory_record", "search_memory", "list_tool_descriptors",
+  "inspect_git_plugin_source", "activate_plugin_candidate", "list_plugins", "configure_plugin",
+  "check_plugin_update", "rollback_plugin", "get_plugin_entrypoint",
 ]);
 
 export const bridge: TauriBridge = {
@@ -70,6 +73,7 @@ export const runtime = new TauriRuntimeClient(bridge);
 export const memory = new TauriMemoryClient(bridge);
 export const secrets = new TauriSecretClient(bridge);
 export const tools = new TauriToolClient(bridge);
+export const plugins = new TauriPluginClient(bridge);
 
 export const localErrorMessage = (cause: unknown) => {
   if (cause && typeof cause === "object") {

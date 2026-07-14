@@ -1,7 +1,8 @@
 import { Bot, Image, Paperclip, UserRound } from "lucide-react";
 
-import type { ConversationTimelineView, LlmContentPart } from "@zhuangsheng/api-client";
+import type { ConversationMessageView, ConversationTimelineView, LlmContentPart } from "@zhuangsheng/api-client";
 import { Badge, Card, cn } from "@zhuangsheng/ui";
+import { PluginMessageBody } from "@zhuangsheng/ui-extension-host";
 
 import { shortId } from "./story-format";
 import type { StoryLiveCandidate } from "./story-detail";
@@ -35,7 +36,7 @@ export function StoryMessages({
             </div>
             <div className={cn("max-w-[min(82%,42rem)]", message.role === "user" && "text-right")}>
               <div className={cn("rounded-2xl border border-default bg-surface px-4 py-3 text-left shadow-soft", message.role === "user" && "border-accent/20 bg-accent-soft/60")}>
-                {(message.displayContent ?? message.content).map((part, index) => <ContentPart key={index} part={part} />)}
+                {(message.displayContent ?? message.content).map((part, index) => <ContentPart key={index} message={message} part={part} />)}
               </div>
               <div className="mt-1.5 flex items-center gap-2 px-1 text-[11px] text-muted">
                 <span>{message.role === "assistant" ? "角色回复" : "你"}</span>
@@ -54,7 +55,14 @@ export function StoryMessages({
               <span className="text-xs text-muted">{connectionText(live.connection)}</span>
             </div>
             {live.text ? (
-              <p className="mt-3 whitespace-pre-wrap leading-7 text-secondary">{live.text}</p>
+              <div className="mt-3 text-secondary"><PluginMessageBody
+                messageId={live.runId}
+                role="assistant"
+                source="live_candidate"
+                text={live.text}
+                streaming
+                fallback={<p className="whitespace-pre-wrap leading-7">{live.text}</p>}
+              /></div>
             ) : (
               <p className="mt-3 text-sm text-muted">角色正在组织回复…</p>
             )}
@@ -77,8 +85,14 @@ const connectionText = (state: StoryLiveCandidate["connection"]) => ({
   closed: "等待正式结果",
 }[state]);
 
-function ContentPart({ part }: { part: LlmContentPart }) {
-  if (part.type === "text") return <p className="whitespace-pre-wrap leading-7">{part.text}</p>;
+function ContentPart({ part, message }: { part: LlmContentPart; message: ConversationMessageView }) {
+  if (part.type === "text") return <PluginMessageBody
+    messageId={message.id}
+    role={message.role}
+    source={message.source}
+    text={part.text}
+    fallback={<p className="whitespace-pre-wrap leading-7">{part.text}</p>}
+  />;
   const Icon = part.type === "image" ? Image : Paperclip;
   return (
     <div className="flex items-center gap-2 rounded-xl bg-elevated p-3 text-sm text-secondary">

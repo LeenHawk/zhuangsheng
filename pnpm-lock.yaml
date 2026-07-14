@@ -22,6 +22,9 @@ importers:
       '@zhuangsheng/sillytavern-compat':
         specifier: workspace:*
         version: link:../../packages/sillytavern-compat
+      '@zhuangsheng/ui-extension-host':
+        specifier: workspace:*
+        version: link:../../packages/ui-extension-host
       react:
         specifier: ^19.0.0
         version: 19.2.7
@@ -74,6 +77,9 @@ importers:
       '@zhuangsheng/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@zhuangsheng/ui-extension-host':
+        specifier: workspace:*
+        version: link:../../packages/ui-extension-host
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.7)
@@ -151,6 +157,9 @@ importers:
       '@zhuangsheng/ui':
         specifier: workspace:*
         version: link:../ui
+      '@zhuangsheng/ui-extension-host':
+        specifier: workspace:*
+        version: link:../ui-extension-host
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.7)
@@ -233,6 +242,25 @@ importers:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+
+  packages/ui-extension-host:
+    dependencies:
+      '@zhuangsheng/api-client':
+        specifier: workspace:*
+        version: link:../api-client
+      react:
+        specifier: ^19.0.0
+        version: 19.2.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(jiti@1.21.7)(jsdom@25.0.1)
 
 packages:
 

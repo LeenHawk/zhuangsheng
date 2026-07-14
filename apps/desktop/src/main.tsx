@@ -10,13 +10,14 @@ import {
   SurfacePlaceholder,
   useAppShellStatus,
 } from "@zhuangsheng/domain-ui";
+import { PluginHostProvider } from "@zhuangsheng/ui-extension-host";
 
 import { LocalStories } from "./local-stories";
 import { LocalSettings } from "./local-settings";
 import { LocalMemory } from "./local-memory";
 import { LocalArtifacts } from "./local-artifacts";
 import { LocalContexts } from "./local-contexts";
-import { desktopPlatformCapabilities, secrets } from "./bridge";
+import { desktopPlatformCapabilities, plugins, secrets } from "./bridge";
 import "../../web/src/styles.css";
 
 const LocalRuns = lazy(async () => ({ default: (await import("./local-runs")).LocalRuns }));
@@ -60,7 +61,7 @@ function DesktopApp() {
   const changeMode = (next: UiExperienceMode) => {
     localStorage.setItem("zhuangsheng.uiMode", next); setMode(next);
   };
-  return <PlatformCapabilitiesProvider value={desktopPlatformCapabilities}><AppShell mode={mode} section={section} status={shellStatus} onModeChange={changeMode} onSectionChange={setSection}>{content}</AppShell></PlatformCapabilitiesProvider>;
+  return <PluginHostProvider client={plugins} mode={mode} platform="desktop"><PlatformCapabilitiesProvider value={desktopPlatformCapabilities}><AppShell mode={mode} section={section} status={shellStatus} onModeChange={changeMode} onSectionChange={setSection}>{content}</AppShell></PlatformCapabilitiesProvider></PluginHostProvider>;
 }
 
 const root = document.getElementById("root");

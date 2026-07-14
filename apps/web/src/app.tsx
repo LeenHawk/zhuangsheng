@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 
 import { webPlatformCapabilities, type UiExperienceMode } from "@zhuangsheng/api-client";
 import { AppShell, PlatformCapabilitiesProvider, SurfacePlaceholder, useAppShellStatus } from "@zhuangsheng/domain-ui";
+import { PluginHostProvider } from "@zhuangsheng/ui-extension-host";
 
 import { loadUiPreferences } from "./ui-preferences";
 import { client } from "./api";
@@ -56,7 +57,7 @@ export function App() {
   const changeSection = (next: typeof section) =>
     navigate(next === "stories" ? "/stories" : next === "studio" ? "/expert/studio" : next === "runs" ? "/expert/runs" : next === "contexts" ? "/expert/contexts" : next === "artifacts" ? "/expert/artifacts" : `/${next}`);
   return (
-    <PlatformCapabilitiesProvider value={webPlatformCapabilities}><AppShell mode={mode} section={section} status={shellStatus} onModeChange={setMode} onSectionChange={changeSection}>
+    <PluginHostProvider client={client.plugins} mode={mode} platform="web"><PlatformCapabilitiesProvider value={webPlatformCapabilities}><AppShell mode={mode} section={section} status={shellStatus} onModeChange={setMode} onSectionChange={changeSection}>
       <Suspense fallback={<SurfacePlaceholder label="页面" title="正在读取权威状态" description="正在加载领域投影与可用操作。" />}><Routes>
         <Route path="/" element={<Navigate to={`/${startPage}`} replace />} />
         <Route path="/stories" element={<StoriesRoute />} />
@@ -72,7 +73,7 @@ export function App() {
         <Route path="/expert/artifacts" element={<ArtifactsRoute />} />
         <Route path="*" element={<Navigate to="/stories" replace />} />
       </Routes></Suspense>
-    </AppShell></PlatformCapabilitiesProvider>
+    </AppShell></PlatformCapabilitiesProvider></PluginHostProvider>
   );
 }
 

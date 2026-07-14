@@ -9,6 +9,7 @@ export * from "./context-explorer";
 export * from "./graph-studio";
 export * from "./memory-page";
 export * from "./platform-capabilities";
+export * from "./plugin-manager";
 export * from "./shell-status";
 export * from "./new-story-wizard";
 export * from "./library-page";

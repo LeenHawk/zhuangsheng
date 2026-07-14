@@ -1,6 +1,8 @@
 import { useState } from "react";
 
-import { ApplicationSettings, SettingsSetup } from "@zhuangsheng/domain-ui";
+import { ApplicationSettings, PluginManager, SettingsSetup } from "@zhuangsheng/domain-ui";
+
+import { client } from "./api";
 
 import { useInitialSetup } from "./use-initial-setup";
 import { loadUiPreferences, saveUiPreferences } from "./ui-preferences";
@@ -9,7 +11,7 @@ export function SettingsRoute() {
   const setup = useInitialSetup();
   const [preferences, setPreferences] = useState(loadUiPreferences);
   const savePreferences = (value: typeof preferences) => { saveUiPreferences(value); setPreferences(value); };
-  return <div className="mx-auto max-w-5xl space-y-6 pb-24"><ApplicationSettings value={preferences} onSave={savePreferences} /><SettingsSetup
+  return <div className="mx-auto max-w-5xl space-y-6 pb-24"><ApplicationSettings value={preferences} onSave={savePreferences} /><PluginManager client={client.plugins} secrets={setup.secrets} /><SettingsSetup
     status={setup.status}
     secrets={setup.secrets}
     channels={setup.channels}

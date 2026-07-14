@@ -20,12 +20,13 @@ import {
   buildRolePresetSpec,
   loadApplicationPreferences,
   notifyShellStatusChanged,
+  PluginManager,
   saveApplicationPreferences,
   SettingsSetup,
   type RolePresetInput,
 } from "@zhuangsheng/domain-ui";
 
-import { config, conversations, localErrorMessage, secrets } from "./bridge";
+import { config, conversations, localErrorMessage, plugins, secrets } from "./bridge";
 
 type Pending = "secret" | "secret_control" | "channel" | "preset" | "template" | "preview" | "discovery" | "model" | "settings" | null;
 interface ChannelInput { name: string; baseUrl: string; providerKind: GenerationProviderKind; modelId: string; credentialSecretId: string | null; structuredOutput: boolean }
@@ -151,5 +152,5 @@ export function LocalSettings() {
   const savePreferences = (value: typeof preferences) => {
     saveApplicationPreferences(value); setPreferences(value);
   };
-  return <div className="mx-auto max-w-5xl space-y-6 pb-24"><ApplicationSettings value={preferences} onSave={savePreferences} /><SettingsSetup status={status} secrets={secretRefs} channels={channels} presets={presets} templates={templates} preview={preview} discovery={discovery} rolePlaySettings={settings} loading={loading} pending={pending} error={error} onReload={() => void load()} onStoreSecret={storeSecret} onUnlockSecretStore={unlockSecretStore} onLockSecretStore={lockSecretStore} onChangeSecretStorePassword={changeSecretStorePassword} onPublishChannel={publishChannel} onPublishPreset={publishPreset} onPreviewPreset={previewPreset} onCreateTemplate={createTemplate} onDiscoverModels={discoverModels} onPublishDiscoveredModel={publishModel} onInspectTemplate={inspect} /></div>;
+  return <div className="mx-auto max-w-5xl space-y-6 pb-24"><ApplicationSettings value={preferences} onSave={savePreferences} /><PluginManager client={plugins} secrets={secretRefs} /><SettingsSetup status={status} secrets={secretRefs} channels={channels} presets={presets} templates={templates} preview={preview} discovery={discovery} rolePlaySettings={settings} loading={loading} pending={pending} error={error} onReload={() => void load()} onStoreSecret={storeSecret} onUnlockSecretStore={unlockSecretStore} onLockSecretStore={lockSecretStore} onChangeSecretStorePassword={changeSecretStorePassword} onPublishChannel={publishChannel} onPublishPreset={publishPreset} onPreviewPreset={previewPreset} onCreateTemplate={createTemplate} onDiscoverModels={discoverModels} onPublishDiscoveredModel={publishModel} onInspectTemplate={inspect} /></div>;
 }
