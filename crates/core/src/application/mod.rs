@@ -5,6 +5,7 @@ pub mod conversation;
 mod error;
 pub mod graph;
 pub mod memory;
+pub mod plugin;
 pub mod preset;
 pub mod secret;
 pub mod tool;

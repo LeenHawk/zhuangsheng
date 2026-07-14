@@ -8,6 +8,7 @@ pub mod llm;
 pub mod maintenance;
 pub mod memory;
 pub mod migration;
+pub mod plugin;
 pub mod runtime;
 pub mod secret;
 mod store;

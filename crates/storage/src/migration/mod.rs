@@ -29,6 +29,7 @@ mod m20260712_000028_runtime_checkpoints;
 mod m20260712_000029_static_context_writes;
 mod m20260712_000030_memory_proposal_tools;
 mod m20260712_000031_run_event_compaction;
+mod m20260714_000032_plugins;
 
 use sea_orm_migration::prelude::*;
 
@@ -69,6 +70,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260712_000029_static_context_writes::Migration),
             Box::new(m20260712_000030_memory_proposal_tools::Migration),
             Box::new(m20260712_000031_run_event_compaction::Migration),
+            Box::new(m20260714_000032_plugins::Migration),
         ]
     }
 }

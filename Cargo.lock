@@ -4185,6 +4185,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "zhuangsheng-plugin-host"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "ulid",
+ "url",
+ "zeroize",
+ "zhuangsheng-core",
+]
+
+[[package]]
 name = "zhuangsheng-server"
 version = "0.0.1"
 dependencies = [
